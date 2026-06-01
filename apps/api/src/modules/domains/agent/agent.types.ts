@@ -13,12 +13,16 @@ import type { RetrievalResult } from "../retrieval/retrieval.types.js";
 
 export type SseEmitter = (event: AskStreamEvent) => Promise<void>;
 
+export type RuntimeAgent = Agent & {
+  systemPrompt: string | null;
+};
+
 export type AgentState = {
   user: AuthenticatedUser;
   conversation: Conversation;
   userMessageId: string;
   query: string;
-  agent: Agent | null;
+  agent: RuntimeAgent | null;
   knowledgeScope: string[];
   rewrittenQueries: string[];
   retrieval: RetrievalResult | null;
@@ -37,4 +41,3 @@ export type AgentState = {
 export type GraphEnvelope = {
   state: AgentState;
 };
-

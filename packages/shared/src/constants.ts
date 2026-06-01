@@ -62,3 +62,32 @@ export const DOCUMENT_SOURCE_TYPES = [
   "image",
   "manual",
 ] as const;
+
+export const AGENT_TYPES = ["global", "official", "personal"] as const;
+
+export const AGENT_VISIBILITIES = [
+  "global",
+  "knowledge_base_members",
+  "selected_members",
+  "private",
+] as const;
+
+export const AGENT_STATUSES = ["draft", "published", "disabled", "archived"] as const;
+
+export const CONFIDENCE_LEVELS = ["strong", "medium", "weak", "not_found"] as const;
+
+export const NO_ANSWER_TYPES = [
+  "no_answer",
+  "low_confidence",
+  "knowledge_gap",
+  "permission_limited",
+  "attachment_parse_failed",
+] as const;
+
+export const CITATION_SOURCE_TYPES = [
+  "knowledge_document",
+  "knowledge_item",
+  "conversation_attachment",
+] as const;
+
+export const FEEDBACK_RATINGS = ["useful", "not_useful", "correction"] as const;

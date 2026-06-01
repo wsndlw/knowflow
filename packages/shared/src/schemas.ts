@@ -3,10 +3,17 @@ import { z } from "zod";
 import {
   DOCUMENT_PROCESS_STATUSES,
   DOCUMENT_SOURCE_TYPES,
+  AGENT_STATUSES,
+  AGENT_TYPES,
+  AGENT_VISIBILITIES,
+  CITATION_SOURCE_TYPES,
+  CONFIDENCE_LEVELS,
+  FEEDBACK_RATINGS,
   KNOWLEDGE_BASE_INDEX_STATUSES,
   KNOWLEDGE_BASE_STATUSES,
   KNOWLEDGE_BASE_VISIBILITIES,
   MODEL_USAGE_TYPES,
+  NO_ANSWER_TYPES,
   PLATFORM_ROLES,
 } from "./constants";
 
@@ -17,6 +24,13 @@ export const knowledgeBaseIndexStatusSchema = z.enum(KNOWLEDGE_BASE_INDEX_STATUS
 export const documentProcessStatusSchema = z.enum(DOCUMENT_PROCESS_STATUSES);
 export const documentSourceTypeSchema = z.enum(DOCUMENT_SOURCE_TYPES);
 export const modelUsageTypeSchema = z.enum(MODEL_USAGE_TYPES);
+export const agentTypeSchema = z.enum(AGENT_TYPES);
+export const agentVisibilitySchema = z.enum(AGENT_VISIBILITIES);
+export const agentStatusSchema = z.enum(AGENT_STATUSES);
+export const confidenceLevelSchema = z.enum(CONFIDENCE_LEVELS);
+export const noAnswerTypeSchema = z.enum(NO_ANSWER_TYPES);
+export const citationSourceTypeSchema = z.enum(CITATION_SOURCE_TYPES);
+export const feedbackRatingSchema = z.enum(FEEDBACK_RATINGS);
 
 export const apiErrorSchema = z.object({
   code: z.string(),
@@ -197,6 +211,121 @@ export const documentProgressEventSchema = z.object({
   timestamp: z.iso.datetime(),
 });
 
+export const agentSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  description: z.string().nullable(),
+  type: agentTypeSchema,
+  visibility: agentVisibilitySchema,
+  status: agentStatusSchema,
+  isDefault: z.boolean(),
+  openingMessage: z.string().nullable(),
+  recommendedQuestions: z.array(z.string()),
+});
+
+export const agentListResponseSchema = z.object({
+  items: z.array(agentSchema),
+});
+
+export const conversationSchema = z.object({
+  id: z.uuid(),
+  agentId: z.uuid(),
+  title: z.string(),
+  status: z.enum(["active", "archived"]),
+  pinned: z.boolean(),
+  favorited: z.boolean(),
+  lastMessageAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const conversationListResponseSchema = z.object({
+  items: z.array(conversationSchema),
+});
+
+export const createConversationRequestSchema = z.object({
+  agentId: z.uuid(),
+  title: z.string().trim().min(1).max(255).optional(),
+});
+
+export const citationSchema = z.object({
+  id: z.uuid().optional(),
+  sourceType: citationSourceTypeSchema,
+  knowledgeBaseId: z.uuid().nullable(),
+  documentId: z.uuid().nullable(),
+  knowledgeItemId: z.uuid().nullable(),
+  chunkId: z.uuid().nullable(),
+  title: z.string(),
+  snippet: z.string().nullable(),
+  pageOrSection: z.string().nullable(),
+});
+
+export const conversationMessageSchema = z.object({
+  id: z.uuid(),
+  conversationId: z.uuid(),
+  role: z.enum(["user", "assistant", "system"]),
+  content: z.string(),
+  confidenceLevel: confidenceLevelSchema.nullable(),
+  noAnswerType: noAnswerTypeSchema.nullable(),
+  citations: z.array(citationSchema),
+  createdAt: z.iso.datetime(),
+});
+
+export const conversationMessagesResponseSchema = z.object({
+  items: z.array(conversationMessageSchema),
+});
+
+export const askMessageRequestSchema = z.object({
+  content: z.string().trim().min(1).max(8000),
+});
+
+export const askStreamEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("agent.started"),
+    conversationId: z.uuid(),
+    userMessageId: z.uuid(),
+  }),
+  z.object({
+    type: z.literal("agent.step.started"),
+    step: z.string(),
+  }),
+  z.object({
+    type: z.literal("agent.step.completed"),
+    step: z.string(),
+  }),
+  z.object({
+    type: z.literal("agent.retrieval.completed"),
+    contextCount: z.number().int().nonnegative(),
+  }),
+  z.object({
+    type: z.literal("agent.answer.delta"),
+    delta: z.string(),
+  }),
+  z.object({
+    type: z.literal("agent.citations.ready"),
+    citations: z.array(citationSchema),
+  }),
+  z.object({
+    type: z.literal("agent.completed"),
+    message: conversationMessageSchema,
+  }),
+  z.object({
+    type: z.literal("agent.failed"),
+    message: z.string(),
+  }),
+]);
+
+export const answerFeedbackRequestSchema = z
+  .object({
+    rating: feedbackRatingSchema,
+    reason: z.string().trim().max(120).optional(),
+    correctionContent: z.string().trim().max(4000).optional(),
+    suggestedSource: z.string().trim().max(1000).optional(),
+  })
+  .refine((value) => value.rating !== "correction" || value.correctionContent !== undefined, {
+    message: "Correction content is required",
+  });
+
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type ApiFailure = z.infer<typeof apiFailureSchema>;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
@@ -227,3 +356,17 @@ export type KnowledgeDocument = z.infer<typeof documentSchema>;
 export type DocumentListResponse = z.infer<typeof documentListResponseSchema>;
 export type DocumentProgressEvent = z.infer<typeof documentProgressEventSchema>;
 export type ModelUsageType = z.infer<typeof modelUsageTypeSchema>;
+export type Agent = z.infer<typeof agentSchema>;
+export type AgentListResponse = z.infer<typeof agentListResponseSchema>;
+export type Conversation = z.infer<typeof conversationSchema>;
+export type ConversationListResponse = z.infer<typeof conversationListResponseSchema>;
+export type CreateConversationRequest = z.infer<typeof createConversationRequestSchema>;
+export type Citation = z.infer<typeof citationSchema>;
+export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
+export type ConversationMessagesResponse = z.infer<typeof conversationMessagesResponseSchema>;
+export type AskMessageRequest = z.infer<typeof askMessageRequestSchema>;
+export type AskStreamEvent = z.infer<typeof askStreamEventSchema>;
+export type ConfidenceLevel = z.infer<typeof confidenceLevelSchema>;
+export type NoAnswerType = z.infer<typeof noAnswerTypeSchema>;
+export type FeedbackRating = z.infer<typeof feedbackRatingSchema>;
+export type AnswerFeedbackRequest = z.infer<typeof answerFeedbackRequestSchema>;

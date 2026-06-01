@@ -11,6 +11,8 @@ grill-with-docs/
 CLAUDE.md
 # Claude Code 本地会话 / 配置目录
 .claude/
+# Playwright CLI skill 本地运行时
+.playwright-cli/
 
 # ── 设计文档说明 ─────────────────────────────────────────────
 # md/ 目录是初步架构设计文档，后续会迭代出更好的版本，暂不入库。

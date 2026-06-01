@@ -1,9 +1,9 @@
 import "dotenv/config";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
 
 import { closeDb, db } from "./client.js";
+import { hashPassword } from "./password.js";
 import {
   agentKnowledgeBases,
   agents,
@@ -38,23 +38,6 @@ const DEFAULT_PASSWORD = "ChangeMe_123456";
 function getRequiredEnv(name: string, fallback: string): string {
   const value = process.env[name];
   return value === undefined || value.trim() === "" ? fallback : value;
-}
-
-function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, 64).toString("hex");
-  return `scrypt$${salt}$${hash}`;
-}
-
-export function verifyPassword(password: string, storedHash: string): boolean {
-  const [algorithm, salt, hash] = storedHash.split("$");
-  if (algorithm !== "scrypt" || salt === undefined || hash === undefined) {
-    return false;
-  }
-
-  const expected = Buffer.from(hash, "hex");
-  const actual = scryptSync(password, salt, expected.length);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 async function ensureDepartment(name: string): Promise<DepartmentSeed> {

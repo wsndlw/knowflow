@@ -281,6 +281,10 @@ h2 {
   gap: 14px;
 }
 
+.form-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -345,6 +349,103 @@ h2 {
   margin: 2px 0 0;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.back-link,
+.helper-text {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.back-link:hover {
+  color: var(--accent);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.detail-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.detail-panel p {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.section-heading-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.section-heading-row h2 {
+  margin-bottom: 0;
+}
+
+.member-actions {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  gap: 10px;
+}
+
+.member-list {
+  display: grid;
+  gap: 10px;
+}
+
+.member-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.member-row strong,
+.member-row span {
+  display: block;
+}
+
+.member-row span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.member-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.member-badges span {
+  border-radius: 999px;
+  background: #edf2f7;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+}
+
+.member-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.member-row-actions .action-button {
+  padding: 9px 12px;
 }
 
 .session-box {
@@ -432,8 +533,18 @@ h2 {
   .page-heading-row,
   .toolbar,
   .form-grid,
-  .kb-grid {
+  .form-grid.two,
+  .kb-grid,
+  .detail-grid,
+  .section-heading-row,
+  .member-actions,
+  .member-row {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .member-badges,
+  .member-row-actions {
+    justify-content: flex-start;
   }
 }

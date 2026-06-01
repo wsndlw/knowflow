@@ -10,7 +10,7 @@ import {
   type KnowledgeBaseVisibility,
 } from "@knowflow/shared";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useState, type SyntheticEvent } from "react";
 
 import { useAuth } from "../../components/auth-provider";
 import { apiRequest } from "../../lib/api";
@@ -48,6 +48,7 @@ export default function KnowledgeBasesPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
 
   const canCreate = user?.platformRole === "super_admin" || user?.platformRole === "department_admin";
 
@@ -83,6 +84,7 @@ export default function KnowledgeBasesPage() {
           { cache: "no-store" },
         );
         setDepartments(response.items);
+        setSelectedDepartmentId((current) => (current === "" ? (response.items[0]?.id ?? "") : current));
       } catch (caught) {
         setCreateError(caught instanceof Error ? caught.message : "Failed to load departments");
       }
@@ -90,8 +92,6 @@ export default function KnowledgeBasesPage() {
 
     void loadDepartments();
   }, [canCreate]);
-
-  const defaultDepartmentId = useMemo(() => departments[0]?.id ?? "", [departments]);
 
   async function handleCreate(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -103,7 +103,7 @@ export default function KnowledgeBasesPage() {
       const input: CreateKnowledgeBaseRequest = createKnowledgeBaseRequestSchema.parse({
         name: formData.get("name"),
         description: formData.get("description"),
-        departmentId: formData.get("departmentId"),
+        departmentId: selectedDepartmentId,
         visibility: formData.get("visibility"),
       });
 
@@ -163,7 +163,12 @@ export default function KnowledgeBasesPage() {
             </label>
             <label>
               Department
-              <select name="departmentId" required defaultValue={defaultDepartmentId}>
+              <select
+                name="departmentId"
+                required
+                value={selectedDepartmentId}
+                onChange={(event) => setSelectedDepartmentId(event.target.value)}
+              >
                 {departments.map((department) => (
                   <option key={department.id} value={department.id}>
                     {department.name}

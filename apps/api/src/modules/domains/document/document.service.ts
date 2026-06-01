@@ -27,6 +27,7 @@ import type {} from "multer";
 import { Observable } from "rxjs";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
+import { resolveLocalStorageRoot } from "../../../shared/storage/local-storage.js";
 import { KnowledgeBaseAccessService } from "../knowledge-base/knowledge-base-access.service.js";
 import { createDocumentQueue } from "./document-queue.js";
 import { createRedisClient, getDocumentProgressChannel } from "./document-progress.js";
@@ -273,7 +274,7 @@ export class DocumentService {
     file: UploadedFile,
     extension: FileKind["extension"],
   ): Promise<string> {
-    const storageRoot = path.resolve(process.env["LOCAL_STORAGE_ROOT"] ?? "storage");
+    const storageRoot = resolveLocalStorageRoot();
     const now = new Date();
     const relativeDirectory = path.join(
       "documents",
@@ -298,7 +299,7 @@ export class DocumentService {
   }
 
   private async removeStoredFile(storagePath: string): Promise<void> {
-    const storageRoot = path.resolve(process.env["LOCAL_STORAGE_ROOT"] ?? "storage");
+    const storageRoot = resolveLocalStorageRoot();
     const absolutePath = path.resolve(storageRoot, storagePath);
     if (!this.isWithinDirectory(storageRoot, absolutePath)) {
       return;

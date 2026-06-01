@@ -13,6 +13,7 @@ import path from "node:path";
 import OpenAI from "openai";
 import { PDFParse } from "pdf-parse";
 
+import { resolveLocalStorageRoot } from "../../../shared/storage/local-storage.js";
 import type { DocumentProcessResult } from "./document-queue.js";
 import { publishDocumentProgress } from "./document-progress.js";
 
@@ -471,7 +472,7 @@ async function resolveDocumentPath(document: ProcessableDocument): Promise<strin
     throw new Error("Document file metadata is missing");
   }
 
-  const storageRoot = path.resolve(process.env["LOCAL_STORAGE_ROOT"] ?? "storage");
+  const storageRoot = resolveLocalStorageRoot();
   const absolutePath = path.resolve(storageRoot, file.storagePath);
   const relativePath = path.relative(storageRoot, absolutePath);
   if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {

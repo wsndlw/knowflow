@@ -13,6 +13,7 @@ export function loadEnv(): void {
   for (let currentDirectory = process.cwd(); ; currentDirectory = path.dirname(currentDirectory)) {
     const envPath = path.join(currentDirectory, ".env");
     if (existsSync(envPath)) {
+      process.env["KNOWFLOW_PROJECT_ROOT"] ??= currentDirectory;
       config({ path: envPath });
       return;
     }

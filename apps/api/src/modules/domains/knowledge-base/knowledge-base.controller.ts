@@ -13,10 +13,12 @@ import {
 import {
   createKnowledgeBaseRequestSchema,
   knowledgeBaseListQuerySchema,
+  knowledgeBaseUserRequestSchema,
   updateKnowledgeBaseRequestSchema,
   uuidParamSchema,
   type KnowledgeBase,
   type KnowledgeBaseListResponse,
+  type KnowledgeBaseMembersResponse,
 } from "@knowflow/shared";
 
 import { Roles } from "../../../shared/decorators/roles.decorator.js";
@@ -36,6 +38,11 @@ type KnowledgeBaseSuccess = {
 type KnowledgeBaseListSuccess = {
   ok: true;
   data: KnowledgeBaseListResponse;
+};
+
+type KnowledgeBaseMembersSuccess = {
+  ok: true;
+  data: KnowledgeBaseMembersResponse;
 };
 
 @Controller("knowledge-bases")
@@ -107,6 +114,78 @@ export class KnowledgeBaseController {
   ): Promise<EmptySuccess> {
     const { id } = uuidParamSchema.parse(params);
     await this.knowledgeBaseService.delete(id, this.requireUser(request));
+    return {
+      ok: true,
+      data: {},
+    };
+  }
+
+  @Get(":id/members")
+  async listMembers(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<KnowledgeBaseMembersSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    return {
+      ok: true,
+      data: await this.knowledgeBaseService.listMembers(id, this.requireUser(request)),
+    };
+  }
+
+  @Post(":id/members")
+  async addMember(
+    @Param() params: unknown,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<EmptySuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const { userId } = knowledgeBaseUserRequestSchema.parse(body);
+    await this.knowledgeBaseService.addMember(id, userId, this.requireUser(request));
+    return {
+      ok: true,
+      data: {},
+    };
+  }
+
+  @Delete(":id/members/:userId")
+  async removeMember(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<EmptySuccess> {
+    const parsed = uuidParamSchema
+      .extend({ userId: knowledgeBaseUserRequestSchema.shape.userId })
+      .parse(params);
+    await this.knowledgeBaseService.removeMember(parsed.id, parsed.userId, this.requireUser(request));
+    return {
+      ok: true,
+      data: {},
+    };
+  }
+
+  @Post(":id/admins")
+  async addAdmin(
+    @Param() params: unknown,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<EmptySuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const { userId } = knowledgeBaseUserRequestSchema.parse(body);
+    await this.knowledgeBaseService.addAdmin(id, userId, this.requireUser(request));
+    return {
+      ok: true,
+      data: {},
+    };
+  }
+
+  @Delete(":id/admins/:userId")
+  async removeAdmin(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<EmptySuccess> {
+    const parsed = uuidParamSchema
+      .extend({ userId: knowledgeBaseUserRequestSchema.shape.userId })
+      .parse(params);
+    await this.knowledgeBaseService.removeAdmin(parsed.id, parsed.userId, this.requireUser(request));
     return {
       ok: true,
       data: {},

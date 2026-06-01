@@ -19,6 +19,17 @@ export class KnowledgeBaseAccessService {
       return eq(knowledgeBases.departmentId, user.departmentId);
     }
 
+    const adminAccess = exists(
+      db
+        .select({ id: knowledgeBaseAdmins.id })
+        .from(knowledgeBaseAdmins)
+        .where(
+          and(
+            eq(knowledgeBaseAdmins.knowledgeBaseId, knowledgeBases.id),
+            eq(knowledgeBaseAdmins.userId, user.id),
+          ),
+        ),
+    );
     const memberAccess = exists(
       db
         .select({ id: knowledgeBaseMembers.id })
@@ -33,6 +44,7 @@ export class KnowledgeBaseAccessService {
 
     return or(
       eq(knowledgeBases.visibility, "public"),
+      adminAccess,
       and(
         eq(knowledgeBases.visibility, "department"),
         eq(knowledgeBases.departmentId, user.departmentId),

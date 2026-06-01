@@ -20,6 +20,8 @@ import type {
   KnowledgeBase,
   KnowledgeBaseListQuery,
   KnowledgeBaseListResponse,
+  KnowledgeBaseMember,
+  KnowledgeBaseMembersResponse,
   UpdateKnowledgeBaseRequest,
 } from "@knowflow/shared";
 import { and, asc, count, desc, eq, ilike, or, type SQL } from "drizzle-orm";
@@ -45,6 +47,17 @@ type KnowledgeBaseRow = {
   embeddingDimension: number;
   createdAt: Date;
   updatedAt: Date;
+};
+
+type MemberRow = {
+  id: string;
+  username: string;
+  name: string;
+  platformRole: KnowledgeBaseMember["platformRole"];
+  departmentId: string;
+  departmentName: string;
+  joinedAt: Date | null;
+  adminSince: Date | null;
 };
 
 @Injectable()
@@ -178,6 +191,126 @@ export class KnowledgeBaseService {
     });
   }
 
+  async listMembers(id: string, user: AuthenticatedUser): Promise<KnowledgeBaseMembersResponse> {
+    await this.ensureCanManage(id, user);
+
+    const rows = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        name: users.name,
+        platformRole: users.platformRole,
+        departmentId: users.departmentId,
+        departmentName: departments.name,
+        joinedAt: knowledgeBaseMembers.createdAt,
+        adminSince: knowledgeBaseAdmins.createdAt,
+      })
+      .from(users)
+      .innerJoin(departments, eq(departments.id, users.departmentId))
+      .leftJoin(
+        knowledgeBaseMembers,
+        and(
+          eq(knowledgeBaseMembers.userId, users.id),
+          eq(knowledgeBaseMembers.knowledgeBaseId, id),
+        ),
+      )
+      .leftJoin(
+        knowledgeBaseAdmins,
+        and(
+          eq(knowledgeBaseAdmins.userId, users.id),
+          eq(knowledgeBaseAdmins.knowledgeBaseId, id),
+        ),
+      )
+      .where(
+        or(
+          eq(knowledgeBaseMembers.knowledgeBaseId, id),
+          eq(knowledgeBaseAdmins.knowledgeBaseId, id),
+        ),
+      )
+      .orderBy(asc(users.name), asc(users.username));
+
+    return {
+      items: rows.map((row) => this.toMember(row)),
+    };
+  }
+
+  async addMember(id: string, memberUserId: string, user: AuthenticatedUser): Promise<void> {
+    await this.ensureCanManage(id, user);
+    await this.ensureUserExists(memberUserId);
+
+    await db
+      .insert(knowledgeBaseMembers)
+      .values({
+        knowledgeBaseId: id,
+        userId: memberUserId,
+      })
+      .onConflictDoNothing({
+        target: [knowledgeBaseMembers.knowledgeBaseId, knowledgeBaseMembers.userId],
+      });
+  }
+
+  async removeMember(id: string, memberUserId: string, user: AuthenticatedUser): Promise<void> {
+    await this.ensureCanManage(id, user);
+    await db
+      .delete(knowledgeBaseMembers)
+      .where(
+        and(
+          eq(knowledgeBaseMembers.knowledgeBaseId, id),
+          eq(knowledgeBaseMembers.userId, memberUserId),
+        ),
+      );
+  }
+
+  async addAdmin(id: string, adminUserId: string, user: AuthenticatedUser): Promise<void> {
+    await this.ensureCanManage(id, user);
+    await this.ensureUserExists(adminUserId);
+
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(knowledgeBaseMembers)
+        .values({
+          knowledgeBaseId: id,
+          userId: adminUserId,
+        })
+        .onConflictDoNothing({
+          target: [knowledgeBaseMembers.knowledgeBaseId, knowledgeBaseMembers.userId],
+        });
+      await tx
+        .insert(knowledgeBaseAdmins)
+        .values({
+          knowledgeBaseId: id,
+          userId: adminUserId,
+        })
+        .onConflictDoNothing({
+          target: [knowledgeBaseAdmins.knowledgeBaseId, knowledgeBaseAdmins.userId],
+        });
+    });
+  }
+
+  async removeAdmin(id: string, adminUserId: string, user: AuthenticatedUser): Promise<void> {
+    await this.ensureCanManage(id, user);
+
+    await db.transaction(async (tx) => {
+      const [{ value: adminCount } = { value: 0 }] = await tx
+        .select({ value: count() })
+        .from(knowledgeBaseAdmins)
+        .where(eq(knowledgeBaseAdmins.knowledgeBaseId, id));
+
+      if (adminCount <= 1) {
+        throw new BadRequestException("Knowledge base must keep at least one admin");
+      }
+
+      await tx
+        .delete(knowledgeBaseAdmins)
+        .where(
+          and(
+            eq(knowledgeBaseAdmins.knowledgeBaseId, id),
+            eq(knowledgeBaseAdmins.userId, adminUserId),
+          ),
+        );
+    });
+  }
+
   private buildListCondition(
     query: KnowledgeBaseListQuery,
     user: AuthenticatedUser,
@@ -231,6 +364,19 @@ export class KnowledgeBaseService {
     throw new ForbiddenException("Cannot create knowledge base in this department");
   }
 
+  private async ensureUserExists(userId: string): Promise<void> {
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: {
+        id: true,
+      },
+    });
+
+    if (user === undefined) {
+      throw new BadRequestException("User not found");
+    }
+  }
+
   private async ensureCanAccess(id: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canAccess(id, user)) {
       return;
@@ -280,6 +426,20 @@ export class KnowledgeBaseService {
       canManage,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private toMember(row: MemberRow): KnowledgeBaseMember {
+    return {
+      id: row.id,
+      username: row.username,
+      name: row.name,
+      platformRole: row.platformRole,
+      departmentId: row.departmentId,
+      departmentName: row.departmentName,
+      isAdmin: row.adminSince !== null,
+      joinedAt: row.joinedAt?.toISOString() ?? null,
+      adminSince: row.adminSince?.toISOString() ?? null,
     };
   }
 }

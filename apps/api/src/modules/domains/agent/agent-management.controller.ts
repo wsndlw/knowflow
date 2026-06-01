@@ -12,10 +12,12 @@ import {
 } from "@nestjs/common";
 import {
   createManagedAgentRequestSchema,
+  generateManagedAgentResponseSchema,
   managedAgentListResponseSchema,
   managedAgentSchema,
   updateManagedAgentRequestSchema,
   uuidParamSchema,
+  type GenerateManagedAgentResponse,
   type ManagedAgent,
   type ManagedAgentListResponse,
 } from "@knowflow/shared";
@@ -61,6 +63,16 @@ export class AgentManagementController {
     const input = createManagedAgentRequestSchema.parse(body);
     const data = await this.agentManagementService.create(id, input, this.requireUser(request));
     return { ok: true, data: managedAgentSchema.parse(data) };
+  }
+
+  @Post("knowledge-bases/:id/agents/generate")
+  async generate(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ApiSuccess<GenerateManagedAgentResponse>> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.agentManagementService.generate(id, this.requireUser(request));
+    return { ok: true, data: generateManagedAgentResponseSchema.parse(data) };
   }
 
   @Patch("agents/:id")

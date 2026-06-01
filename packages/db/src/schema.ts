@@ -648,6 +648,7 @@ export const answerFeedback = pgTable(
     reason: varchar("reason", { length: 120 }),
     correctionContent: text("correction_content"),
     suggestedSource: text("suggested_source"),
+    suggestedIngestion: boolean("suggested_ingestion").default(false).notNull(),
     ...createdOnly(),
   },
   (table) => [index("answer_feedback_message_idx").on(table.messageId)],

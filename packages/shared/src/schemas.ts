@@ -303,13 +303,22 @@ export const createConversationRequestSchema = z.object({
 export const citationSchema = z.object({
   id: z.uuid().optional(),
   sourceType: citationSourceTypeSchema,
+  sourceId: z.uuid().nullable(),
   knowledgeBaseId: z.uuid().nullable(),
+  knowledgeBaseName: z.string().nullable(),
   documentId: z.uuid().nullable(),
   knowledgeItemId: z.uuid().nullable(),
   chunkId: z.uuid().nullable(),
   title: z.string(),
   snippet: z.string().nullable(),
   pageOrSection: z.string().nullable(),
+});
+
+export const relatedDocumentSchema = z.object({
+  id: z.uuid(),
+  knowledgeBaseId: z.uuid(),
+  knowledgeBaseName: z.string().nullable(),
+  title: z.string(),
 });
 
 export const conversationMessageSchema = z.object({
@@ -320,6 +329,8 @@ export const conversationMessageSchema = z.object({
   confidenceLevel: confidenceLevelSchema.nullable(),
   noAnswerType: noAnswerTypeSchema.nullable(),
   citations: z.array(citationSchema),
+  recommendedQuestions: z.array(z.string()),
+  relatedDocuments: z.array(relatedDocumentSchema),
   createdAt: z.iso.datetime(),
 });
 
@@ -373,6 +384,7 @@ export const answerFeedbackRequestSchema = z
     reason: z.string().trim().max(120).optional(),
     correctionContent: z.string().trim().max(4000).optional(),
     suggestedSource: z.string().trim().max(1000).optional(),
+    suggestedIngestion: z.boolean().optional(),
   })
   .refine((value) => value.rating !== "correction" || value.correctionContent !== undefined, {
     message: "Correction content is required",
@@ -425,6 +437,7 @@ export type Conversation = z.infer<typeof conversationSchema>;
 export type ConversationListResponse = z.infer<typeof conversationListResponseSchema>;
 export type CreateConversationRequest = z.infer<typeof createConversationRequestSchema>;
 export type Citation = z.infer<typeof citationSchema>;
+export type RelatedDocument = z.infer<typeof relatedDocumentSchema>;
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
 export type ConversationMessagesResponse = z.infer<typeof conversationMessagesResponseSchema>;
 export type AskMessageRequest = z.infer<typeof askMessageRequestSchema>;

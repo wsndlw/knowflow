@@ -28,6 +28,7 @@ import type {
   ConversationMessage,
   ConversationMessagesResponse,
   CreateConversationRequest,
+  RelatedDocument,
 } from "@knowflow/shared";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
@@ -47,7 +48,9 @@ const FALLBACK_ANSWER =
 type AgentRow = typeof agents.$inferSelect;
 type ConversationRow = typeof conversations.$inferSelect;
 type MessageRow = typeof conversationMessages.$inferSelect;
-type CitationRow = typeof messageCitations.$inferSelect;
+type CitationRow = typeof messageCitations.$inferSelect & {
+  knowledgeBaseName: string | null;
+};
 
 const AgentStateAnnotation = Annotation.Root({
   state: Annotation<AgentState>(),
@@ -216,6 +219,7 @@ export class AgentService {
       reason: input.reason ?? null,
       correctionContent: input.correctionContent ?? null,
       suggestedSource: input.suggestedSource ?? null,
+      suggestedIngestion: input.suggestedIngestion ?? false,
     });
   }
 
@@ -594,7 +598,11 @@ export class AgentService {
       return [message];
     });
 
-    const assistant = this.toMessage(assistantMessage, state.citations);
+    const assistant = this.toMessage(
+      assistantMessage,
+      state.citations,
+      state.agent?.recommendedQuestions ?? [],
+    );
     await state.emit({ type: "agent.completed", message: assistant });
     return { ...state, assistantMessage: assistant };
   }
@@ -685,8 +693,23 @@ export class AgentService {
       return new Map();
     }
     const rows = await db
-      .select()
+      .select({
+        id: messageCitations.id,
+        messageId: messageCitations.messageId,
+        sourceType: messageCitations.sourceType,
+        knowledgeBaseId: messageCitations.knowledgeBaseId,
+        knowledgeBaseName: knowledgeBases.name,
+        documentId: messageCitations.documentId,
+        knowledgeItemId: messageCitations.knowledgeItemId,
+        attachmentId: messageCitations.attachmentId,
+        chunkId: messageCitations.chunkId,
+        title: messageCitations.title,
+        snippet: messageCitations.snippet,
+        pageOrSection: messageCitations.pageOrSection,
+        createdAt: messageCitations.createdAt,
+      })
       .from(messageCitations)
+      .leftJoin(knowledgeBases, eq(knowledgeBases.id, messageCitations.knowledgeBaseId))
       .where(inArray(messageCitations.messageId, messageIds))
       .orderBy(asc(messageCitations.createdAt));
     const byMessage = new Map<string, Citation[]>();
@@ -740,7 +763,11 @@ export class AgentService {
     };
   }
 
-  private toMessage(row: MessageRow, citations: Citation[]): ConversationMessage {
+  private toMessage(
+    row: MessageRow,
+    citations: Citation[],
+    recommendedQuestions: string[] = [],
+  ): ConversationMessage {
     return {
       id: row.id,
       conversationId: row.conversationId,
@@ -749,6 +776,8 @@ export class AgentService {
       confidenceLevel: row.confidenceLevel,
       noAnswerType: row.noAnswerType,
       citations,
+      recommendedQuestions,
+      relatedDocuments: this.toRelatedDocuments(citations),
       createdAt: row.createdAt.toISOString(),
     };
   }
@@ -756,7 +785,9 @@ export class AgentService {
   private toCitation(item: RetrievalContextItem): Citation {
     return {
       sourceType: item.sourceType,
+      sourceId: item.knowledgeItemId ?? item.documentId ?? item.childChunkId,
       knowledgeBaseId: item.knowledgeBaseId,
+      knowledgeBaseName: item.knowledgeBaseName,
       documentId: item.documentId,
       knowledgeItemId: item.knowledgeItemId,
       chunkId: item.childChunkId,
@@ -770,7 +801,9 @@ export class AgentService {
     return {
       id: row.id,
       sourceType: row.sourceType,
+      sourceId: row.knowledgeItemId ?? row.documentId ?? row.chunkId,
       knowledgeBaseId: row.knowledgeBaseId,
+      knowledgeBaseName: row.knowledgeBaseName,
       documentId: row.documentId,
       knowledgeItemId: row.knowledgeItemId,
       chunkId: row.chunkId,
@@ -785,6 +818,7 @@ export class AgentService {
       citationIndex: item.citationIndex,
       sourceType: item.sourceType,
       knowledgeBaseId: item.knowledgeBaseId,
+      knowledgeBaseName: item.knowledgeBaseName,
       documentId: item.documentId,
       knowledgeItemId: item.knowledgeItemId,
       childChunkId: item.childChunkId,
@@ -796,6 +830,23 @@ export class AgentService {
       sourceExpired: item.sourceExpired,
       snippet: item.snippet,
     }));
+  }
+
+  private toRelatedDocuments(citations: Citation[]): RelatedDocument[] {
+    const byDocumentId = new Map<string, RelatedDocument>();
+    for (const citation of citations) {
+      if (citation.documentId === null) {
+        continue;
+      }
+      byDocumentId.set(citation.documentId, {
+        id: citation.documentId,
+        knowledgeBaseId: citation.knowledgeBaseId ?? "",
+        knowledgeBaseName: citation.knowledgeBaseName,
+        title: citation.title,
+      });
+    }
+
+    return [...byDocumentId.values()].filter((document) => document.knowledgeBaseId.length > 0);
   }
 
   private toStateSnapshot(state: AgentState) {

@@ -14,6 +14,7 @@ import {
   conversationMessages,
   conversations,
   db,
+  knowledgeBases,
   messageCitations,
 } from "@knowflow/db";
 import type {
@@ -327,6 +328,24 @@ export class AgentService {
 
   private async resolveKnowledgeScope(state: AgentState): Promise<AgentState> {
     const agent = this.requireAgent(state);
+    if (agent.type === "global") {
+      const accessCondition = this.accessService.buildAccessCondition(state.user);
+      const rows = await db
+        .select({ knowledgeBaseId: knowledgeBases.id })
+        .from(knowledgeBases)
+        .where(
+          accessCondition === undefined
+            ? eq(knowledgeBases.status, "active")
+            : and(eq(knowledgeBases.status, "active"), accessCondition),
+        )
+        .orderBy(asc(knowledgeBases.name));
+
+      return {
+        ...state,
+        knowledgeScope: rows.map((row) => row.knowledgeBaseId),
+      };
+    }
+
     const rows = await db
       .select({ knowledgeBaseId: agentKnowledgeBases.knowledgeBaseId })
       .from(agentKnowledgeBases)

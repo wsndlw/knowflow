@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+import { CanActivate, ExecutionContext, Inject, Injectable } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 
 import { AuthService } from "../../modules/domains/auth/auth.service.js";
@@ -15,7 +15,9 @@ export type AuthenticatedRequest = RequestLike & {
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
+    @Inject(Reflector)
     private readonly reflector: Reflector,
+    @Inject(AuthService)
     private readonly authService: AuthService,
   ) {}
 

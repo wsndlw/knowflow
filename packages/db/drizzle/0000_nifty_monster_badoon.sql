@@ -312,7 +312,7 @@ CREATE TABLE "model_usage_policies" (
 	"default_model_id" uuid,
 	"fallback_model_id" uuid,
 	"enabled" boolean DEFAULT true NOT NULL,
-	"temperature" integer DEFAULT 70 NOT NULL,
+	"temperature" real DEFAULT 0.7 NOT NULL,
 	"max_output_tokens" integer,
 	"timeout_ms" integer DEFAULT 30000 NOT NULL,
 	"retry_count" integer DEFAULT 2 NOT NULL,
@@ -430,6 +430,8 @@ CREATE INDEX "background_jobs_status_idx" ON "background_jobs" USING btree ("sta
 CREATE INDEX "child_chunks_parent_idx" ON "child_chunks" USING btree ("parent_chunk_id");--> statement-breakpoint
 CREATE INDEX "child_chunks_document_idx" ON "child_chunks" USING btree ("document_id");--> statement-breakpoint
 CREATE INDEX "child_chunks_knowledge_base_idx" ON "child_chunks" USING btree ("knowledge_base_id");--> statement-breakpoint
+CREATE INDEX "child_chunks_embedding_hnsw_idx" ON "child_chunks" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "child_chunks_search_vector_gin_idx" ON "child_chunks" USING gin ("search_vector");--> statement-breakpoint
 CREATE INDEX "conversation_messages_conversation_idx" ON "conversation_messages" USING btree ("conversation_id");--> statement-breakpoint
 CREATE INDEX "conversations_user_agent_idx" ON "conversations" USING btree ("user_id","agent_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "department_admins_department_user_uidx" ON "department_admins" USING btree ("department_id","user_id");--> statement-breakpoint
@@ -443,6 +445,8 @@ CREATE INDEX "knowledge_bases_department_idx" ON "knowledge_bases" USING btree (
 CREATE INDEX "knowledge_bases_visibility_idx" ON "knowledge_bases" USING btree ("visibility");--> statement-breakpoint
 CREATE INDEX "knowledge_items_knowledge_base_idx" ON "knowledge_items" USING btree ("knowledge_base_id");--> statement-breakpoint
 CREATE INDEX "knowledge_items_status_idx" ON "knowledge_items" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "knowledge_items_embedding_hnsw_idx" ON "knowledge_items" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "knowledge_items_search_vector_gin_idx" ON "knowledge_items" USING gin ("search_vector");--> statement-breakpoint
 CREATE INDEX "message_citations_message_idx" ON "message_citations" USING btree ("message_id");--> statement-breakpoint
 CREATE INDEX "metadata_fields_knowledge_base_idx" ON "metadata_fields" USING btree ("knowledge_base_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "model_catalog_provider_model_uidx" ON "model_catalog" USING btree ("provider_id","model_name");--> statement-breakpoint
@@ -453,8 +457,4 @@ CREATE UNIQUE INDEX "sessions_token_hash_uidx" ON "sessions" USING btree ("sessi
 CREATE INDEX "sessions_user_idx" ON "sessions" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "tags_knowledge_base_idx" ON "tags" USING btree ("knowledge_base_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "users_username_uidx" ON "users" USING btree ("username");--> statement-breakpoint
-CREATE INDEX "users_department_idx" ON "users" USING btree ("department_id");--> statement-breakpoint
-CREATE INDEX "child_chunks_search_vector_gin_idx" ON "child_chunks" USING gin ("search_vector");--> statement-breakpoint
-CREATE INDEX "knowledge_items_search_vector_gin_idx" ON "knowledge_items" USING gin ("search_vector");--> statement-breakpoint
-CREATE INDEX "child_chunks_embedding_cosine_idx" ON "child_chunks" USING ivfflat ("embedding" vector_cosine_ops) WITH (lists = 100) WHERE "embedding" IS NOT NULL;--> statement-breakpoint
-CREATE INDEX "knowledge_items_embedding_cosine_idx" ON "knowledge_items" USING ivfflat ("embedding" vector_cosine_ops) WITH (lists = 100) WHERE "embedding" IS NOT NULL;
+CREATE INDEX "users_department_idx" ON "users" USING btree ("department_id");

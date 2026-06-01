@@ -1,5 +1,5 @@
 {
-  "id": "7e406438-e556-492c-9434-83bf785033cf",
+  "id": "ba2c1849-5a93-42f1-b540-600f23feacb2",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -983,6 +983,37 @@
           "isUnique": false,
           "concurrently": false,
           "method": "btree",
+          "with": {}
+        },
+        "child_chunks_embedding_hnsw_idx": {
+          "name": "child_chunks_embedding_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        },
+        "child_chunks_search_vector_gin_idx": {
+          "name": "child_chunks_search_vector_gin_idx",
+          "columns": [
+            {
+              "expression": "search_vector",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
           "with": {}
         }
       },
@@ -2110,6 +2141,37 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "knowledge_items_embedding_hnsw_idx": {
+          "name": "knowledge_items_embedding_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        },
+        "knowledge_items_search_vector_gin_idx": {
+          "name": "knowledge_items_search_vector_gin_idx",
+          "columns": [
+            {
+              "expression": "search_vector",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2642,10 +2704,10 @@
         },
         "temperature": {
           "name": "temperature",
-          "type": "integer",
+          "type": "real",
           "primaryKey": false,
           "notNull": true,
-          "default": 70
+          "default": 0.7
         },
         "max_output_tokens": {
           "name": "max_output_tokens",

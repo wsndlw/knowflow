@@ -206,7 +206,9 @@ async function ensureModelProvider(): Promise<string> {
       baseUrl:
         process.env["ALIYUN_BASE_URL"] ?? "https://dashscope.aliyuncs.com/compatible-mode/v1",
       encryptedApiKey:
-        process.env["ALIYUN_API_KEY"] === undefined ? null : `seed:${process.env["ALIYUN_API_KEY"]}`,
+        process.env["ALIYUN_API_KEY"] === undefined
+          ? null
+          : `seed:${process.env["ALIYUN_API_KEY"]}`,
       remark: "P0 seed default provider; replace encrypted_api_key in production.",
     })
     .returning({ id: modelProviders.id });
@@ -218,7 +220,11 @@ async function ensureModelProvider(): Promise<string> {
   return created.id;
 }
 
-async function ensureModel(providerId: string, modelName: string, modelType: ModelType): Promise<ModelSeed> {
+async function ensureModel(
+  providerId: string,
+  modelName: string,
+  modelType: ModelType,
+): Promise<ModelSeed> {
   const existing = await db.query.modelCatalog.findFirst({
     where: and(eq(modelCatalog.providerId, providerId), eq(modelCatalog.modelName, modelName)),
     columns: {
@@ -274,11 +280,16 @@ async function ensureUsagePolicy(input: {
     .values({
       usageType: input.usageType,
       defaultModelId: input.modelId,
-      temperature: input.temperature ?? 70,
+      temperature: input.temperature ?? 0.7,
       maxOutputTokens: input.maxOutputTokens ?? null,
     })
-    .onConflictDoNothing({
+    .onConflictDoUpdate({
       target: modelUsagePolicies.usageType,
+      set: {
+        defaultModelId: input.modelId,
+        temperature: input.temperature ?? 0.7,
+        maxOutputTokens: input.maxOutputTokens ?? null,
+      },
     });
 }
 
@@ -414,12 +425,28 @@ async function runSeed(): Promise<void> {
 
   await Promise.all([
     ensureUsagePolicy({ usageType: "chat", modelId: qwenPlus.id, maxOutputTokens: 4096 }),
-    ensureUsagePolicy({ usageType: "query_understanding", modelId: qwenTurbo.id, maxOutputTokens: 1024 }),
-    ensureUsagePolicy({ usageType: "document_processing", modelId: qwenPlus.id, maxOutputTokens: 2048 }),
+    ensureUsagePolicy({
+      usageType: "query_understanding",
+      modelId: qwenTurbo.id,
+      maxOutputTokens: 1024,
+    }),
+    ensureUsagePolicy({
+      usageType: "document_processing",
+      modelId: qwenPlus.id,
+      maxOutputTokens: 2048,
+    }),
     ensureUsagePolicy({ usageType: "embedding", modelId: embedding.id, temperature: 0 }),
     ensureUsagePolicy({ usageType: "rerank", modelId: rerank.id, temperature: 0 }),
-    ensureUsagePolicy({ usageType: "knowledge_production", modelId: qwenPlus.id, maxOutputTokens: 2048 }),
-    ensureUsagePolicy({ usageType: "agent_generation", modelId: qwenPlus.id, maxOutputTokens: 2048 }),
+    ensureUsagePolicy({
+      usageType: "knowledge_production",
+      modelId: qwenPlus.id,
+      maxOutputTokens: 2048,
+    }),
+    ensureUsagePolicy({
+      usageType: "agent_generation",
+      modelId: qwenPlus.id,
+      maxOutputTokens: 2048,
+    }),
   ]);
 
   console.log(

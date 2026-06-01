@@ -7,6 +7,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -158,11 +159,7 @@ export const citationSourceTypeEnum = pgEnum("citation_source_type", [
   "knowledge_item",
   "conversation_attachment",
 ]);
-export const feedbackRatingEnum = pgEnum("feedback_rating", [
-  "useful",
-  "not_useful",
-  "correction",
-]);
+export const feedbackRatingEnum = pgEnum("feedback_rating", ["useful", "not_useful", "correction"]);
 export const backgroundJobStatusEnum = pgEnum("background_job_status", [
   "pending",
   "running",
@@ -256,7 +253,9 @@ export const knowledgeBases = pgTable(
     creatorId: uuid("creator_id")
       .notNull()
       .references(() => users.id),
-    embeddingModel: varchar("embedding_model", { length: 120 }).default("text-embedding-v4").notNull(),
+    embeddingModel: varchar("embedding_model", { length: 120 })
+      .default("text-embedding-v4")
+      .notNull(),
     embeddingDimension: integer("embedding_dimension").default(1024).notNull(),
     ...timestamps(),
   },
@@ -429,6 +428,8 @@ export const childChunks = pgTable(
     index("child_chunks_parent_idx").on(table.parentChunkId),
     index("child_chunks_document_idx").on(table.documentId),
     index("child_chunks_knowledge_base_idx").on(table.knowledgeBaseId),
+    index("child_chunks_embedding_hnsw_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
+    index("child_chunks_search_vector_gin_idx").using("gin", table.searchVector),
   ],
 );
 
@@ -459,6 +460,11 @@ export const knowledgeItems = pgTable(
   (table) => [
     index("knowledge_items_knowledge_base_idx").on(table.knowledgeBaseId),
     index("knowledge_items_status_idx").on(table.status),
+    index("knowledge_items_embedding_hnsw_idx").using(
+      "hnsw",
+      table.embedding.op("vector_cosine_ops"),
+    ),
+    index("knowledge_items_search_vector_gin_idx").using("gin", table.searchVector),
   ],
 );
 
@@ -556,7 +562,7 @@ export const modelUsagePolicies = pgTable(
     defaultModelId: uuid("default_model_id").references(() => modelCatalog.id),
     fallbackModelId: uuid("fallback_model_id").references(() => modelCatalog.id),
     enabled: boolean("enabled").default(true).notNull(),
-    temperature: integer("temperature").default(70).notNull(),
+    temperature: real("temperature").default(0.7).notNull(),
     maxOutputTokens: integer("max_output_tokens"),
     timeoutMs: integer("timeout_ms").default(30000).notNull(),
     retryCount: integer("retry_count").default(2).notNull(),

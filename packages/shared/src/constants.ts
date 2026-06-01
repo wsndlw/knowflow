@@ -6,6 +6,10 @@ export const HEALTH_ENDPOINT = "/health";
 
 export const SESSION_COOKIE_NAME = "knowflow_session";
 
+export const ACCESS_SESSION_COOKIE_NAME = "knowflow_access";
+
+export const REFRESH_SESSION_COOKIE_NAME = "knowflow_refresh";
+
 export const DEFAULT_EMBEDDING_MODEL = "text-embedding-v4";
 
 export const DEFAULT_EMBEDDING_DIMENSION = 1024;

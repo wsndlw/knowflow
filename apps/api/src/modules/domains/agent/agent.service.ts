@@ -479,13 +479,52 @@ export class AgentService {
       return { ...state, confidenceLevel: state.confidenceLevel ?? "not_found" };
     }
 
-    const bestScore = this.bestContextScore(state.retrieval?.contexts ?? []);
+    const contexts = state.retrieval?.contexts ?? [];
+    const bestScore = this.bestContextScore(contexts);
+    const citationCount = state.citations.length;
+    const knowledgeBaseCount = new Set(contexts.map((item) => item.knowledgeBaseId)).size;
+    const hasVerifiedKnowledgeItem = contexts.some((item) => item.knowledgeItemVerified);
+    const hasExpiredSource = contexts.some((item) => item.sourceExpired);
+
+    let evidenceScore = 0;
+    if (bestScore >= 0.55) {
+      evidenceScore += 3;
+    } else if (bestScore >= 0.25) {
+      evidenceScore += 2;
+    } else if (bestScore >= MIN_CONTEXT_RERANK_SCORE) {
+      evidenceScore += 1;
+    }
+
+    const bestInitialScore = Math.max(0, ...contexts.map((item) => item.initialScore));
+    if (bestInitialScore >= 0.5) {
+      evidenceScore += 1;
+    }
+    if (citationCount >= 3) {
+      evidenceScore += 2;
+    } else if (citationCount >= 1) {
+      evidenceScore += 1;
+    }
+    if (hasVerifiedKnowledgeItem) {
+      evidenceScore += 1;
+    }
+    if (knowledgeBaseCount >= 2) {
+      evidenceScore += 1;
+    }
+    if (hasExpiredSource) {
+      evidenceScore -= 2;
+    }
+    if (bestScore < MIN_CONTEXT_RERANK_SCORE) {
+      evidenceScore -= 3;
+    }
+
     const confidenceLevel: ConfidenceLevel =
-      state.citations.length >= 2 && bestScore >= 0.55
-        ? "strong"
-        : state.citations.length >= 1 && bestScore >= 0.35
-          ? "medium"
-          : "weak";
+      contexts.length === 0 || citationCount === 0
+        ? "not_found"
+        : evidenceScore >= 6
+          ? "strong"
+          : evidenceScore >= 3
+            ? "medium"
+            : "weak";
     return { ...state, confidenceLevel, noAnswerType: null };
   }
 
@@ -753,6 +792,8 @@ export class AgentService {
       channels: item.channels,
       initialScore: item.initialScore,
       rerankScore: item.rerankScore,
+      knowledgeItemVerified: item.knowledgeItemVerified,
+      sourceExpired: item.sourceExpired,
       snippet: item.snippet,
     }));
   }

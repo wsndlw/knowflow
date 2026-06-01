@@ -28,6 +28,16 @@ export const MODEL_USAGE_TYPES = [
 
 export const KNOWLEDGE_BASE_VISIBILITIES = ["public", "department", "restricted"] as const;
 
+export const KNOWLEDGE_BASE_STATUSES = ["active", "disabled", "archived"] as const;
+
+export const KNOWLEDGE_BASE_INDEX_STATUSES = [
+  "not_indexed",
+  "indexing",
+  "ready",
+  "partial_failed",
+  "failed",
+] as const;
+
 export const PLATFORM_ROLES = ["super_admin", "department_admin", "user"] as const;
 
 export const DOCUMENT_PROCESS_STATUSES = [

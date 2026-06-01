@@ -4,21 +4,25 @@ import {
   Get,
   Inject,
   InternalServerErrorException,
+  MessageEvent,
   Param,
   Post,
   Req,
+  Sse,
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
   documentListResponseSchema,
+  documentProgressEventSchema,
   documentSchema,
   uuidParamSchema,
   type DocumentListResponse,
   type KnowledgeDocument,
 } from "@knowflow/shared";
 import type {} from "multer";
+import { Observable } from "rxjs";
 
 import type { AuthenticatedRequest } from "../../../shared/guards/auth.guard.js";
 import { DocumentService } from "./document.service.js";
@@ -75,6 +79,28 @@ export class DocumentController {
     const { id } = uuidParamSchema.parse(params);
     const data = await this.documentService.get(id, this.requireUser(request));
     return { ok: true, data: documentSchema.parse(data) };
+  }
+
+  @Sse("documents/:id/progress")
+  async progress(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<Observable<MessageEvent>> {
+    const { id } = uuidParamSchema.parse(params);
+    await this.documentService.get(id, this.requireUser(request));
+    return this.documentService.createProgressStream(id).pipe((source) =>
+      new Observable<MessageEvent>((subscriber) =>
+        source.subscribe({
+          next: (event) => {
+            subscriber.next({
+              data: documentProgressEventSchema.parse(event),
+            });
+          },
+          error: (error: unknown) => subscriber.error(error),
+          complete: () => subscriber.complete(),
+        }),
+      ),
+    );
   }
 
   @Delete("documents/:id")

@@ -15,6 +15,7 @@ import {
 } from "@knowflow/db";
 import type {
   DocumentListResponse,
+  DocumentProgressEvent,
   DocumentSourceType,
   KnowledgeDocument,
 } from "@knowflow/shared";
@@ -23,10 +24,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {} from "multer";
+import { Observable } from "rxjs";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "../knowledge-base/knowledge-base-access.service.js";
 import { createDocumentQueue } from "./document-queue.js";
+import { createRedisClient, getDocumentProgressChannel } from "./document-progress.js";
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
@@ -206,6 +209,36 @@ export class DocumentService {
     }
   }
 
+  createProgressStream(documentId: string): Observable<DocumentProgressEvent> {
+    return new Observable<DocumentProgressEvent>((subscriber) => {
+      const redis = createRedisClient();
+      const channel = getDocumentProgressChannel(documentId);
+
+      void this.findRow(documentId).then((row) => {
+        if (row !== undefined && !subscriber.closed) {
+          subscriber.next(this.toProgressEvent(row));
+        }
+      });
+
+      redis.on("message", (_channel, payload) => {
+        if (_channel !== channel) {
+          return;
+        }
+        try {
+          subscriber.next(JSON.parse(payload) as DocumentProgressEvent);
+        } catch {
+          subscriber.error(new Error("Invalid progress payload"));
+        }
+      });
+      redis.on("error", (error) => subscriber.error(error));
+      void redis.subscribe(channel);
+
+      return () => {
+        void redis.unsubscribe(channel).finally(() => redis.disconnect());
+      };
+    });
+  }
+
   private async ensureCanAccess(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canAccess(knowledgeBaseId, user)) {
       return;
@@ -343,5 +376,31 @@ export class DocumentService {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
+  }
+
+  private toProgressEvent(row: DocumentRow): DocumentProgressEvent {
+    return {
+      documentId: row.id,
+      stage: row.processStatus,
+      percent: this.progressPercent(row.processStatus),
+      message: row.errorMessage ?? `Document status: ${row.processStatus}`,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  private progressPercent(status: KnowledgeDocument["processStatus"]): number {
+    switch (status) {
+      case "pending":
+        return 5;
+      case "parsing":
+        return 15;
+      case "chunking":
+        return 35;
+      case "embedding":
+        return 60;
+      case "completed":
+      case "failed":
+        return 100;
+    }
   }
 }

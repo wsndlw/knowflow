@@ -189,6 +189,14 @@ export const documentListResponseSchema = z.object({
   items: z.array(documentSchema),
 });
 
+export const documentProgressEventSchema = z.object({
+  documentId: z.uuid(),
+  stage: documentProcessStatusSchema,
+  percent: z.number().int().min(0).max(100),
+  message: z.string(),
+  timestamp: z.iso.datetime(),
+});
+
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type ApiFailure = z.infer<typeof apiFailureSchema>;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
@@ -217,4 +225,5 @@ export type DocumentProcessStatus = z.infer<typeof documentProcessStatusSchema>;
 export type DocumentSourceType = z.infer<typeof documentSourceTypeSchema>;
 export type KnowledgeDocument = z.infer<typeof documentSchema>;
 export type DocumentListResponse = z.infer<typeof documentListResponseSchema>;
+export type DocumentProgressEvent = z.infer<typeof documentProgressEventSchema>;
 export type ModelUsageType = z.infer<typeof modelUsageTypeSchema>;

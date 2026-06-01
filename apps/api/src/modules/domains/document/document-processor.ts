@@ -14,6 +14,7 @@ import OpenAI from "openai";
 import { PDFParse } from "pdf-parse";
 
 import type { DocumentProcessResult } from "./document-queue.js";
+import { publishDocumentProgress } from "./document-progress.js";
 
 const PARENT_TARGET_CHARS = 4000;
 const CHILD_TARGET_CHARS = 900;
@@ -61,14 +62,19 @@ export async function processDocument(
       throw new Error(`Document not found: ${documentId}`);
     }
 
+    await publishProgress(document.id, "pending", 5, "Document processing queued");
     await markParsing(document.id);
+    await publishProgress(document.id, "parsing", 15, "Parsing document text");
     const parsed = await parseDocument(document);
     await markParsed(document.id, parsed);
     await markChunking(document.id);
+    await publishProgress(document.id, "chunking", 35, "Splitting document into chunks");
     await replaceChunks(document, parsed);
     await markChunked(document.id);
+    await publishProgress(document.id, "embedding", 60, "Embedding child chunks");
     await embedChildChunks(document);
     await markCompleted(document.id);
+    await publishProgress(document.id, "completed", 100, "Document processing completed");
 
     return {
       documentId: document.id,
@@ -76,11 +82,31 @@ export async function processDocument(
     };
   } catch (error) {
     await markFailed(documentId, error);
+    await publishProgress(
+      documentId,
+      "failed",
+      100,
+      error instanceof Error ? error.message : "Document processing failed",
+    );
     return {
       documentId,
       status: "failed",
     };
   }
+}
+
+async function publishProgress(
+  documentId: string,
+  stage: "pending" | "parsing" | "chunking" | "embedding" | "completed" | "failed",
+  percent: number,
+  message: string,
+): Promise<void> {
+  await publishDocumentProgress({
+    documentId,
+    stage,
+    percent,
+    message,
+  });
 }
 
 async function findProcessableDocument(

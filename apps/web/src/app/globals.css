@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────
+   knowflow 设计系统 — 现代亲和(专业有温度,对标 Vercel/飞书后台)
+   OKLCH tokens。主色青绿仅用于主操作/选中/状态,不装饰。
+   内容区干净白底 + 侧边栏稍冷第二中性层(避开奶油色 AI 通病)。
+   ────────────────────────────────────────────────────────────── */
+@theme {
+  /* 主色:青绿(brand) */
+  --color-brand-50: oklch(0.97 0.02 175);
+  --color-brand-100: oklch(0.93 0.04 175);
+  --color-brand-200: oklch(0.87 0.07 175);
+  --color-brand-300: oklch(0.78 0.1 175);
+  --color-brand-400: oklch(0.7 0.12 175);
+  --color-brand-500: oklch(0.62 0.13 175);
+  --color-brand-600: oklch(0.54 0.12 177);
+  --color-brand-700: oklch(0.46 0.1 178);
+  --color-brand-800: oklch(0.39 0.08 179);
+  --color-brand-900: oklch(0.32 0.06 180);
+
+  /* 中性灰阶(内容区) — 冷调极轻,非暖非奶油 */
+  --color-neutral-0: oklch(1 0 0);
+  --color-neutral-50: oklch(0.985 0.002 250);
+  --color-neutral-100: oklch(0.97 0.003 250);
+  --color-neutral-200: oklch(0.93 0.004 250);
+  --color-neutral-300: oklch(0.88 0.005 250);
+  --color-neutral-400: oklch(0.7 0.006 250);
+  --color-neutral-500: oklch(0.56 0.007 250);
+  --color-neutral-600: oklch(0.45 0.007 250);
+  --color-neutral-700: oklch(0.37 0.006 255);
+  --color-neutral-800: oklch(0.27 0.006 260);
+  --color-neutral-900: oklch(0.21 0.006 265);
+  --color-neutral-950: oklch(0.16 0.006 265);
+
+  /* 侧边栏:稍冷的第二中性层(比内容区深、偏冷) */
+  --color-sidebar: oklch(0.23 0.012 260);
+  --color-sidebar-hover: oklch(0.29 0.014 260);
+  --color-sidebar-active: oklch(0.34 0.03 200);
+  --color-sidebar-ink: oklch(0.88 0.005 250);
+  --color-sidebar-muted: oklch(0.62 0.008 255);
+
+  /* 语义色 */
+  --color-success: oklch(0.6 0.13 155);
+  --color-success-bg: oklch(0.96 0.03 155);
+  --color-warning: oklch(0.7 0.14 75);
+  --color-warning-bg: oklch(0.96 0.04 75);
+  --color-danger: oklch(0.58 0.18 25);
+  --color-danger-bg: oklch(0.96 0.03 25);
+  --color-info: oklch(0.6 0.12 240);
+  --color-info-bg: oklch(0.96 0.03 240);
+
+  /* 语义别名 */
+  --color-background: var(--color-neutral-50);
+  --color-surface: var(--color-neutral-0);
+  --color-border: var(--color-neutral-200);
+  --color-ink: var(--color-neutral-900);
+  --color-ink-muted: var(--color-neutral-600);
+  --color-ink-subtle: var(--color-neutral-500);
+
+  /* 字体:单族 sans(中文友好),mono 备用 */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+    "Hiragino Sans GB", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+
+  /* 固定 rem 字阶(1.2 比,product register) */
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  /* 圆角:偏柔 */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+
+  /* 阴影:克制 */
+  --shadow-xs: 0 1px 2px oklch(0.2 0.01 260 / 0.05);
+  --shadow-sm: 0 1px 3px oklch(0.2 0.01 260 / 0.08), 0 1px 2px oklch(0.2 0.01 260 / 0.04);
+  --shadow-md: 0 4px 12px oklch(0.2 0.01 260 / 0.08), 0 2px 4px oklch(0.2 0.01 260 / 0.04);
+  --shadow-lg: 0 12px 28px oklch(0.2 0.01 260 / 0.1), 0 4px 8px oklch(0.2 0.01 260 / 0.05);
+
+  /* 语义 z-index 层级 */
+  --z-dropdown: 20;
+  --z-sticky: 30;
+  --z-modal-backdrop: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+  --z-tooltip: 70;
+}
+
+/* ── 基础重置 ────────────────────────────────────────────────── */
+* {
+  border-color: var(--color-border);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  font-feature-settings: "tnum" on;
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select,
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+/* 细滚动条(克制,不发明奇怪样式,仅收窄) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-neutral-300) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

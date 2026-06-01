@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: knowflow-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-knowflow}
+      POSTGRES_USER: ${POSTGRES_USER:-knowflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-knowflow_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-knowflow} -d ${POSTGRES_DB:-knowflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: knowflow-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:

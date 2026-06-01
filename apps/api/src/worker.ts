@@ -1,21 +1,31 @@
 import "reflect-metadata";
+import "./shared/config/load-env.js";
 import { Worker } from "bullmq";
 
 import {
   DOCUMENT_QUEUE_NAME,
+  type DocumentProcessJob,
+  type DocumentQueueJob,
+  type DocumentQueueResult,
   type DocumentJobName,
   type DocumentSmokeJob,
-  type DocumentSmokeResult,
 } from "./modules/domains/document/document-queue.js";
+import { processDocument } from "./modules/domains/document/document-processor.js";
 import { getRedisConnectionOptions } from "./shared/redis/redis-connection.js";
 
-const worker = new Worker<DocumentSmokeJob, DocumentSmokeResult, DocumentJobName>(
+const worker = new Worker<DocumentQueueJob, DocumentQueueResult, DocumentJobName>(
   DOCUMENT_QUEUE_NAME,
   (job) => {
-    return Promise.resolve({
-      consumedAt: new Date().toISOString(),
-      requestedAt: job.data.requestedAt,
-    });
+    if (job.name === "smoke") {
+      const data = job.data as DocumentSmokeJob;
+      return Promise.resolve({
+        consumedAt: new Date().toISOString(),
+        requestedAt: data.requestedAt,
+      });
+    }
+
+    const data = job.data as DocumentProcessJob;
+    return processDocument(data.documentId);
   },
   {
     connection: getRedisConnectionOptions(),

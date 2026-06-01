@@ -3,6 +3,7 @@ import { QueueEvents } from "bullmq";
 import {
   createDocumentQueue,
   DOCUMENT_QUEUE_NAME,
+  type DocumentSmokeJob,
   type DocumentSmokeResult,
 } from "../modules/domains/document/document-queue.js";
 import { getRedisConnectionOptions } from "../shared/redis/redis-connection.js";
@@ -14,11 +15,12 @@ async function run(): Promise<void> {
   });
 
   await events.waitUntilReady();
-  const job = await queue.add("smoke", {
+  const data: DocumentSmokeJob = {
     requestedAt: new Date().toISOString(),
-  });
+  };
+  const job = await queue.add("smoke", data);
 
-  const result: DocumentSmokeResult = await job.waitUntilFinished(events, 10000);
+  const result = (await job.waitUntilFinished(events, 10000)) as DocumentSmokeResult;
   console.log(JSON.stringify({ jobId: job.id, result }, null, 2));
 
   await events.close();

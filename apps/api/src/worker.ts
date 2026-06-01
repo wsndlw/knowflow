@@ -9,6 +9,7 @@ import {
   type DocumentJobName,
   type DocumentSmokeJob,
 } from "./modules/domains/document/document-queue.js";
+import { processDocument } from "./modules/domains/document/document-processor.js";
 import { getRedisConnectionOptions } from "./shared/redis/redis-connection.js";
 
 const worker = new Worker<DocumentQueueJob, DocumentQueueResult, DocumentJobName>(
@@ -23,9 +24,7 @@ const worker = new Worker<DocumentQueueJob, DocumentQueueResult, DocumentJobName
     }
 
     const data = job.data as DocumentProcessJob;
-    return Promise.reject(
-      new Error(`Document processing is not implemented yet: ${data.documentId}`),
-    );
+    return processDocument(data.documentId);
   },
   {
     connection: getRedisConnectionOptions(),

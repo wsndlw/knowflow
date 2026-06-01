@@ -99,7 +99,11 @@ export class AuthService {
       where: and(eq(sessions.sessionTokenHash, hashSessionToken(token)), eq(sessions.type, type)),
     });
 
-    if (session?.revokedAt !== null || session.expiresAt <= new Date()) {
+    if (!session) {
+      throw new UnauthorizedException("Authentication required");
+    }
+
+    if (session.revokedAt !== null || session.expiresAt <= new Date()) {
       throw new UnauthorizedException("Authentication required");
     }
 

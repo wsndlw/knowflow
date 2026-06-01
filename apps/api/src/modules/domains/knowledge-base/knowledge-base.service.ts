@@ -17,12 +17,14 @@ import {
 } from "@knowflow/db";
 import type {
   CreateKnowledgeBaseRequest,
+  DepartmentOptionsResponse,
   KnowledgeBase,
   KnowledgeBaseListQuery,
   KnowledgeBaseListResponse,
   KnowledgeBaseMember,
   KnowledgeBaseMembersResponse,
   UpdateKnowledgeBaseRequest,
+  UserOptionsResponse,
 } from "@knowflow/shared";
 import { and, asc, count, desc, eq, ilike, or, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -191,6 +193,47 @@ export class KnowledgeBaseService {
     });
   }
 
+  async listDepartmentOptions(user: AuthenticatedUser): Promise<DepartmentOptionsResponse> {
+    const rows = await db
+      .select({
+        id: departments.id,
+        name: departments.name,
+      })
+      .from(departments)
+      .where(
+        user.platformRole === "super_admin"
+          ? undefined
+          : eq(departments.id, user.departmentId),
+      )
+      .orderBy(asc(departments.name));
+
+    return { items: rows };
+  }
+
+  async listUserOptions(id: string, user: AuthenticatedUser): Promise<UserOptionsResponse> {
+    await this.ensureCanManage(id, user);
+    const knowledgeBase = await this.findRowById(id);
+    if (knowledgeBase === undefined) {
+      throw new NotFoundException("Knowledge base not found");
+    }
+
+    const rows = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        name: users.name,
+        platformRole: users.platformRole,
+        departmentId: users.departmentId,
+        departmentName: departments.name,
+      })
+      .from(users)
+      .innerJoin(departments, eq(departments.id, users.departmentId))
+      .where(this.buildUserOptionsCondition(user, knowledgeBase.departmentId))
+      .orderBy(asc(users.name), asc(users.username));
+
+    return { items: rows };
+  }
+
   async listMembers(id: string, user: AuthenticatedUser): Promise<KnowledgeBaseMembersResponse> {
     await this.ensureCanManage(id, user);
 
@@ -337,6 +380,20 @@ export class KnowledgeBaseService {
     }
 
     return conditions.length === 0 ? undefined : and(...conditions);
+  }
+
+  private buildUserOptionsCondition(
+    user: AuthenticatedUser,
+    knowledgeBaseDepartmentId: string,
+  ): SQL | undefined {
+    if (user.platformRole === "super_admin") {
+      return undefined;
+    }
+    if (user.platformRole === "department_admin") {
+      return eq(users.departmentId, user.departmentId);
+    }
+
+    return eq(users.departmentId, knowledgeBaseDepartmentId);
   }
 
   private async ensureCanCreateInDepartment(

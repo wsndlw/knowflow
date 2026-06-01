@@ -16,9 +16,11 @@ import {
   knowledgeBaseUserRequestSchema,
   updateKnowledgeBaseRequestSchema,
   uuidParamSchema,
+  type DepartmentOptionsResponse,
   type KnowledgeBase,
   type KnowledgeBaseListResponse,
   type KnowledgeBaseMembersResponse,
+  type UserOptionsResponse,
 } from "@knowflow/shared";
 
 import { Roles } from "../../../shared/decorators/roles.decorator.js";
@@ -43,6 +45,16 @@ type KnowledgeBaseListSuccess = {
 type KnowledgeBaseMembersSuccess = {
   ok: true;
   data: KnowledgeBaseMembersResponse;
+};
+
+type DepartmentOptionsSuccess = {
+  ok: true;
+  data: DepartmentOptionsResponse;
+};
+
+type UserOptionsSuccess = {
+  ok: true;
+  data: UserOptionsResponse;
 };
 
 @Controller("knowledge-bases")
@@ -78,6 +90,16 @@ export class KnowledgeBaseController {
     };
   }
 
+  @Get("departments/options")
+  async listDepartmentOptions(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DepartmentOptionsSuccess> {
+    return {
+      ok: true,
+      data: await this.knowledgeBaseService.listDepartmentOptions(this.requireUser(request)),
+    };
+  }
+
   @Get(":id")
   async get(
     @Param() params: unknown,
@@ -87,6 +109,18 @@ export class KnowledgeBaseController {
     return {
       ok: true,
       data: await this.knowledgeBaseService.get(id, this.requireUser(request)),
+    };
+  }
+
+  @Get(":id/user-options")
+  async listUserOptions(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<UserOptionsSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    return {
+      ok: true,
+      data: await this.knowledgeBaseService.listUserOptions(id, this.requireUser(request)),
     };
   }
 

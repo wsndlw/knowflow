@@ -138,6 +138,28 @@ export const knowledgeBaseUserRequestSchema = z.object({
   userId: z.uuid(),
 });
 
+export const departmentOptionSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+});
+
+export const departmentOptionsResponseSchema = z.object({
+  items: z.array(departmentOptionSchema),
+});
+
+export const userOptionSchema = z.object({
+  id: z.uuid(),
+  username: z.string(),
+  name: z.string(),
+  platformRole: platformRoleSchema,
+  departmentId: z.uuid(),
+  departmentName: z.string(),
+});
+
+export const userOptionsResponseSchema = z.object({
+  items: z.array(userOptionSchema),
+});
+
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type ApiFailure = z.infer<typeof apiFailureSchema>;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
@@ -158,5 +180,9 @@ export type KnowledgeBaseMembersResponse = z.infer<
   typeof knowledgeBaseMembersResponseSchema
 >;
 export type KnowledgeBaseUserRequest = z.infer<typeof knowledgeBaseUserRequestSchema>;
+export type DepartmentOption = z.infer<typeof departmentOptionSchema>;
+export type DepartmentOptionsResponse = z.infer<typeof departmentOptionsResponseSchema>;
+export type UserOption = z.infer<typeof userOptionSchema>;
+export type UserOptionsResponse = z.infer<typeof userOptionsResponseSchema>;
 export type DocumentProcessStatus = z.infer<typeof documentProcessStatusSchema>;
 export type ModelUsageType = z.infer<typeof modelUsageTypeSchema>;

@@ -227,6 +227,58 @@ export const agentListResponseSchema = z.object({
   items: z.array(agentSchema),
 });
 
+export const managedAgentSchema = agentSchema.extend({
+  knowledgeBaseIds: z.array(z.uuid()),
+  systemPrompt: z.string().nullable(),
+  answerStyle: z.string().nullable(),
+  allowAttachments: z.boolean(),
+  forceCitation: z.boolean(),
+  modelProvider: z.string().nullable(),
+  modelName: z.string().nullable(),
+  modelConfig: z.record(z.string(), z.unknown()),
+  createdBy: z.uuid(),
+  publishedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+const recommendedQuestionsInputSchema = z
+  .array(z.string().trim().min(1).max(200))
+  .max(5);
+
+const agentModelConfigSchema = z.record(z.string(), z.unknown()).default({});
+
+export const createManagedAgentRequestSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(2000).nullable().optional(),
+  systemPrompt: z.string().trim().min(1).max(8000).optional(),
+  openingMessage: z.string().trim().max(1000).nullable().optional(),
+  recommendedQuestions: recommendedQuestionsInputSchema.optional(),
+  answerStyle: z.string().trim().max(80).nullable().optional(),
+  allowAttachments: z.boolean().optional(),
+  visibility: z.literal("knowledge_base_members").optional(),
+  modelProvider: z.string().trim().max(120).nullable().optional(),
+  modelName: z.string().trim().max(120).nullable().optional(),
+  modelConfig: agentModelConfigSchema.optional(),
+});
+
+export const updateManagedAgentRequestSchema = createManagedAgentRequestSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required",
+  });
+
+export const managedAgentListResponseSchema = z.object({
+  items: z.array(managedAgentSchema),
+});
+
+export const generateManagedAgentResponseSchema = z.object({
+  agent: managedAgentSchema,
+  generated: z.object({
+    usedFallback: z.boolean(),
+  }),
+});
+
 export const conversationSchema = z.object({
   id: z.uuid(),
   agentId: z.uuid(),
@@ -358,6 +410,17 @@ export type DocumentProgressEvent = z.infer<typeof documentProgressEventSchema>;
 export type ModelUsageType = z.infer<typeof modelUsageTypeSchema>;
 export type Agent = z.infer<typeof agentSchema>;
 export type AgentListResponse = z.infer<typeof agentListResponseSchema>;
+export type ManagedAgent = z.infer<typeof managedAgentSchema>;
+export type CreateManagedAgentRequest = z.infer<
+  typeof createManagedAgentRequestSchema
+>;
+export type UpdateManagedAgentRequest = z.infer<
+  typeof updateManagedAgentRequestSchema
+>;
+export type ManagedAgentListResponse = z.infer<typeof managedAgentListResponseSchema>;
+export type GenerateManagedAgentResponse = z.infer<
+  typeof generateManagedAgentResponseSchema
+>;
 export type Conversation = z.infer<typeof conversationSchema>;
 export type ConversationListResponse = z.infer<typeof conversationListResponseSchema>;
 export type CreateConversationRequest = z.infer<typeof createConversationRequestSchema>;

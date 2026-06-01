@@ -7,9 +7,10 @@ import {
   childChunks,
 } from "@knowflow/db";
 import type { DocumentSourceType } from "@knowflow/shared";
-import { eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import OpenAI from "openai";
 import { PDFParse } from "pdf-parse";
 
 import type { DocumentProcessResult } from "./document-queue.js";
@@ -17,6 +18,8 @@ import type { DocumentProcessResult } from "./document-queue.js";
 const PARENT_TARGET_CHARS = 4000;
 const CHILD_TARGET_CHARS = 900;
 const CHILD_OVERLAP_CHARS = 120;
+const EMBEDDING_BATCH_SIZE = 16;
+const EXPECTED_EMBEDDING_DIMENSION = 1024;
 
 type ProcessableDocument = {
   id: string;
@@ -64,6 +67,8 @@ export async function processDocument(
     await markChunking(document.id);
     await replaceChunks(document, parsed);
     await markChunked(document.id);
+    await embedChildChunks(document);
+    await markCompleted(document.id);
 
     return {
       documentId: document.id,
@@ -151,6 +156,17 @@ async function markChunked(documentId: string): Promise<void> {
     .where(eq(documents.id, documentId));
 }
 
+async function markCompleted(documentId: string): Promise<void> {
+  await db
+    .update(documents)
+    .set({
+      processStatus: "completed",
+      embeddingStatus: "completed",
+      updatedAt: new Date(),
+    })
+    .where(eq(documents.id, documentId));
+}
+
 async function markFailed(documentId: string, error: unknown): Promise<void> {
   await db
     .update(documents)
@@ -174,6 +190,7 @@ async function replaceChunks(
     await tx.delete(childChunks).where(eq(childChunks.documentId, document.id));
     await tx.delete(parentChunks).where(eq(parentChunks.documentId, document.id));
 
+    let nextChildIndex = 0;
     for (const parent of parents) {
       const [createdParent] = await tx
         .insert(parentChunks)
@@ -201,7 +218,7 @@ async function replaceChunks(
           documentId: document.id,
           knowledgeBaseId: document.knowledgeBaseId,
           content: child.content,
-          chunkIndex: child.chunkIndex,
+          chunkIndex: nextChildIndex++,
           tokenCount: child.tokenCount,
           metadata: {
             parentTitle: parent.title,
@@ -211,6 +228,69 @@ async function replaceChunks(
         })),
       );
     }
+  });
+}
+
+async function embedChildChunks(document: ProcessableDocument): Promise<void> {
+  const chunks = await db
+    .select({
+      id: childChunks.id,
+      content: childChunks.content,
+    })
+    .from(childChunks)
+    .where(eq(childChunks.documentId, document.id))
+    .orderBy(asc(childChunks.chunkIndex));
+  if (chunks.length === 0) {
+    throw new Error("Document has no child chunks to embed");
+  }
+
+  const client = createEmbeddingClient();
+  for (let start = 0; start < chunks.length; start += EMBEDDING_BATCH_SIZE) {
+    const batch = chunks.slice(start, start + EMBEDDING_BATCH_SIZE);
+    const response = await client.embeddings.create({
+      model: document.embeddingModel,
+      input: batch.map((chunk) => chunk.content),
+    });
+    if (response.data.length !== batch.length) {
+      throw new Error("Embedding response count does not match input count");
+    }
+
+    await db.transaction(async (tx) => {
+      for (let index = 0; index < batch.length; index += 1) {
+        const chunk = batch[index];
+        const embedding = response.data[index]?.embedding;
+        if (chunk === undefined || embedding === undefined) {
+          throw new Error("Embedding response is incomplete");
+        }
+        if (embedding.length !== EXPECTED_EMBEDDING_DIMENSION) {
+          throw new Error(`Embedding dimension mismatch: ${String(embedding.length)}`);
+        }
+
+        await tx
+          .update(childChunks)
+          .set({
+            embedding,
+            searchVector: sql`to_tsvector('simple', ${chunk.content})`,
+            embeddingStatus: "completed",
+            updatedAt: new Date(),
+          })
+          .where(eq(childChunks.id, chunk.id));
+      }
+    });
+  }
+}
+
+function createEmbeddingClient(): OpenAI {
+  const apiKey = process.env["ALIYUN_API_KEY"];
+  if (apiKey === undefined || apiKey.trim().length === 0) {
+    throw new Error("ALIYUN_API_KEY is required for document embedding");
+  }
+
+  return new OpenAI({
+    apiKey,
+    baseURL:
+      process.env["ALIYUN_BASE_URL"] ??
+      "https://dashscope.aliyuncs.com/compatible-mode/v1",
   });
 }
 
@@ -306,7 +386,7 @@ function splitByLength(
     let end = hardEnd;
     if (hardEnd < normalized.length) {
       const newline = normalized.lastIndexOf("\n\n", hardEnd);
-      const sentence = normalized.lastIndexOf("。", hardEnd);
+      const sentence = normalized.lastIndexOf("\u3002", hardEnd);
       const space = normalized.lastIndexOf(" ", hardEnd);
       const candidate = Math.max(newline, sentence, space);
       if (candidate > start + Math.floor(targetChars * 0.55)) {

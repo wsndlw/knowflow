@@ -14,7 +14,7 @@
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build",
-    "seed": "pnpm --filter @knowflow/db seed",
+    "seed": "pnpm db:migrate && pnpm --filter @knowflow/db seed",
     "db:generate": "pnpm --filter @knowflow/db db:generate",
     "db:migrate": "pnpm --filter @knowflow/db db:migrate",
     "prepare": "husky"

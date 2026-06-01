@@ -15,6 +15,7 @@ import {
 import type {
   CreateKnowledgeItemRequest,
   KnowledgeItem,
+  KnowledgeItemFeedbackRequest,
   KnowledgeItemListQuery,
   KnowledgeItemListResponse,
   UpdateKnowledgeItemRequest,
@@ -260,6 +261,57 @@ export class KnowledgeItemService {
         .where(eq(knowledgeItemFeedback.knowledgeItemId, id));
       await tx.delete(knowledgeItems).where(eq(knowledgeItems.id, id));
     });
+  }
+
+  async setFeedback(
+    id: string,
+    input: KnowledgeItemFeedbackRequest,
+    user: AuthenticatedUser,
+  ): Promise<KnowledgeItem> {
+    const row = await this.findRow(id, user.id);
+    if (row === undefined) {
+      throw new NotFoundException("Knowledge item not found");
+    }
+    await this.ensureCanReadRow(row, user);
+
+    await db.transaction(async (tx) => {
+      const previousRating = row.userFeedback;
+      if (previousRating !== null) {
+        await tx
+          .delete(knowledgeItemFeedback)
+          .where(
+            and(
+              eq(knowledgeItemFeedback.knowledgeItemId, id),
+              eq(knowledgeItemFeedback.userId, user.id),
+            ),
+          );
+      }
+
+      if (input.rating !== null) {
+        await tx.insert(knowledgeItemFeedback).values({
+          knowledgeItemId: id,
+          userId: user.id,
+          rating: input.rating,
+        });
+      }
+
+      const likeDelta =
+        (input.rating === "like" ? 1 : 0) - (previousRating === "like" ? 1 : 0);
+      const dislikeDelta =
+        (input.rating === "dislike" ? 1 : 0) - (previousRating === "dislike" ? 1 : 0);
+      if (likeDelta !== 0 || dislikeDelta !== 0) {
+        await tx
+          .update(knowledgeItems)
+          .set({
+            likeCount: sql`greatest(0, ${knowledgeItems.likeCount} + ${likeDelta})`,
+            dislikeCount: sql`greatest(0, ${knowledgeItems.dislikeCount} + ${dislikeDelta})`,
+            updatedAt: new Date(),
+          })
+          .where(eq(knowledgeItems.id, id));
+      }
+    });
+
+    return this.get(id, user, { incrementView: false });
   }
 
   private buildListCondition(

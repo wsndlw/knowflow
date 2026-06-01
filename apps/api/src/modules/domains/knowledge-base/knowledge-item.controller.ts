@@ -13,6 +13,7 @@ import {
 } from "@nestjs/common";
 import {
   createKnowledgeItemRequestSchema,
+  knowledgeItemFeedbackRequestSchema,
   knowledgeItemListQuerySchema,
   knowledgeItemListResponseSchema,
   knowledgeItemSchema,
@@ -117,6 +118,22 @@ export class KnowledgeItemController {
     const { id } = uuidParamSchema.parse(params);
     await this.knowledgeItemService.delete(id, this.requireUser(request));
     return { ok: true, data: {} };
+  }
+
+  @Post("knowledge-items/:id/feedback")
+  async setFeedback(
+    @Param() params: unknown,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ApiSuccess<KnowledgeItem>> {
+    const { id } = uuidParamSchema.parse(params);
+    const input = knowledgeItemFeedbackRequestSchema.parse(body);
+    const data = await this.knowledgeItemService.setFeedback(
+      id,
+      input,
+      this.requireUser(request),
+    );
+    return { ok: true, data: knowledgeItemSchema.parse(data) };
   }
 
   private requireUser(request: AuthenticatedRequest): AuthenticatedUser {

@@ -15,6 +15,7 @@ import {
   conversations,
   db,
   knowledgeBases,
+  knowledgeItems,
   messageCitations,
 } from "@knowflow/db";
 import type {
@@ -31,7 +32,7 @@ import type {
   RelatedDocument,
 } from "@knowflow/shared";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -563,6 +564,23 @@ export class AgentService {
             pageOrSection: citation.pageOrSection,
           })),
         );
+
+        const knowledgeItemIds = [
+          ...new Set(
+            state.citations
+              .map((citation) => citation.knowledgeItemId)
+              .filter((id): id is string => id !== null),
+          ),
+        ];
+        if (knowledgeItemIds.length > 0) {
+          await tx
+            .update(knowledgeItems)
+            .set({
+              citeCount: sql`${knowledgeItems.citeCount} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(inArray(knowledgeItems.id, knowledgeItemIds));
+        }
       }
 
       await tx

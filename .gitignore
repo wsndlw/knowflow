@@ -24,6 +24,7 @@ dist/
 build/
 .next/
 out/
+*.tsbuildinfo
 # 环境变量与密钥（绝不入库）
 .env
 .env.*

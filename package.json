@@ -1,0 +1,36 @@
+{
+  "name": "knowflow",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --if-present dev",
+    "lint": "pnpm -r --if-present lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "build": "pnpm -r --if-present build",
+    "seed": "pnpm db:migrate && pnpm --filter @knowflow/db seed",
+    "db:generate": "pnpm --filter @knowflow/db db:generate",
+    "db:migrate": "pnpm --filter @knowflow/db db:migrate",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^25.9.1",
+    "eslint": "^9.39.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.7.3",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4"
+  },
+  "lint-staged": {
+    "*.{js,cjs,mjs,ts,tsx}": "eslint --fix --no-warn-ignored",
+    "*.{json,md,yml,yaml,css}": "prettier --write"
+  }
+}

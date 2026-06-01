@@ -14,6 +14,7 @@
   "dependencies": {
     "@knowflow/db": "workspace:*",
     "@knowflow/shared": "workspace:*",
+    "@langchain/langgraph": "^1.3.2",
     "@nestjs/common": "^11.1.24",
     "@nestjs/core": "^11.1.24",
     "@nestjs/platform-express": "^11.1.24",

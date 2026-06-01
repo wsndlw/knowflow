@@ -181,7 +181,7 @@ export class AuthService {
     return serializeCookie(REFRESH_SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       maxAgeSeconds: REFRESH_SESSION_TTL_SECONDS,
-      path: "/auth/refresh",
+      path: "/",
       sameSite: "Lax",
       secure: this.useSecureCookies(),
     });

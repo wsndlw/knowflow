@@ -40,6 +40,7 @@ import type { RetrievalContextItem } from "../retrieval/retrieval.types.js";
 import type { AgentState, SseEmitter } from "./agent.types.js";
 
 const GRAPH_VERSION = "p0-retrieval-chat-13-node-v1";
+const MIN_RELIABLE_RERANK_SCORE = 0.35;
 const FALLBACK_ANSWER =
   "I could not find reliable evidence in the knowledge available to you, so I cannot give a definitive answer. Try rephrasing the question or asking a knowledge base administrator to add supporting material.";
 
@@ -403,6 +404,16 @@ export class AgentService {
       };
     }
 
+    if (this.bestContextScore(contexts) < MIN_RELIABLE_RERANK_SCORE) {
+      await state.emit({ type: "agent.answer.delta", delta: FALLBACK_ANSWER });
+      return {
+        ...state,
+        answer: FALLBACK_ANSWER,
+        confidenceLevel: "not_found",
+        noAnswerType: "low_confidence",
+      };
+    }
+
     const prompt = state.promptSnapshot;
     if (prompt === null) {
       throw new InternalServerErrorException("Prompt was not built");
@@ -435,6 +446,11 @@ export class AgentService {
   }
 
   private async attachCitations(state: AgentState): Promise<AgentState> {
+    if (state.noAnswerType !== null) {
+      await state.emit({ type: "agent.citations.ready", citations: [] });
+      return { ...state, citations: [] };
+    }
+
     const citations = (state.retrieval?.contexts ?? []).map((item) => this.toCitation(item));
     await state.emit({ type: "agent.citations.ready", citations });
     return { ...state, citations };
@@ -445,10 +461,7 @@ export class AgentService {
       return { ...state, confidenceLevel: state.confidenceLevel ?? "not_found" };
     }
 
-    const bestScore = Math.max(
-      0,
-      ...(state.retrieval?.contexts ?? []).map((item) => item.rerankScore ?? item.initialScore),
-    );
+    const bestScore = this.bestContextScore(state.retrieval?.contexts ?? []);
     const confidenceLevel: ConfidenceLevel =
       state.citations.length >= 2 && bestScore >= 0.55
         ? "strong"
@@ -739,5 +752,9 @@ export class AgentService {
 
   private truncate(value: string, maxLength: number): string {
     return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+  }
+
+  private bestContextScore(contexts: RetrievalContextItem[]): number {
+    return Math.max(0, ...contexts.map((item) => item.rerankScore ?? item.initialScore));
   }
 }

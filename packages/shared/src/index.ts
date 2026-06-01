@@ -1,1 +1,2 @@
-export const sharedPackageName = "@knowflow/shared";
+export * from "./constants.js";
+export * from "./schemas.js";

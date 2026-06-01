@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -64,7 +65,10 @@ type MemberRow = {
 
 @Injectable()
 export class KnowledgeBaseService {
-  constructor(private readonly accessService: KnowledgeBaseAccessService) {}
+  constructor(
+    @Inject(KnowledgeBaseAccessService)
+    private readonly accessService: KnowledgeBaseAccessService,
+  ) {}
 
   async list(
     query: KnowledgeBaseListQuery,

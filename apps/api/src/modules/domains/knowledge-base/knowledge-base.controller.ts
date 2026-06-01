@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   InternalServerErrorException,
   Param,
   Patch,
@@ -59,7 +60,10 @@ type UserOptionsSuccess = {
 
 @Controller("knowledge-bases")
 export class KnowledgeBaseController {
-  constructor(private readonly knowledgeBaseService: KnowledgeBaseService) {}
+  constructor(
+    @Inject(KnowledgeBaseService)
+    private readonly knowledgeBaseService: KnowledgeBaseService,
+  ) {}
 
   @Get()
   async list(

@@ -9,6 +9,7 @@ import {
   db,
   documents,
   knowledgeBases,
+  messageCitations,
   knowledgeItemFeedback,
   knowledgeItems,
 } from "@knowflow/db";
@@ -256,6 +257,10 @@ export class KnowledgeItemService {
     await this.ensureCanManage(row.knowledgeBaseId, user);
 
     await db.transaction(async (tx) => {
+      await tx
+        .update(messageCitations)
+        .set({ knowledgeItemId: null })
+        .where(eq(messageCitations.knowledgeItemId, id));
       await tx
         .delete(knowledgeItemFeedback)
         .where(eq(knowledgeItemFeedback.knowledgeItemId, id));

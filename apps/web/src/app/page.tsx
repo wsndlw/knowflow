@@ -70,13 +70,13 @@ export default function HomePage() {
         </div>
         <div className="flex gap-2">
           {canCreate ? (
-            <Link href="/knowledge-bases">
-              <Button variant="secondary">管理知识库</Button>
-            </Link>
+            <Button asChild variant="secondary">
+              <Link href="/knowledge-bases">管理知识库</Link>
+            </Button>
           ) : null}
-          <Link href="/agents">
-            <Button>开始对话</Button>
-          </Link>
+          <Button asChild>
+            <Link href="/agents">开始对话</Link>
+          </Button>
         </div>
       </header>
 

@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import "./shared/config/load-env.js";
 import { Worker } from "bullmq";
 
 import {

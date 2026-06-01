@@ -1,0 +1,22 @@
+{
+  "name": "@knowflow/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "seed": "node dist/seed.js",
+    "db:generate": "echo \"drizzle-kit will be configured in the schema commit\"",
+    "db:migrate": "echo \"drizzle-kit will be configured in the schema commit\""
+  }
+}

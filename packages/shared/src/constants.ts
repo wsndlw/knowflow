@@ -38,6 +38,16 @@ export const KNOWLEDGE_BASE_INDEX_STATUSES = [
   "failed",
 ] as const;
 
+export const KNOWLEDGE_ITEM_STATUSES = [
+  "draft",
+  "pending_review",
+  "published",
+  "unpublished",
+  "expired",
+] as const;
+
+export const KNOWLEDGE_ITEM_FEEDBACK_RATINGS = ["like", "dislike"] as const;
+
 export const PLATFORM_ROLES = ["super_admin", "department_admin", "user"] as const;
 
 export const DOCUMENT_PROCESS_STATUSES = [

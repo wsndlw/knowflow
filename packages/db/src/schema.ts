@@ -160,6 +160,10 @@ export const citationSourceTypeEnum = pgEnum("citation_source_type", [
   "conversation_attachment",
 ]);
 export const feedbackRatingEnum = pgEnum("feedback_rating", ["useful", "not_useful", "correction"]);
+export const knowledgeItemFeedbackRatingEnum = pgEnum("knowledge_item_feedback_rating", [
+  "like",
+  "dislike",
+]);
 export const backgroundJobStatusEnum = pgEnum("background_job_status", [
   "pending",
   "running",
@@ -454,6 +458,10 @@ export const knowledgeItems = pgTable(
     updatedBy: uuid("updated_by").references(() => users.id),
     verifiedBy: uuid("verified_by").references(() => users.id),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    viewCount: integer("view_count").default(0).notNull(),
+    citeCount: integer("cite_count").default(0).notNull(),
+    likeCount: integer("like_count").default(0).notNull(),
+    dislikeCount: integer("dislike_count").default(0).notNull(),
     enabled: boolean("enabled").default(true).notNull(),
     ...timestamps(),
   },
@@ -465,6 +473,28 @@ export const knowledgeItems = pgTable(
       table.embedding.op("vector_cosine_ops"),
     ),
     index("knowledge_items_search_vector_gin_idx").using("gin", table.searchVector),
+  ],
+);
+
+export const knowledgeItemFeedback = pgTable(
+  "knowledge_item_feedback",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    knowledgeItemId: uuid("knowledge_item_id")
+      .notNull()
+      .references(() => knowledgeItems.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    rating: knowledgeItemFeedbackRatingEnum("rating").notNull(),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("knowledge_item_feedback_item_user_uidx").on(
+      table.knowledgeItemId,
+      table.userId,
+    ),
+    index("knowledge_item_feedback_user_idx").on(table.userId),
   ],
 );
 

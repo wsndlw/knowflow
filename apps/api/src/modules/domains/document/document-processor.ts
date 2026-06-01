@@ -3,6 +3,8 @@ import {
   documents,
   files,
   knowledgeBases,
+  parentChunks,
+  childChunks,
 } from "@knowflow/db";
 import type { DocumentSourceType } from "@knowflow/shared";
 import { eq } from "drizzle-orm";
@@ -11,6 +13,10 @@ import path from "node:path";
 import { PDFParse } from "pdf-parse";
 
 import type { DocumentProcessResult } from "./document-queue.js";
+
+const PARENT_TARGET_CHARS = 4000;
+const CHILD_TARGET_CHARS = 900;
+const CHILD_OVERLAP_CHARS = 120;
 
 type ProcessableDocument = {
   id: string;
@@ -31,6 +37,18 @@ type ParsedDocument = {
   };
 };
 
+type ParentChunkInput = {
+  title: string | null;
+  content: string;
+  headingPath: string[];
+};
+
+type ChildChunkInput = {
+  content: string;
+  chunkIndex: number;
+  tokenCount: number;
+};
+
 export async function processDocument(
   documentId: string,
 ): Promise<DocumentProcessResult> {
@@ -43,6 +61,9 @@ export async function processDocument(
     await markParsing(document.id);
     const parsed = await parseDocument(document);
     await markParsed(document.id, parsed);
+    await markChunking(document.id);
+    await replaceChunks(document, parsed);
+    await markChunked(document.id);
 
     return {
       documentId: document.id,
@@ -107,6 +128,29 @@ async function markParsed(
     .where(eq(documents.id, documentId));
 }
 
+async function markChunking(documentId: string): Promise<void> {
+  await db
+    .update(documents)
+    .set({
+      processStatus: "chunking",
+      chunkStatus: "chunking",
+      updatedAt: new Date(),
+    })
+    .where(eq(documents.id, documentId));
+}
+
+async function markChunked(documentId: string): Promise<void> {
+  await db
+    .update(documents)
+    .set({
+      processStatus: "embedding",
+      chunkStatus: "completed",
+      embeddingStatus: "embedding",
+      updatedAt: new Date(),
+    })
+    .where(eq(documents.id, documentId));
+}
+
 async function markFailed(documentId: string, error: unknown): Promise<void> {
   await db
     .update(documents)
@@ -119,6 +163,173 @@ async function markFailed(documentId: string, error: unknown): Promise<void> {
       updatedAt: new Date(),
     })
     .where(eq(documents.id, documentId));
+}
+
+async function replaceChunks(
+  document: ProcessableDocument,
+  parsed: ParsedDocument,
+): Promise<void> {
+  const parents = splitParentChunks(parsed.text);
+  await db.transaction(async (tx) => {
+    await tx.delete(childChunks).where(eq(childChunks.documentId, document.id));
+    await tx.delete(parentChunks).where(eq(parentChunks.documentId, document.id));
+
+    for (const parent of parents) {
+      const [createdParent] = await tx
+        .insert(parentChunks)
+        .values({
+          documentId: document.id,
+          knowledgeBaseId: document.knowledgeBaseId,
+          title: parent.title,
+          content: parent.content,
+          headingPath: parent.headingPath,
+          metadata: {},
+        })
+        .returning({ id: parentChunks.id });
+      if (createdParent === undefined) {
+        throw new Error("Failed to create parent chunk");
+      }
+
+      const children = splitChildChunks(parent.content);
+      if (children.length === 0) {
+        throw new Error("Document chunking produced no child chunks");
+      }
+
+      await tx.insert(childChunks).values(
+        children.map((child) => ({
+          parentChunkId: createdParent.id,
+          documentId: document.id,
+          knowledgeBaseId: document.knowledgeBaseId,
+          content: child.content,
+          chunkIndex: child.chunkIndex,
+          tokenCount: child.tokenCount,
+          metadata: {
+            parentTitle: parent.title,
+            headingPath: parent.headingPath,
+          },
+          embeddingStatus: "pending" as const,
+        })),
+      );
+    }
+  });
+}
+
+function splitParentChunks(text: string): ParentChunkInput[] {
+  const sections = splitHeadingSections(text);
+  const parents: ParentChunkInput[] = [];
+
+  for (const section of sections) {
+    const pieces = splitByLength(section.content, PARENT_TARGET_CHARS, 0);
+    pieces.forEach((piece, index) => {
+      parents.push({
+        title:
+          index === 0
+            ? section.title
+            : section.title === null
+              ? null
+              : `${section.title} (${String(index + 1)})`,
+        content: piece,
+        headingPath: section.headingPath,
+      });
+    });
+  }
+
+  return parents;
+}
+
+function splitHeadingSections(text: string): ParentChunkInput[] {
+  const lines = text.split("\n");
+  const sections: ParentChunkInput[] = [];
+  let currentTitle: string | null = null;
+  let currentHeadingPath: string[] = [];
+  let currentLines: string[] = [];
+
+  function flush(): void {
+    const content = currentLines.join("\n").trim();
+    if (content.length === 0) {
+      return;
+    }
+    sections.push({
+      title: currentTitle,
+      headingPath: currentHeadingPath,
+      content,
+    });
+    currentLines = [];
+  }
+
+  for (const line of lines) {
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+    if (heading !== null) {
+      flush();
+      const level = heading[1]?.length ?? 1;
+      const title = heading[2]?.trim() ?? "";
+      currentHeadingPath = [...currentHeadingPath.slice(0, level - 1), title];
+      currentTitle = title;
+      currentLines.push(line);
+    } else {
+      currentLines.push(line);
+    }
+  }
+  flush();
+
+  return sections.length > 0
+    ? sections
+    : splitByLength(text, PARENT_TARGET_CHARS, 0).map((content, index) => ({
+        title: index === 0 ? null : `Part ${String(index + 1)}`,
+        headingPath: [],
+        content,
+      }));
+}
+
+function splitChildChunks(content: string): ChildChunkInput[] {
+  return splitByLength(content, CHILD_TARGET_CHARS, CHILD_OVERLAP_CHARS).map((chunk, index) => ({
+    content: chunk,
+    chunkIndex: index,
+    tokenCount: estimateTokenCount(chunk),
+  }));
+}
+
+function splitByLength(
+  text: string,
+  targetChars: number,
+  overlapChars: number,
+): string[] {
+  const normalized = text.trim();
+  if (normalized.length <= targetChars) {
+    return normalized.length === 0 ? [] : [normalized];
+  }
+
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < normalized.length) {
+    const hardEnd = Math.min(start + targetChars, normalized.length);
+    let end = hardEnd;
+    if (hardEnd < normalized.length) {
+      const newline = normalized.lastIndexOf("\n\n", hardEnd);
+      const sentence = normalized.lastIndexOf("。", hardEnd);
+      const space = normalized.lastIndexOf(" ", hardEnd);
+      const candidate = Math.max(newline, sentence, space);
+      if (candidate > start + Math.floor(targetChars * 0.55)) {
+        end = candidate + 1;
+      }
+    }
+
+    const chunk = normalized.slice(start, end).trim();
+    if (chunk.length > 0) {
+      chunks.push(chunk);
+    }
+
+    if (end >= normalized.length) {
+      break;
+    }
+    start = Math.max(end - overlapChars, start + 1);
+  }
+
+  return chunks;
+}
+
+function estimateTokenCount(text: string): number {
+  return Math.max(1, Math.ceil(text.trim().length / 4));
 }
 
 async function parseDocument(document: ProcessableDocument): Promise<ParsedDocument> {

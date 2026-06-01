@@ -4,8 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "next dev --port 3000",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build": "tsc -p tsconfig.json --noEmit"
+    "build": "next build"
+  },
+  "dependencies": {
+    "@knowflow/shared": "workspace:*",
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3"
   }
 }

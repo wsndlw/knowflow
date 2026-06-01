@@ -5,7 +5,7 @@ import {
   KNOWLEDGE_BASE_VISIBILITIES,
   MODEL_USAGE_TYPES,
   PLATFORM_ROLES,
-} from "./constants.js";
+} from "./constants";
 
 export const platformRoleSchema = z.enum(PLATFORM_ROLES);
 export const knowledgeBaseVisibilitySchema = z.enum(KNOWLEDGE_BASE_VISIBILITIES);

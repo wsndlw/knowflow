@@ -11,6 +11,7 @@ export default tseslint.config(
       "**/out/**",
       "**/drizzle/**",
       "eslint.config.mjs",
+      "**/postcss.config.mjs",
       "**/drizzle.config.ts"
     ]
   },

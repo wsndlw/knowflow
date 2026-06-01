@@ -1,0 +1,43 @@
+# ── AI 协作脚手架（不进仓库）────────────────────────────────
+# Trellis 流程系统、任务、spec、workspace、运行时
+.trellis/
+# Codex 配置、agent 定义、hooks
+.codex/
+# 共用的 trellis-* skills 与其他 agent 资产
+.agents/
+# grill-with-docs skill
+grill-with-docs/
+# Claude Code 指针文件（仅指向 AGENTS.md，本地用）
+CLAUDE.md
+# Claude Code 本地会话 / 配置目录
+.claude/
+
+# ── 设计文档说明 ─────────────────────────────────────────────
+# md/ 目录是初步架构设计文档，后续会迭代出更好的版本，暂不入库。
+md/
+
+# ── 通用忽略 ─────────────────────────────────────────────────
+# 依赖
+node_modules/
+# 构建产物
+dist/
+build/
+.next/
+out/
+# 环境变量与密钥（绝不入库）
+.env
+.env.*
+!.env.example
+# 日志
+*.log
+logs/
+# 操作系统
+.DS_Store
+Thumbs.db
+# 编辑器
+.vscode/
+.idea/
+*.swp
+# Python 缓存
+**/__pycache__/
+**/*.pyc

@@ -28,7 +28,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: "/", label: "工作台" },
       { href: "/knowledge-bases", label: "知识库" },
-      { href: "/agents", label: "专家 Agent" },
+      { href: "/agents", label: "AI 对话" },
     ],
   },
   {

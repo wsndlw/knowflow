@@ -1,6 +1,6 @@
 "use client";
 
-import { type ButtonHTMLAttributes, forwardRef } from "react";
+import { type ButtonHTMLAttributes, type ReactElement, cloneElement, forwardRef, isValidElement } from "react";
 
 import { cn } from "../../lib/cn";
 
@@ -11,6 +11,8 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
+  /** 渲染为子元素(如 Link),避免 <a><button> 嵌套。loading 状态不适用 asChild。 */
+  asChild?: boolean;
 };
 
 const variantClasses: Record<ButtonVariant, string> = {
@@ -20,8 +22,7 @@ const variantClasses: Record<ButtonVariant, string> = {
     "bg-neutral-0 text-ink border border-border hover:bg-neutral-50 active:bg-neutral-100 disabled:text-ink-subtle",
   ghost:
     "bg-transparent text-ink-muted hover:bg-neutral-100 hover:text-ink active:bg-neutral-200 disabled:text-ink-subtle",
-  danger:
-    "bg-danger text-white hover:opacity-90 active:opacity-80 disabled:opacity-50",
+  danger: "bg-danger text-white hover:opacity-90 active:opacity-80 disabled:opacity-50",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -30,22 +31,28 @@ const sizeClasses: Record<ButtonSize, string> = {
   lg: "h-11 px-5 text-md rounded-lg gap-2",
 };
 
+const baseClasses =
+  "inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors duration-150 disabled:cursor-not-allowed";
+
+type ChildWithClassName = ReactElement<{ className?: string }>;
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "primary", size = "md", loading = false, disabled, className, children, ...props },
+  { variant = "primary", size = "md", loading = false, asChild = false, disabled, className, children, ...props },
   ref,
 ) {
+  const composed = cn(baseClasses, variantClasses[variant], sizeClasses[size], className);
+
+  // asChild:把样式应用到子元素(如 Link),渲染单个 <a>,避免交互元素嵌套
+  if (asChild && isValidElement(children)) {
+    const child = children as ChildWithClassName;
+    return cloneElement(child, { className: cn(composed, child.props.className) });
+  }
+
   return (
     <button
       ref={ref}
       disabled={disabled === true || loading}
-      className={cn(
-        "inline-flex items-center justify-center font-medium whitespace-nowrap",
-        "transition-colors duration-150",
-        "disabled:cursor-not-allowed",
-        variantClasses[variant],
-        sizeClasses[size],
-        className,
-      )}
+      className={composed}
       {...props}
     >
       {loading ? (

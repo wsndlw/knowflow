@@ -77,30 +77,30 @@ export class KnowledgeBaseAccessService {
 
   async canAccess(knowledgeBaseId: string, user: AuthenticatedUser): Promise<boolean> {
     const condition = this.buildAccessCondition(user);
-    const row = await db.query.knowledgeBases.findFirst({
-      where:
+    const [row] = await db
+      .select({ id: knowledgeBases.id })
+      .from(knowledgeBases)
+      .where(
         condition === undefined
           ? eq(knowledgeBases.id, knowledgeBaseId)
           : and(eq(knowledgeBases.id, knowledgeBaseId), condition),
-      columns: {
-        id: true,
-      },
-    });
+      )
+      .limit(1);
 
     return row !== undefined;
   }
 
   async canManage(knowledgeBaseId: string, user: AuthenticatedUser): Promise<boolean> {
     const condition = this.buildManageCondition(user);
-    const row = await db.query.knowledgeBases.findFirst({
-      where:
+    const [row] = await db
+      .select({ id: knowledgeBases.id })
+      .from(knowledgeBases)
+      .where(
         condition === undefined
           ? eq(knowledgeBases.id, knowledgeBaseId)
           : and(eq(knowledgeBases.id, knowledgeBaseId), condition),
-      columns: {
-        id: true,
-      },
-    });
+      )
+      .limit(1);
 
     return row !== undefined;
   }

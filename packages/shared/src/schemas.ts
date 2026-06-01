@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   DOCUMENT_PROCESS_STATUSES,
+  DOCUMENT_SOURCE_TYPES,
   KNOWLEDGE_BASE_INDEX_STATUSES,
   KNOWLEDGE_BASE_STATUSES,
   KNOWLEDGE_BASE_VISIBILITIES,
@@ -14,6 +15,7 @@ export const knowledgeBaseVisibilitySchema = z.enum(KNOWLEDGE_BASE_VISIBILITIES)
 export const knowledgeBaseStatusSchema = z.enum(KNOWLEDGE_BASE_STATUSES);
 export const knowledgeBaseIndexStatusSchema = z.enum(KNOWLEDGE_BASE_INDEX_STATUSES);
 export const documentProcessStatusSchema = z.enum(DOCUMENT_PROCESS_STATUSES);
+export const documentSourceTypeSchema = z.enum(DOCUMENT_SOURCE_TYPES);
 export const modelUsageTypeSchema = z.enum(MODEL_USAGE_TYPES);
 
 export const apiErrorSchema = z.object({
@@ -160,6 +162,33 @@ export const userOptionsResponseSchema = z.object({
   items: z.array(userOptionSchema),
 });
 
+export const documentSchema = z.object({
+  id: z.uuid(),
+  knowledgeBaseId: z.uuid(),
+  title: z.string(),
+  sourceType: documentSourceTypeSchema,
+  sourceUri: z.string().nullable(),
+  fileId: z.uuid().nullable(),
+  fileType: z.string().nullable(),
+  fileSize: z.number().int().nonnegative().nullable(),
+  uploaderId: z.uuid(),
+  uploaderName: z.string(),
+  processStatus: documentProcessStatusSchema,
+  parseStatus: documentProcessStatusSchema,
+  chunkStatus: documentProcessStatusSchema,
+  embeddingStatus: z.enum(["pending", "embedding", "completed", "failed"]),
+  enabled: z.boolean(),
+  errorMessage: z.string().nullable(),
+  parentChunkCount: z.number().int().nonnegative(),
+  childChunkCount: z.number().int().nonnegative(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const documentListResponseSchema = z.object({
+  items: z.array(documentSchema),
+});
+
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type ApiFailure = z.infer<typeof apiFailureSchema>;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
@@ -185,4 +214,7 @@ export type DepartmentOptionsResponse = z.infer<typeof departmentOptionsResponse
 export type UserOption = z.infer<typeof userOptionSchema>;
 export type UserOptionsResponse = z.infer<typeof userOptionsResponseSchema>;
 export type DocumentProcessStatus = z.infer<typeof documentProcessStatusSchema>;
+export type DocumentSourceType = z.infer<typeof documentSourceTypeSchema>;
+export type KnowledgeDocument = z.infer<typeof documentSchema>;
+export type DocumentListResponse = z.infer<typeof documentListResponseSchema>;
 export type ModelUsageType = z.infer<typeof modelUsageTypeSchema>;

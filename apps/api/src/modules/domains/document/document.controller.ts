@@ -1,0 +1,97 @@
+import {
+  Controller,
+  Delete,
+  Get,
+  Inject,
+  InternalServerErrorException,
+  Param,
+  Post,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import {
+  documentListResponseSchema,
+  documentSchema,
+  uuidParamSchema,
+  type DocumentListResponse,
+  type KnowledgeDocument,
+} from "@knowflow/shared";
+import type {} from "multer";
+
+import type { AuthenticatedRequest } from "../../../shared/guards/auth.guard.js";
+import { DocumentService } from "./document.service.js";
+
+type EmptySuccess = {
+  ok: true;
+  data: Record<string, never>;
+};
+
+type DocumentSuccess = {
+  ok: true;
+  data: KnowledgeDocument;
+};
+
+type DocumentListSuccess = {
+  ok: true;
+  data: DocumentListResponse;
+};
+
+@Controller()
+export class DocumentController {
+  constructor(
+    @Inject(DocumentService)
+    private readonly documentService: DocumentService,
+  ) {}
+
+  @Post("knowledge-bases/:id/documents")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 20 * 1024 * 1024 } }))
+  async upload(
+    @Param() params: unknown,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DocumentSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.documentService.upload(id, file, this.requireUser(request));
+    return { ok: true, data: documentSchema.parse(data) };
+  }
+
+  @Get("knowledge-bases/:id/documents")
+  async list(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DocumentListSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.documentService.list(id, this.requireUser(request));
+    return { ok: true, data: documentListResponseSchema.parse(data) };
+  }
+
+  @Get("documents/:id")
+  async get(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DocumentSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.documentService.get(id, this.requireUser(request));
+    return { ok: true, data: documentSchema.parse(data) };
+  }
+
+  @Delete("documents/:id")
+  async delete(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<EmptySuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    await this.documentService.delete(id, this.requireUser(request));
+    return { ok: true, data: {} };
+  }
+
+  private requireUser(request: AuthenticatedRequest) {
+    if (request.user === undefined) {
+      throw new InternalServerErrorException("Authenticated request is missing user");
+    }
+
+    return request.user;
+  }
+}

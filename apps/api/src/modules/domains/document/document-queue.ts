@@ -13,14 +13,27 @@ export type DocumentSmokeResult = {
   requestedAt: string;
 };
 
-export type DocumentJobName = "smoke";
+export type DocumentProcessJob = {
+  documentId: string;
+};
+
+export type DocumentProcessResult = {
+  documentId: string;
+  status: "completed" | "failed";
+};
+
+export type DocumentQueueJob = DocumentSmokeJob | DocumentProcessJob;
+
+export type DocumentQueueResult = DocumentSmokeResult | DocumentProcessResult;
+
+export type DocumentJobName = "smoke" | "process";
 
 export function createDocumentQueue(): Queue<
-  DocumentSmokeJob,
-  DocumentSmokeResult,
+  DocumentQueueJob,
+  DocumentQueueResult,
   DocumentJobName
 > {
-  return new Queue<DocumentSmokeJob, DocumentSmokeResult, DocumentJobName>(DOCUMENT_QUEUE_NAME, {
+  return new Queue<DocumentQueueJob, DocumentQueueResult, DocumentJobName>(DOCUMENT_QUEUE_NAME, {
     connection: getRedisConnectionOptions(),
   });
 }

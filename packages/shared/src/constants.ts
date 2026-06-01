@@ -48,3 +48,17 @@ export const DOCUMENT_PROCESS_STATUSES = [
   "completed",
   "failed",
 ] as const;
+
+export const DOCUMENT_SOURCE_TYPES = [
+  "pdf",
+  "docx",
+  "txt",
+  "markdown",
+  "csv",
+  "excel",
+  "web_url",
+  "feishu_doc",
+  "feishu_sheet",
+  "image",
+  "manual",
+] as const;

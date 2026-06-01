@@ -3,19 +3,29 @@ import { Worker } from "bullmq";
 
 import {
   DOCUMENT_QUEUE_NAME,
+  type DocumentProcessJob,
+  type DocumentQueueJob,
+  type DocumentQueueResult,
   type DocumentJobName,
   type DocumentSmokeJob,
-  type DocumentSmokeResult,
 } from "./modules/domains/document/document-queue.js";
 import { getRedisConnectionOptions } from "./shared/redis/redis-connection.js";
 
-const worker = new Worker<DocumentSmokeJob, DocumentSmokeResult, DocumentJobName>(
+const worker = new Worker<DocumentQueueJob, DocumentQueueResult, DocumentJobName>(
   DOCUMENT_QUEUE_NAME,
   (job) => {
-    return Promise.resolve({
-      consumedAt: new Date().toISOString(),
-      requestedAt: job.data.requestedAt,
-    });
+    if (job.name === "smoke") {
+      const data = job.data as DocumentSmokeJob;
+      return Promise.resolve({
+        consumedAt: new Date().toISOString(),
+        requestedAt: data.requestedAt,
+      });
+    }
+
+    const data = job.data as DocumentProcessJob;
+    return Promise.reject(
+      new Error(`Document processing is not implemented yet: ${data.documentId}`),
+    );
   },
   {
     connection: getRedisConnectionOptions(),

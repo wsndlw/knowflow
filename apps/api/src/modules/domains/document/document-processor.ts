@@ -10,9 +10,12 @@ import type { DocumentSourceType } from "@knowflow/shared";
 import { asc, eq, sql } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import OpenAI from "openai";
 import { PDFParse } from "pdf-parse";
 
+import {
+  createAliyunLlmClient,
+  EXPECTED_EMBEDDING_DIMENSION,
+} from "../../../shared/llm/aliyun-llm.js";
 import { resolveLocalStorageRoot } from "../../../shared/storage/local-storage.js";
 import type { DocumentProcessResult } from "./document-queue.js";
 import { publishDocumentProgress } from "./document-progress.js";
@@ -21,7 +24,6 @@ const PARENT_TARGET_CHARS = 4000;
 const CHILD_TARGET_CHARS = 900;
 const CHILD_OVERLAP_CHARS = 120;
 const EMBEDDING_BATCH_SIZE = 16;
-const EXPECTED_EMBEDDING_DIMENSION = 1024;
 
 type ProcessableDocument = {
   id: string;
@@ -271,21 +273,21 @@ async function embedChildChunks(document: ProcessableDocument): Promise<void> {
     throw new Error("Document has no child chunks to embed");
   }
 
-  const client = createEmbeddingClient();
+  const client = createAliyunLlmClient();
   for (let start = 0; start < chunks.length; start += EMBEDDING_BATCH_SIZE) {
     const batch = chunks.slice(start, start + EMBEDDING_BATCH_SIZE);
-    const response = await client.embeddings.create({
-      model: document.embeddingModel,
-      input: batch.map((chunk) => chunk.content),
-    });
-    if (response.data.length !== batch.length) {
+    const embeddings = await client.embedTexts(
+      batch.map((chunk) => chunk.content),
+      document.embeddingModel,
+    );
+    if (embeddings.length !== batch.length) {
       throw new Error("Embedding response count does not match input count");
     }
 
     await db.transaction(async (tx) => {
       for (let index = 0; index < batch.length; index += 1) {
         const chunk = batch[index];
-        const embedding = response.data[index]?.embedding;
+        const embedding = embeddings[index];
         if (chunk === undefined || embedding === undefined) {
           throw new Error("Embedding response is incomplete");
         }
@@ -305,20 +307,6 @@ async function embedChildChunks(document: ProcessableDocument): Promise<void> {
       }
     });
   }
-}
-
-function createEmbeddingClient(): OpenAI {
-  const apiKey = process.env["ALIYUN_API_KEY"];
-  if (apiKey === undefined || apiKey.trim().length === 0) {
-    throw new Error("ALIYUN_API_KEY is required for document embedding");
-  }
-
-  return new OpenAI({
-    apiKey,
-    baseURL:
-      process.env["ALIYUN_BASE_URL"] ??
-      "https://dashscope.aliyuncs.com/compatible-mode/v1",
-  });
 }
 
 function splitParentChunks(text: string): ParentChunkInput[] {

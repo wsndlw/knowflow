@@ -10,7 +10,8 @@ export default tseslint.config(
       "**/.next/**",
       "**/out/**",
       "**/drizzle/**",
-      "eslint.config.mjs"
+      "eslint.config.mjs",
+      "**/drizzle.config.ts"
     ]
   },
   js.configs.recommended,

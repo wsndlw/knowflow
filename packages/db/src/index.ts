@@ -1,1 +1,2 @@
-export const dbPackageName = "@knowflow/db";
+export * from "./client.js";
+export * from "./schema.js";

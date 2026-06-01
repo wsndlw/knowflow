@@ -15,8 +15,17 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "seed": "node dist/seed.js",
-    "db:generate": "echo \"drizzle-kit will be configured in the schema commit\"",
-    "db:migrate": "echo \"drizzle-kit will be configured in the schema commit\""
+    "seed": "tsx src/seed.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.22.4"
   }
 }

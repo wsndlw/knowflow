@@ -14,6 +14,8 @@ import {
   KNOWLEDGE_BASE_VISIBILITIES,
   KNOWLEDGE_ITEM_FEEDBACK_RATINGS,
   KNOWLEDGE_ITEM_STATUSES,
+  IMPROVEMENT_TASK_STATUSES,
+  IMPROVEMENT_TRIGGER_TYPES,
   MODEL_USAGE_TYPES,
   MODEL_PROVIDER_TYPES,
   MODEL_TYPES,
@@ -21,6 +23,7 @@ import {
   PLATFORM_ROLES,
   ANALYTICS_EVENT_TYPES,
   ANALYTICS_TARGET_TYPES,
+  VERIFICATION_STATUSES,
 } from "./constants";
 
 export const platformRoleSchema = z.enum(PLATFORM_ROLES);
@@ -41,6 +44,9 @@ export const confidenceLevelSchema = z.enum(CONFIDENCE_LEVELS);
 export const noAnswerTypeSchema = z.enum(NO_ANSWER_TYPES);
 export const citationSourceTypeSchema = z.enum(CITATION_SOURCE_TYPES);
 export const feedbackRatingSchema = z.enum(FEEDBACK_RATINGS);
+export const improvementTriggerTypeSchema = z.enum(IMPROVEMENT_TRIGGER_TYPES);
+export const improvementTaskStatusSchema = z.enum(IMPROVEMENT_TASK_STATUSES);
+export const verificationStatusSchema = z.enum(VERIFICATION_STATUSES);
 export const analyticsEventTypeSchema = z.enum(ANALYTICS_EVENT_TYPES);
 export const analyticsTargetTypeSchema = z.enum(ANALYTICS_TARGET_TYPES);
 
@@ -300,6 +306,75 @@ export const updateKnowledgeItemRequestSchema = createKnowledgeItemRequestSchema
 
 export const knowledgeItemFeedbackRequestSchema = z.object({
   rating: knowledgeItemFeedbackRatingSchema.nullable(),
+});
+
+export const improvementTaskSchema = z.object({
+  id: z.uuid(),
+  knowledgeBaseId: z.uuid(),
+  triggerType: improvementTriggerTypeSchema,
+  sourceMessageId: z.uuid().nullable(),
+  sourceFeedbackId: z.uuid().nullable(),
+  sourceQuestion: z.string(),
+  sourceContext: z.record(z.string(), z.unknown()),
+  status: improvementTaskStatusSchema,
+  candidateTitle: z.string().nullable(),
+  candidateContent: z.string().nullable(),
+  candidateSummary: z.string().nullable(),
+  candidateMetadata: z.record(z.string(), z.unknown()),
+  aiConfidence: z.number().min(0).max(1).nullable(),
+  aiReasoning: z.string().nullable(),
+  reviewedBy: z.uuid().nullable(),
+  reviewedAt: z.iso.datetime().nullable(),
+  reviewNote: z.string().nullable(),
+  publishedItemId: z.uuid().nullable(),
+  verificationStatus: verificationStatusSchema.nullable(),
+  verifiedAt: z.iso.datetime().nullable(),
+  dedupKey: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const improvementTaskListQuerySchema = z.object({
+  status: improvementTaskStatusSchema.optional(),
+  triggerType: improvementTriggerTypeSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const improvementTaskListResponseSchema = z.object({
+  items: z.array(improvementTaskSchema),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  total: z.number().int().nonnegative(),
+});
+
+export const generateImprovementTasksRequestSchema = z.object({
+  messageId: z.uuid().optional(),
+});
+
+export const createImprovementTasksResponseSchema = z.object({
+  created: z.number().int().nonnegative(),
+  tasks: z.array(improvementTaskSchema),
+});
+
+export const approveImprovementTaskRequestSchema = z.object({
+  title: z.string().trim().min(1).max(255).optional(),
+  content: z.string().trim().min(1).max(20000).optional(),
+  summary: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const rejectImprovementTaskRequestSchema = z.object({
+  reason: z.string().trim().min(1).max(2000),
+});
+
+export const improvementTaskStatsSchema = z.object({
+  pending: z.number().int().nonnegative(),
+  candidateReady: z.number().int().nonnegative(),
+  approved: z.number().int().nonnegative(),
+  rejected: z.number().int().nonnegative(),
+  published: z.number().int().nonnegative(),
+  verified: z.number().int().nonnegative(),
+  stillFailing: z.number().int().nonnegative(),
 });
 
 export const agentSchema = z.object({
@@ -782,6 +857,27 @@ export type UpdateKnowledgeItemRequest = z.infer<typeof updateKnowledgeItemReque
 export type KnowledgeItemFeedbackRequest = z.infer<
   typeof knowledgeItemFeedbackRequestSchema
 >;
+export type ImprovementTriggerType = z.infer<typeof improvementTriggerTypeSchema>;
+export type ImprovementTaskStatus = z.infer<typeof improvementTaskStatusSchema>;
+export type VerificationStatus = z.infer<typeof verificationStatusSchema>;
+export type ImprovementTask = z.infer<typeof improvementTaskSchema>;
+export type ImprovementTaskListQuery = z.infer<typeof improvementTaskListQuerySchema>;
+export type ImprovementTaskListResponse = z.infer<
+  typeof improvementTaskListResponseSchema
+>;
+export type GenerateImprovementTasksRequest = z.infer<
+  typeof generateImprovementTasksRequestSchema
+>;
+export type CreateImprovementTasksResponse = z.infer<
+  typeof createImprovementTasksResponseSchema
+>;
+export type ApproveImprovementTaskRequest = z.infer<
+  typeof approveImprovementTaskRequestSchema
+>;
+export type RejectImprovementTaskRequest = z.infer<
+  typeof rejectImprovementTaskRequestSchema
+>;
+export type ImprovementTaskStats = z.infer<typeof improvementTaskStatsSchema>;
 export type ModelUsageType = z.infer<typeof modelUsageTypeSchema>;
 export type ModelProviderType = z.infer<typeof modelProviderTypeSchema>;
 export type ModelType = z.infer<typeof modelTypeSchema>;

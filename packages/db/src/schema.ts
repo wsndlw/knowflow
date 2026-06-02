@@ -165,6 +165,29 @@ export const knowledgeItemFeedbackRatingEnum = pgEnum("knowledge_item_feedback_r
   "like",
   "dislike",
 ]);
+export const improvementTriggerTypeEnum = pgEnum("improvement_trigger_type", [
+  "no_answer",
+  "low_confidence",
+  "knowledge_gap",
+  "user_correction",
+  "answer_dislike",
+  "item_dislike",
+]);
+export const improvementTaskStatusEnum = pgEnum("improvement_task_status", [
+  "pending",
+  "processing",
+  "candidate_ready",
+  "approved",
+  "rejected",
+  "published",
+  "failed",
+]);
+export const verificationStatusEnum = pgEnum("verification_status", [
+  "pending",
+  "verified",
+  "still_failing",
+  "expired",
+]);
 export const analyticsEventTypeEnum = pgEnum("analytics_event_type", [
   "knowledge_base_viewed",
   "document_viewed",
@@ -518,6 +541,65 @@ export const knowledgeItemFeedback = pgTable(
       table.userId,
     ),
     index("knowledge_item_feedback_user_idx").on(table.userId),
+  ],
+);
+
+export const knowledgeImprovementTasks = pgTable(
+  "knowledge_improvement_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .notNull()
+      .references(() => knowledgeBases.id),
+    triggerType: improvementTriggerTypeEnum("trigger_type").notNull(),
+    sourceMessageId: uuid("source_message_id").references(() => conversationMessages.id),
+    sourceFeedbackId: uuid("source_feedback_id"),
+    sourceQuestion: text("source_question").notNull(),
+    sourceContext: jsonb("source_context").default({}).notNull(),
+    status: improvementTaskStatusEnum("status").default("pending").notNull(),
+    candidateTitle: text("candidate_title"),
+    candidateContent: text("candidate_content"),
+    candidateSummary: text("candidate_summary"),
+    candidateMetadata: jsonb("candidate_metadata").default({}).notNull(),
+    aiConfidence: real("ai_confidence"),
+    aiReasoning: text("ai_reasoning"),
+    reviewedBy: uuid("reviewed_by").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewNote: text("review_note"),
+    publishedItemId: uuid("published_item_id").references(() => knowledgeItems.id),
+    verificationStatus: verificationStatusEnum("verification_status"),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    dedupKey: varchar("dedup_key", { length: 255 }),
+    ...timestamps(),
+  },
+  (table) => [
+    index("knowledge_improvement_tasks_kb_status_idx").on(
+      table.knowledgeBaseId,
+      table.status,
+    ),
+    index("knowledge_improvement_tasks_trigger_idx").on(table.triggerType),
+    uniqueIndex("knowledge_improvement_tasks_dedup_uidx").on(table.dedupKey),
+  ],
+);
+
+export const knowledgeImprovementScanCursors = pgTable(
+  "knowledge_improvement_scan_cursors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .notNull()
+      .references(() => knowledgeBases.id),
+    sourceType: varchar("source_type", { length: 40 }).notNull(),
+    lastSourceCreatedAt: timestamp("last_source_created_at", { withTimezone: true }),
+    lastSourceId: uuid("last_source_id"),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("knowledge_improvement_scan_cursors_kb_source_uidx").on(
+      table.knowledgeBaseId,
+      table.sourceType,
+    ),
+    index("knowledge_improvement_scan_cursors_kb_idx").on(table.knowledgeBaseId),
   ],
 );
 

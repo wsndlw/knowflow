@@ -122,6 +122,32 @@ export const CITATION_SOURCE_TYPES = [
 
 export const FEEDBACK_RATINGS = ["useful", "not_useful", "correction"] as const;
 
+export const IMPROVEMENT_TRIGGER_TYPES = [
+  "no_answer",
+  "low_confidence",
+  "knowledge_gap",
+  "user_correction",
+  "answer_dislike",
+  "item_dislike",
+] as const;
+
+export const IMPROVEMENT_TASK_STATUSES = [
+  "pending",
+  "processing",
+  "candidate_ready",
+  "approved",
+  "rejected",
+  "published",
+  "failed",
+] as const;
+
+export const VERIFICATION_STATUSES = [
+  "pending",
+  "verified",
+  "still_failing",
+  "expired",
+] as const;
+
 export const ANALYTICS_EVENT_TYPES = [
   "knowledge_base_viewed",
   "document_viewed",

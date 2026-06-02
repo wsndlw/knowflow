@@ -70,7 +70,10 @@ export class AliyunLlmService {
 
   async completeChat(input: {
     messages: ChatMessage[];
-    usageType?: Extract<ModelUsageType, "chat" | "query_understanding" | "agent_generation">;
+    usageType?: Extract<
+      ModelUsageType,
+      "chat" | "query_understanding" | "agent_generation" | "knowledge_production"
+    >;
     model?: string;
     temperature?: number;
     maxOutputTokens?: number;
@@ -182,7 +185,10 @@ export class AliyunLlmClient {
 
   async completeChat(input: {
     messages: ChatMessage[];
-    usageType?: Extract<ModelUsageType, "chat" | "query_understanding" | "agent_generation">;
+    usageType?: Extract<
+      ModelUsageType,
+      "chat" | "query_understanding" | "agent_generation" | "knowledge_production"
+    >;
     model?: string;
     temperature?: number;
     maxOutputTokens?: number;

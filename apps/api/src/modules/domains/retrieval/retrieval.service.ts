@@ -27,6 +27,7 @@ const MAX_CONTEXT_TOKENS = 6000;
 type DocumentRecallRow = {
   id: string;
   knowledgeBaseId: string;
+  knowledgeBaseName: string;
   documentId: string;
   childChunkId: string;
   parentChunkId: string;
@@ -40,9 +41,12 @@ type DocumentRecallRow = {
 type KnowledgeItemRecallRow = {
   id: string;
   knowledgeBaseId: string;
+  knowledgeBaseName: string;
   knowledgeItemId: string;
   title: string;
   content: string;
+  verifiedBy: string | null;
+  status: "draft" | "pending_review" | "published" | "unpublished" | "expired";
   score: number;
 };
 
@@ -112,6 +116,7 @@ export class RetrievalService {
       .select({
         id: childChunks.id,
         knowledgeBaseId: childChunks.knowledgeBaseId,
+        knowledgeBaseName: knowledgeBases.name,
         documentId: childChunks.documentId,
         childChunkId: childChunks.id,
         parentChunkId: childChunks.parentChunkId,
@@ -151,6 +156,7 @@ export class RetrievalService {
       .select({
         id: childChunks.id,
         knowledgeBaseId: childChunks.knowledgeBaseId,
+        knowledgeBaseName: knowledgeBases.name,
         documentId: childChunks.documentId,
         childChunkId: childChunks.id,
         parentChunkId: childChunks.parentChunkId,
@@ -193,9 +199,12 @@ export class RetrievalService {
       .select({
         id: knowledgeItems.id,
         knowledgeBaseId: knowledgeItems.knowledgeBaseId,
+        knowledgeBaseName: knowledgeBases.name,
         knowledgeItemId: knowledgeItems.id,
         title: knowledgeItems.title,
         content: knowledgeItems.content,
+        verifiedBy: knowledgeItems.verifiedBy,
+        status: knowledgeItems.status,
         score: sql<number>`1 - (${knowledgeItems.embedding} <=> ${vectorText}::vector)`,
       })
       .from(knowledgeItems)
@@ -222,6 +231,7 @@ export class RetrievalService {
       id: row.parentChunkId,
       sourceType: "knowledge_document",
       knowledgeBaseId: row.knowledgeBaseId,
+      knowledgeBaseName: row.knowledgeBaseName,
       documentId: row.documentId,
       knowledgeItemId: null,
       childChunkId: row.childChunkId,
@@ -234,6 +244,8 @@ export class RetrievalService {
       channels: [channel],
       initialScore: row.score,
       rerankScore: null,
+      knowledgeItemVerified: false,
+      sourceExpired: false,
       tokenCount: this.estimateTokenCount(row.parentContent),
     }));
   }
@@ -243,6 +255,7 @@ export class RetrievalService {
       id: row.knowledgeItemId,
       sourceType: "knowledge_item",
       knowledgeBaseId: row.knowledgeBaseId,
+      knowledgeBaseName: row.knowledgeBaseName,
       documentId: null,
       knowledgeItemId: row.knowledgeItemId,
       childChunkId: null,
@@ -255,6 +268,8 @@ export class RetrievalService {
       channels: ["knowledge_item"],
       initialScore: row.score,
       rerankScore: null,
+      knowledgeItemVerified: row.verifiedBy !== null,
+      sourceExpired: row.status === "expired",
       tokenCount: this.estimateTokenCount(row.content),
     }));
   }

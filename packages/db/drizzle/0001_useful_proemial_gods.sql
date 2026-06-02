@@ -1,0 +1,1 @@
+ALTER TABLE "answer_feedback" ADD COLUMN "suggested_ingestion" boolean DEFAULT false NOT NULL;

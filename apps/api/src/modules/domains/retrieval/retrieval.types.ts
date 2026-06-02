@@ -6,6 +6,7 @@ export type RetrievalCandidate = {
   id: string;
   sourceType: RetrievalSourceType;
   knowledgeBaseId: string;
+  knowledgeBaseName: string;
   documentId: string | null;
   knowledgeItemId: string | null;
   childChunkId: string | null;
@@ -18,6 +19,8 @@ export type RetrievalCandidate = {
   channels: RetrievalChannel[];
   initialScore: number;
   rerankScore: number | null;
+  knowledgeItemVerified: boolean;
+  sourceExpired: boolean;
   tokenCount: number;
 };
 

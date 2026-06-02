@@ -12,6 +12,8 @@ import {
   KNOWLEDGE_BASE_INDEX_STATUSES,
   KNOWLEDGE_BASE_STATUSES,
   KNOWLEDGE_BASE_VISIBILITIES,
+  KNOWLEDGE_ITEM_FEEDBACK_RATINGS,
+  KNOWLEDGE_ITEM_STATUSES,
   MODEL_USAGE_TYPES,
   NO_ANSWER_TYPES,
   PLATFORM_ROLES,
@@ -21,6 +23,8 @@ export const platformRoleSchema = z.enum(PLATFORM_ROLES);
 export const knowledgeBaseVisibilitySchema = z.enum(KNOWLEDGE_BASE_VISIBILITIES);
 export const knowledgeBaseStatusSchema = z.enum(KNOWLEDGE_BASE_STATUSES);
 export const knowledgeBaseIndexStatusSchema = z.enum(KNOWLEDGE_BASE_INDEX_STATUSES);
+export const knowledgeItemStatusSchema = z.enum(KNOWLEDGE_ITEM_STATUSES);
+export const knowledgeItemFeedbackRatingSchema = z.enum(KNOWLEDGE_ITEM_FEEDBACK_RATINGS);
 export const documentProcessStatusSchema = z.enum(DOCUMENT_PROCESS_STATUSES);
 export const documentSourceTypeSchema = z.enum(DOCUMENT_SOURCE_TYPES);
 export const modelUsageTypeSchema = z.enum(MODEL_USAGE_TYPES);
@@ -211,6 +215,66 @@ export const documentProgressEventSchema = z.object({
   timestamp: z.iso.datetime(),
 });
 
+export const knowledgeItemSchema = z.object({
+  id: z.uuid(),
+  knowledgeBaseId: z.uuid(),
+  knowledgeBaseName: z.string(),
+  title: z.string(),
+  content: z.string(),
+  summary: z.string().nullable(),
+  sourceDocumentId: z.uuid().nullable(),
+  status: knowledgeItemStatusSchema,
+  metadata: z.record(z.string(), z.unknown()),
+  enabled: z.boolean(),
+  viewCount: z.number().int().nonnegative(),
+  citeCount: z.number().int().nonnegative(),
+  likeCount: z.number().int().nonnegative(),
+  dislikeCount: z.number().int().nonnegative(),
+  userFeedback: knowledgeItemFeedbackRatingSchema.nullable(),
+  createdBy: z.uuid(),
+  updatedBy: z.uuid().nullable(),
+  verifiedBy: z.uuid().nullable(),
+  verifiedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const knowledgeItemListQuerySchema = z.object({
+  keyword: z.string().trim().min(1).max(120).optional(),
+  status: knowledgeItemStatusSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const knowledgeItemListResponseSchema = z.object({
+  items: z.array(knowledgeItemSchema),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  total: z.number().int().nonnegative(),
+});
+
+export const createKnowledgeItemRequestSchema = z.object({
+  title: z.string().trim().min(1).max(255),
+  content: z.string().trim().min(1).max(20000),
+  summary: z.string().trim().max(2000).nullable().optional(),
+  sourceDocumentId: z.uuid().nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const updateKnowledgeItemRequestSchema = createKnowledgeItemRequestSchema
+  .partial()
+  .extend({
+    status: knowledgeItemStatusSchema.optional(),
+    enabled: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required",
+  });
+
+export const knowledgeItemFeedbackRequestSchema = z.object({
+  rating: knowledgeItemFeedbackRatingSchema.nullable(),
+});
+
 export const agentSchema = z.object({
   id: z.uuid(),
   name: z.string(),
@@ -303,13 +367,22 @@ export const createConversationRequestSchema = z.object({
 export const citationSchema = z.object({
   id: z.uuid().optional(),
   sourceType: citationSourceTypeSchema,
+  sourceId: z.uuid().nullable(),
   knowledgeBaseId: z.uuid().nullable(),
+  knowledgeBaseName: z.string().nullable(),
   documentId: z.uuid().nullable(),
   knowledgeItemId: z.uuid().nullable(),
   chunkId: z.uuid().nullable(),
   title: z.string(),
   snippet: z.string().nullable(),
   pageOrSection: z.string().nullable(),
+});
+
+export const relatedDocumentSchema = z.object({
+  id: z.uuid(),
+  knowledgeBaseId: z.uuid(),
+  knowledgeBaseName: z.string().nullable(),
+  title: z.string(),
 });
 
 export const conversationMessageSchema = z.object({
@@ -320,6 +393,8 @@ export const conversationMessageSchema = z.object({
   confidenceLevel: confidenceLevelSchema.nullable(),
   noAnswerType: noAnswerTypeSchema.nullable(),
   citations: z.array(citationSchema),
+  recommendedQuestions: z.array(z.string()),
+  relatedDocuments: z.array(relatedDocumentSchema),
   createdAt: z.iso.datetime(),
 });
 
@@ -373,6 +448,7 @@ export const answerFeedbackRequestSchema = z
     reason: z.string().trim().max(120).optional(),
     correctionContent: z.string().trim().max(4000).optional(),
     suggestedSource: z.string().trim().max(1000).optional(),
+    suggestedIngestion: z.boolean().optional(),
   })
   .refine((value) => value.rating !== "correction" || value.correctionContent !== undefined, {
     message: "Correction content is required",
@@ -407,6 +483,18 @@ export type DocumentSourceType = z.infer<typeof documentSourceTypeSchema>;
 export type KnowledgeDocument = z.infer<typeof documentSchema>;
 export type DocumentListResponse = z.infer<typeof documentListResponseSchema>;
 export type DocumentProgressEvent = z.infer<typeof documentProgressEventSchema>;
+export type KnowledgeItemStatus = z.infer<typeof knowledgeItemStatusSchema>;
+export type KnowledgeItemFeedbackRating = z.infer<
+  typeof knowledgeItemFeedbackRatingSchema
+>;
+export type KnowledgeItem = z.infer<typeof knowledgeItemSchema>;
+export type KnowledgeItemListQuery = z.infer<typeof knowledgeItemListQuerySchema>;
+export type KnowledgeItemListResponse = z.infer<typeof knowledgeItemListResponseSchema>;
+export type CreateKnowledgeItemRequest = z.infer<typeof createKnowledgeItemRequestSchema>;
+export type UpdateKnowledgeItemRequest = z.infer<typeof updateKnowledgeItemRequestSchema>;
+export type KnowledgeItemFeedbackRequest = z.infer<
+  typeof knowledgeItemFeedbackRequestSchema
+>;
 export type ModelUsageType = z.infer<typeof modelUsageTypeSchema>;
 export type Agent = z.infer<typeof agentSchema>;
 export type AgentListResponse = z.infer<typeof agentListResponseSchema>;
@@ -425,6 +513,7 @@ export type Conversation = z.infer<typeof conversationSchema>;
 export type ConversationListResponse = z.infer<typeof conversationListResponseSchema>;
 export type CreateConversationRequest = z.infer<typeof createConversationRequestSchema>;
 export type Citation = z.infer<typeof citationSchema>;
+export type RelatedDocument = z.infer<typeof relatedDocumentSchema>;
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
 export type ConversationMessagesResponse = z.infer<typeof conversationMessagesResponseSchema>;
 export type AskMessageRequest = z.infer<typeof askMessageRequestSchema>;

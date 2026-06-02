@@ -28,6 +28,8 @@ type DraftAssistantMessage = {
   confidenceLevel: ConfidenceLevel | null;
   noAnswerType: string | null;
   citations: Citation[];
+  recommendedQuestions: string[];
+  relatedDocuments: ConversationMessage["relatedDocuments"];
   createdAt: string;
 };
 
@@ -184,6 +186,8 @@ export default function AgentsPage() {
         confidenceLevel: null,
         noAnswerType: null,
         citations: [],
+        recommendedQuestions: [],
+        relatedDocuments: [],
         createdAt: now,
       };
       const draft: DraftAssistantMessage = {
@@ -194,6 +198,8 @@ export default function AgentsPage() {
         confidenceLevel: null,
         noAnswerType: null,
         citations: [],
+        recommendedQuestions: [],
+        relatedDocuments: [],
         createdAt: now,
       };
       setMessages((current) => [...current, userMessage, draft]);

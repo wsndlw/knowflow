@@ -14,6 +14,8 @@ import {
   conversationMessages,
   conversations,
   db,
+  knowledgeBases,
+  knowledgeItems,
   messageCitations,
 } from "@knowflow/db";
 import type {
@@ -27,9 +29,10 @@ import type {
   ConversationMessage,
   ConversationMessagesResponse,
   CreateConversationRequest,
+  RelatedDocument,
 } from "@knowflow/shared";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -46,7 +49,9 @@ const FALLBACK_ANSWER =
 type AgentRow = typeof agents.$inferSelect;
 type ConversationRow = typeof conversations.$inferSelect;
 type MessageRow = typeof conversationMessages.$inferSelect;
-type CitationRow = typeof messageCitations.$inferSelect;
+type CitationRow = typeof messageCitations.$inferSelect & {
+  knowledgeBaseName: string | null;
+};
 
 const AgentStateAnnotation = Annotation.Root({
   state: Annotation<AgentState>(),
@@ -215,6 +220,7 @@ export class AgentService {
       reason: input.reason ?? null,
       correctionContent: input.correctionContent ?? null,
       suggestedSource: input.suggestedSource ?? null,
+      suggestedIngestion: input.suggestedIngestion ?? false,
     });
   }
 
@@ -327,6 +333,24 @@ export class AgentService {
 
   private async resolveKnowledgeScope(state: AgentState): Promise<AgentState> {
     const agent = this.requireAgent(state);
+    if (agent.type === "global") {
+      const accessCondition = this.accessService.buildAccessCondition(state.user);
+      const rows = await db
+        .select({ knowledgeBaseId: knowledgeBases.id })
+        .from(knowledgeBases)
+        .where(
+          accessCondition === undefined
+            ? eq(knowledgeBases.status, "active")
+            : and(eq(knowledgeBases.status, "active"), accessCondition),
+        )
+        .orderBy(asc(knowledgeBases.name));
+
+      return {
+        ...state,
+        knowledgeScope: rows.map((row) => row.knowledgeBaseId),
+      };
+    }
+
     const rows = await db
       .select({ knowledgeBaseId: agentKnowledgeBases.knowledgeBaseId })
       .from(agentKnowledgeBases)
@@ -460,13 +484,52 @@ export class AgentService {
       return { ...state, confidenceLevel: state.confidenceLevel ?? "not_found" };
     }
 
-    const bestScore = this.bestContextScore(state.retrieval?.contexts ?? []);
+    const contexts = state.retrieval?.contexts ?? [];
+    const bestScore = this.bestContextScore(contexts);
+    const citationCount = state.citations.length;
+    const knowledgeBaseCount = new Set(contexts.map((item) => item.knowledgeBaseId)).size;
+    const hasVerifiedKnowledgeItem = contexts.some((item) => item.knowledgeItemVerified);
+    const hasExpiredSource = contexts.some((item) => item.sourceExpired);
+
+    let evidenceScore = 0;
+    if (bestScore >= 0.55) {
+      evidenceScore += 3;
+    } else if (bestScore >= 0.25) {
+      evidenceScore += 2;
+    } else if (bestScore >= MIN_CONTEXT_RERANK_SCORE) {
+      evidenceScore += 1;
+    }
+
+    const bestInitialScore = Math.max(0, ...contexts.map((item) => item.initialScore));
+    if (bestInitialScore >= 0.5) {
+      evidenceScore += 1;
+    }
+    if (citationCount >= 3) {
+      evidenceScore += 2;
+    } else if (citationCount >= 1) {
+      evidenceScore += 1;
+    }
+    if (hasVerifiedKnowledgeItem) {
+      evidenceScore += 1;
+    }
+    if (knowledgeBaseCount >= 2) {
+      evidenceScore += 1;
+    }
+    if (hasExpiredSource) {
+      evidenceScore -= 2;
+    }
+    if (bestScore < MIN_CONTEXT_RERANK_SCORE) {
+      evidenceScore -= 3;
+    }
+
     const confidenceLevel: ConfidenceLevel =
-      state.citations.length >= 2 && bestScore >= 0.55
-        ? "strong"
-        : state.citations.length >= 1 && bestScore >= 0.35
-          ? "medium"
-          : "weak";
+      contexts.length === 0 || citationCount === 0
+        ? "not_found"
+        : evidenceScore >= 6
+          ? "strong"
+          : evidenceScore >= 3
+            ? "medium"
+            : "weak";
     return { ...state, confidenceLevel, noAnswerType: null };
   }
 
@@ -501,6 +564,23 @@ export class AgentService {
             pageOrSection: citation.pageOrSection,
           })),
         );
+
+        const knowledgeItemIds = [
+          ...new Set(
+            state.citations
+              .map((citation) => citation.knowledgeItemId)
+              .filter((id): id is string => id !== null),
+          ),
+        ];
+        if (knowledgeItemIds.length > 0) {
+          await tx
+            .update(knowledgeItems)
+            .set({
+              citeCount: sql`${knowledgeItems.citeCount} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(inArray(knowledgeItems.id, knowledgeItemIds));
+        }
       }
 
       await tx
@@ -536,7 +616,11 @@ export class AgentService {
       return [message];
     });
 
-    const assistant = this.toMessage(assistantMessage, state.citations);
+    const assistant = this.toMessage(
+      assistantMessage,
+      state.citations,
+      state.agent?.recommendedQuestions ?? [],
+    );
     await state.emit({ type: "agent.completed", message: assistant });
     return { ...state, assistantMessage: assistant };
   }
@@ -627,8 +711,23 @@ export class AgentService {
       return new Map();
     }
     const rows = await db
-      .select()
+      .select({
+        id: messageCitations.id,
+        messageId: messageCitations.messageId,
+        sourceType: messageCitations.sourceType,
+        knowledgeBaseId: messageCitations.knowledgeBaseId,
+        knowledgeBaseName: knowledgeBases.name,
+        documentId: messageCitations.documentId,
+        knowledgeItemId: messageCitations.knowledgeItemId,
+        attachmentId: messageCitations.attachmentId,
+        chunkId: messageCitations.chunkId,
+        title: messageCitations.title,
+        snippet: messageCitations.snippet,
+        pageOrSection: messageCitations.pageOrSection,
+        createdAt: messageCitations.createdAt,
+      })
       .from(messageCitations)
+      .leftJoin(knowledgeBases, eq(knowledgeBases.id, messageCitations.knowledgeBaseId))
       .where(inArray(messageCitations.messageId, messageIds))
       .orderBy(asc(messageCitations.createdAt));
     const byMessage = new Map<string, Citation[]>();
@@ -682,7 +781,11 @@ export class AgentService {
     };
   }
 
-  private toMessage(row: MessageRow, citations: Citation[]): ConversationMessage {
+  private toMessage(
+    row: MessageRow,
+    citations: Citation[],
+    recommendedQuestions: string[] = [],
+  ): ConversationMessage {
     return {
       id: row.id,
       conversationId: row.conversationId,
@@ -691,6 +794,8 @@ export class AgentService {
       confidenceLevel: row.confidenceLevel,
       noAnswerType: row.noAnswerType,
       citations,
+      recommendedQuestions,
+      relatedDocuments: this.toRelatedDocuments(citations),
       createdAt: row.createdAt.toISOString(),
     };
   }
@@ -698,7 +803,9 @@ export class AgentService {
   private toCitation(item: RetrievalContextItem): Citation {
     return {
       sourceType: item.sourceType,
+      sourceId: item.knowledgeItemId ?? item.documentId ?? item.childChunkId,
       knowledgeBaseId: item.knowledgeBaseId,
+      knowledgeBaseName: item.knowledgeBaseName,
       documentId: item.documentId,
       knowledgeItemId: item.knowledgeItemId,
       chunkId: item.childChunkId,
@@ -712,7 +819,9 @@ export class AgentService {
     return {
       id: row.id,
       sourceType: row.sourceType,
+      sourceId: row.knowledgeItemId ?? row.documentId ?? row.chunkId,
       knowledgeBaseId: row.knowledgeBaseId,
+      knowledgeBaseName: row.knowledgeBaseName,
       documentId: row.documentId,
       knowledgeItemId: row.knowledgeItemId,
       chunkId: row.chunkId,
@@ -727,6 +836,7 @@ export class AgentService {
       citationIndex: item.citationIndex,
       sourceType: item.sourceType,
       knowledgeBaseId: item.knowledgeBaseId,
+      knowledgeBaseName: item.knowledgeBaseName,
       documentId: item.documentId,
       knowledgeItemId: item.knowledgeItemId,
       childChunkId: item.childChunkId,
@@ -734,8 +844,27 @@ export class AgentService {
       channels: item.channels,
       initialScore: item.initialScore,
       rerankScore: item.rerankScore,
+      knowledgeItemVerified: item.knowledgeItemVerified,
+      sourceExpired: item.sourceExpired,
       snippet: item.snippet,
     }));
+  }
+
+  private toRelatedDocuments(citations: Citation[]): RelatedDocument[] {
+    const byDocumentId = new Map<string, RelatedDocument>();
+    for (const citation of citations) {
+      if (citation.documentId === null) {
+        continue;
+      }
+      byDocumentId.set(citation.documentId, {
+        id: citation.documentId,
+        knowledgeBaseId: citation.knowledgeBaseId ?? "",
+        knowledgeBaseName: citation.knowledgeBaseName,
+        title: citation.title,
+      });
+    }
+
+    return [...byDocumentId.values()].filter((document) => document.knowledgeBaseId.length > 0);
   }
 
   private toStateSnapshot(state: AgentState) {

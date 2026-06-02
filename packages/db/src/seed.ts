@@ -325,6 +325,39 @@ async function ensureDefaultAgent(input: {
     });
 }
 
+async function ensureGlobalAgent(createdBy: string): Promise<void> {
+  const existing = await db.query.agents.findFirst({
+    where: and(eq(agents.type, "global"), eq(agents.visibility, "global")),
+    columns: {
+      id: true,
+    },
+  });
+
+  if (existing !== undefined) {
+    return;
+  }
+
+  await db.insert(agents).values({
+    name: "全局 AI 助手",
+    description: "系统内置全局入口，会检索当前用户全部有权访问的知识库。",
+    type: "global",
+    visibility: "global",
+    status: "published",
+    isDefault: true,
+    forceCitation: true,
+    createdBy,
+    publishedAt: new Date(),
+    openingMessage: "你好，我可以在你有权限访问的全部知识库中查找依据并回答问题。",
+    systemPrompt:
+      "你是企业全局 AI 助手。必须只基于当前用户有权限访问的知识库上下文回答；使用依据时必须展示引用来源和知识库名称；没有可靠依据时明确说明未找到依据，不得编造。",
+    recommendedQuestions: [
+      "我可以查询哪些知识库内容？",
+      "公司制度里有哪些常见流程？",
+      "帮我查找和报销相关的规定",
+    ],
+  });
+}
+
 async function runSeed(): Promise<void> {
   const defaultDepartment = await ensureDepartment("默认部门");
   const hr = await ensureDepartment("人事部");
@@ -399,6 +432,7 @@ async function runSeed(): Promise<void> {
     createdBy: admin.id,
     knowledgeBaseId: publicKb,
   });
+  await ensureGlobalAgent(admin.id);
 
   const providerId = await ensureModelProvider();
   const qwenPlus = await ensureModel(providerId, "qwen-plus", "chat");

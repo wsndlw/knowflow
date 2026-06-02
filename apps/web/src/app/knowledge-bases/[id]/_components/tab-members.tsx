@@ -52,17 +52,21 @@ export function TabMembers({ knowledgeBaseId, canManage }: TabMembersProps) {
       ]);
       setMembers(memberRes.items);
       setUserOptions(userRes.items);
-      if (!selectedUserId && userRes.items.length > 0) {
-        setSelectedUserId(userRes.items[0]?.id ?? "");
-      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "加载失败");
     } finally {
       setLoading(false);
     }
-  }, [knowledgeBaseId, selectedUserId]);
+  }, [knowledgeBaseId]);
 
   useEffect(() => { void loadData(); }, [loadData]);
+
+  // 初始化选中用户(仅在 userOptions 加载完且尚未选择时设置)
+  useEffect(() => {
+    if (!selectedUserId && userOptions.length > 0) {
+      setSelectedUserId(userOptions[0]?.id ?? "");
+    }
+  }, [userOptions, selectedUserId]);
 
   async function runAction(action: () => Promise<void>) {
     setActionError(null);

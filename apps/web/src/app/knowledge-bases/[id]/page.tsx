@@ -82,7 +82,12 @@ function KnowledgeBaseDetailContent() {
         onValueChange={(v) => setActiveTab(v as TabValue)}
       />
 
-      <div className="min-h-[300px]">
+      <div
+        role="tabpanel"
+        id={`tabpanel-${activeTab}`}
+        aria-labelledby={`tab-${activeTab}`}
+        className="min-h-[300px]"
+      >
         {activeTab === "overview" && overview ? (
           <TabOverview kb={kb} overview={overview} canManage={canManage} onJumpTab={setActiveTab} />
         ) : null}

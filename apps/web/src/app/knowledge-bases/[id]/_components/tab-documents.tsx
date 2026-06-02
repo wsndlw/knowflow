@@ -10,6 +10,7 @@ import {
 
 import { Badge } from "../../../../components/ui/badge";
 import { Button } from "../../../../components/ui/button";
+import { Dialog } from "../../../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Input } from "../../../../components/ui/input";
 import { Select } from "../../../../components/ui/select";
@@ -60,6 +61,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -145,6 +147,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
 
   async function handleDelete(docId: string) {
     setActionError(null);
+    setDeleteTarget(null);
     try {
       await apiRequest(`/documents/${docId}`, emptyObjectSchema, { method: "DELETE" });
       await loadDocuments();
@@ -214,13 +217,29 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               progress={progressMap[doc.id]}
               canManage={canManage}
               onReprocess={() => void handleReprocess(doc.id)}
-              onDelete={() => void handleDelete(doc.id)}
+              onDelete={() => setDeleteTarget(doc.id)}
             />
           ))}
         </div>
       )}
 
       <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
+
+      <Dialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="确认删除"
+        description="删除后文档数据无法恢复，确定要删除吗？"
+      >
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
+            取消
+          </Button>
+          <Button variant="danger" onClick={() => { if (deleteTarget) void handleDelete(deleteTarget); }}>
+            确认删除
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

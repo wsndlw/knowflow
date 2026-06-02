@@ -71,11 +71,13 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
   return (
     <div className="flex flex-col gap-6">
       {/* Range 切换 */}
-      <div className="flex items-center gap-1 rounded-lg border border-border bg-neutral-50 p-1 w-fit">
+      <div role="radiogroup" aria-label="时间范围" className="flex items-center gap-1 rounded-lg border border-border bg-neutral-50 p-1 w-fit">
         {RANGE_OPTIONS.map((opt) => (
           <button
             key={opt.value}
             type="button"
+            role="radio"
+            aria-checked={range === opt.value}
             onClick={() => setRange(opt.value)}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               range === opt.value

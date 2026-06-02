@@ -17,6 +17,7 @@ export function TableHead({ className, ...props }: HTMLAttributes<HTMLTableSecti
 export function TableHeaderCell({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
+      scope="col"
       className={cn(
         "px-4 py-2.5 text-left text-xs font-medium text-ink-muted uppercase tracking-wide",
         className,

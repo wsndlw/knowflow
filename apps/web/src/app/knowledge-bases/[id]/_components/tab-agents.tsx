@@ -70,6 +70,9 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
         { method: "POST" },
       );
       await loadAgents();
+      if (response.generated.usedFallback) {
+        setActionError("生成使用了兜底模板，建议手动调整");
+      }
       // 生成后自动打开编辑 Dialog
       setEditing(response.agent);
       setDialogOpen(true);

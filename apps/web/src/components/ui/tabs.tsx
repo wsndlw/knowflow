@@ -90,24 +90,3 @@ export function TabList({ items, value, onValueChange, className }: TabListProps
     </div>
   );
 }
-
-type TabPanelProps = {
-  value: string;
-  activeValue: string;
-  children: React.ReactNode;
-  className?: string;
-};
-
-export function TabPanel({ value, activeValue, children, className }: TabPanelProps) {
-  if (value !== activeValue) return null;
-  return (
-    <div
-      role="tabpanel"
-      id={`tabpanel-${value}`}
-      aria-labelledby={`tab-${value}`}
-      className={className}
-    >
-      {children}
-    </div>
-  );
-}

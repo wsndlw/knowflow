@@ -43,6 +43,13 @@
       "when": 1780399443158,
       "tag": "0005_known_lord_tyger",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780425508045,
+      "tag": "0006_shallow_mephisto",
+      "breakpoints": true
     }
   ]
 }

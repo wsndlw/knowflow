@@ -114,6 +114,14 @@ export class ModelController {
     return { ok: true, data: modelCatalogListResponseSchema.parse(data) };
   }
 
+  @Get("admin/models")
+  async listAllModels(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ApiSuccess<ModelCatalogListResponse>> {
+    const data = await this.modelService.listAllModels(this.requireUser(request));
+    return { ok: true, data: modelCatalogListResponseSchema.parse(data) };
+  }
+
   @Post("admin/model-providers/:id/models")
   async createModel(
     @Param() params: unknown,

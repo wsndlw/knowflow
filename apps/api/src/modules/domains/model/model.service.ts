@@ -151,6 +151,31 @@ export class ModelService {
     return { items: rows.map((row) => this.toModel(row)) };
   }
 
+  async listAllModels(user: AuthenticatedUser): Promise<{ items: ModelCatalog[] }> {
+    this.ensureSuperAdmin(user);
+    const rows = await db
+      .select({
+        id: modelCatalog.id,
+        providerId: modelCatalog.providerId,
+        providerName: modelProviders.name,
+        modelName: modelCatalog.modelName,
+        modelType: modelCatalog.modelType,
+        contextWindow: modelCatalog.contextWindow,
+        supportsStreaming: modelCatalog.supportsStreaming,
+        enabled: modelCatalog.enabled,
+        createdAt: modelCatalog.createdAt,
+        updatedAt: modelCatalog.updatedAt,
+      })
+      .from(modelCatalog)
+      .innerJoin(modelProviders, eq(modelProviders.id, modelCatalog.providerId))
+      .orderBy(
+        asc(modelProviders.name),
+        asc(modelCatalog.modelType),
+        asc(modelCatalog.modelName),
+      );
+    return { items: rows.map((row) => this.toModel(row)) };
+  }
+
   async createModel(
     providerId: string,
     input: CreateModelCatalogRequest,

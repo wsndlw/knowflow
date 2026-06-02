@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 
 import { Button } from "../../components/ui/button";
+import { CitationPopover } from "../../components/ui/citation-popover";
 import { Dialog } from "../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../components/ui/feedback";
 import { apiRequest, apiUrl, parseApiError } from "../../lib/api";
@@ -68,6 +69,8 @@ export default function ChatPage() {
   const [feedbackByMessageId, setFeedbackByMessageId] = useState<Record<string, FeedbackRating>>({});
   const [correctionFor, setCorrectionFor] = useState<string | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
+  // 流式进行中标记:避免 ensureConversation 切换 conversationId 触发 loadMessages 覆盖本地 draft
+  const streamingRef = useRef(false);
 
   // 选全局 AI 助手(type=global);无 Agent 切换
   const loadInitialData = useCallback(async () => {
@@ -102,6 +105,10 @@ export default function ChatPage() {
   const loadMessages = useCallback(async () => {
     if (selectedConversationId === "") {
       setMessages([]);
+      return;
+    }
+    // 流式进行中不重载:否则会用服务器(尚未落库完成)的消息覆盖本地 draft
+    if (streamingRef.current) {
       return;
     }
     try {
@@ -166,6 +173,7 @@ export default function ChatPage() {
     setIsAsking(true);
     setError(null);
     setQuestion("");
+    streamingRef.current = true;
     try {
       const conversationId = await ensureConversation();
       const now = new Date().toISOString();
@@ -201,6 +209,7 @@ export default function ChatPage() {
     } finally {
       setIsAsking(false);
       setStatusText("");
+      streamingRef.current = false;
     }
   }
 
@@ -469,15 +478,6 @@ function AssistantBubble({
             </div>
           )}
 
-          {/* 引用来源卡片(回答下方) */}
-          {message.citations.length > 0 ? (
-            <div className="mt-3 flex flex-col gap-1.5">
-              {message.citations.map((c, i) => (
-                <CitationCard key={c.id ?? `${c.sourceType}-${String(i)}`} index={i + 1} citation={c} />
-              ))}
-            </div>
-          ) : null}
-
           {/* 可信度 + 元信息 */}
           {!message.id.startsWith("draft-") ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -539,7 +539,7 @@ function AssistantBubble({
   );
 }
 
-// 回答正文里的 [n] 标号渲染成带悬停冒泡的上标
+// 回答正文里的 [n] 标号渲染成带悬停来源卡片的引用(卡片可点击跳转)
 function renderWithCitations(content: string, citations: Citation[]) {
   if (citations.length === 0) {
     return content;
@@ -551,64 +551,26 @@ function renderWithCitations(content: string, citations: Citation[]) {
       const n = Number(match[1]);
       const citation = citations[n - 1];
       if (citation !== undefined) {
-        return <CitationRef key={idx} index={n} citation={citation} />;
+        return (
+          <CitationPopover
+            key={idx}
+            data={{
+              index: n,
+              title: citation.title,
+              knowledgeBaseName: citation.knowledgeBaseName,
+              snippet: citation.snippet,
+              pageOrSection: citation.pageOrSection,
+              href:
+                citation.knowledgeBaseId !== null
+                  ? `/knowledge-bases/${citation.knowledgeBaseId}`
+                  : null,
+            }}
+          />
+        );
       }
     }
     return <span key={idx}>{part}</span>;
   });
-}
-
-function CitationRef({ index, citation }: { index: number; citation: Citation }) {
-  return (
-    <span className="group relative inline-block align-super">
-      <span className="cursor-pointer rounded bg-brand-50 px-1 text-xs font-medium text-brand-700">
-        {index}
-      </span>
-      {/* 悬停冒泡 */}
-      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 hidden w-64 -translate-x-1/2 rounded-lg border border-border bg-surface p-3 text-left shadow-lg group-hover:block">
-        <span className="block text-sm font-medium text-ink">{citation.title}</span>
-        {citation.knowledgeBaseName !== null ? (
-          <span className="mt-0.5 block text-xs text-brand-600">{citation.knowledgeBaseName}</span>
-        ) : null}
-        {citation.snippet !== null ? (
-          <span className="mt-1 block line-clamp-3 text-xs text-ink-muted">{citation.snippet}</span>
-        ) : null}
-      </span>
-    </span>
-  );
-}
-
-function CitationCard({ index, citation }: { index: number; citation: Citation }) {
-  const href =
-    citation.knowledgeBaseId !== null
-      ? `/knowledge-bases/${citation.knowledgeBaseId}`
-      : undefined;
-  const inner = (
-    <>
-      <span className="grid size-5 shrink-0 place-items-center rounded bg-brand-50 text-xs font-medium text-brand-700">
-        {index}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-ink">{citation.title}</span>
-        <span className="flex items-center gap-1.5 text-xs text-ink-subtle">
-          {citation.knowledgeBaseName !== null ? <span>{citation.knowledgeBaseName}</span> : null}
-          {citation.pageOrSection !== null ? <span>· {citation.pageOrSection}</span> : null}
-        </span>
-      </span>
-    </>
-  );
-  return href !== undefined ? (
-    <a
-      href={href}
-      className="flex items-center gap-2 rounded-md border border-border bg-neutral-0 px-3 py-2 transition-colors hover:border-brand-300"
-    >
-      {inner}
-    </a>
-  ) : (
-    <div className="flex items-center gap-2 rounded-md border border-border bg-neutral-0 px-3 py-2">
-      {inner}
-    </div>
-  );
 }
 
 function IconAction({

@@ -11,6 +11,7 @@ import {
   Req,
 } from "@nestjs/common";
 import {
+  AuditTargetType,
   createManagedAgentRequestSchema,
   generateManagedAgentResponseSchema,
   managedAgentListResponseSchema,
@@ -22,6 +23,7 @@ import {
   type ManagedAgentListResponse,
 } from "@knowflow/shared";
 
+import { AuditLog } from "../../../shared/audit/audit-log.decorator.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import type { AuthenticatedRequest } from "../../../shared/guards/auth.guard.js";
 import { AgentManagementService } from "./agent-management.service.js";
@@ -54,6 +56,7 @@ export class AgentManagementController {
   }
 
   @Post("knowledge-bases/:id/agents")
+  @AuditLog("agent.create", AuditTargetType.AGENT)
   async create(
     @Param() params: unknown,
     @Body() body: unknown,
@@ -66,6 +69,7 @@ export class AgentManagementController {
   }
 
   @Post("knowledge-bases/:id/agents/generate")
+  @AuditLog("agent.generate", AuditTargetType.AGENT)
   async generate(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,
@@ -86,6 +90,7 @@ export class AgentManagementController {
   }
 
   @Patch("agents/:id")
+  @AuditLog("agent.update", AuditTargetType.AGENT)
   async update(
     @Param() params: unknown,
     @Body() body: unknown,
@@ -98,6 +103,7 @@ export class AgentManagementController {
   }
 
   @Post("agents/:id/publish")
+  @AuditLog("agent.publish", AuditTargetType.AGENT)
   async publish(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,
@@ -118,6 +124,7 @@ export class AgentManagementController {
   }
 
   @Delete("agents/:id")
+  @AuditLog("agent.delete", AuditTargetType.AGENT)
   async delete(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,

@@ -12,6 +12,7 @@ import {
   Req,
 } from "@nestjs/common";
 import {
+  AuditTargetType,
   createKnowledgeBaseRequestSchema,
   knowledgeBaseListQuerySchema,
   knowledgeBaseOverviewSchema,
@@ -26,6 +27,7 @@ import {
   type UserOptionsResponse,
 } from "@knowflow/shared";
 
+import { AuditLog } from "../../../shared/audit/audit-log.decorator.js";
 import { Roles } from "../../../shared/decorators/roles.decorator.js";
 import type { AuthenticatedRequest } from "../../../shared/guards/auth.guard.js";
 import { KnowledgeBaseService } from "./knowledge-base.service.js";
@@ -88,6 +90,7 @@ export class KnowledgeBaseController {
 
   @Post()
   @Roles("super_admin", "department_admin")
+  @AuditLog("kb.create", AuditTargetType.KNOWLEDGE_BASE)
   async create(
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
@@ -149,6 +152,7 @@ export class KnowledgeBaseController {
   }
 
   @Patch(":id")
+  @AuditLog("kb.update", AuditTargetType.KNOWLEDGE_BASE)
   async update(
     @Param() params: unknown,
     @Body() body: unknown,
@@ -166,6 +170,7 @@ export class KnowledgeBaseController {
   }
 
   @Delete(":id")
+  @AuditLog("kb.delete", AuditTargetType.KNOWLEDGE_BASE)
   async delete(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,
@@ -191,6 +196,7 @@ export class KnowledgeBaseController {
   }
 
   @Post(":id/members")
+  @AuditLog("kb.member.add", AuditTargetType.KNOWLEDGE_BASE)
   async addMember(
     @Param() params: unknown,
     @Body() body: unknown,
@@ -206,6 +212,7 @@ export class KnowledgeBaseController {
   }
 
   @Delete(":id/members/:userId")
+  @AuditLog("kb.member.remove", AuditTargetType.KNOWLEDGE_BASE)
   async removeMember(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,
@@ -213,7 +220,11 @@ export class KnowledgeBaseController {
     const parsed = uuidParamSchema
       .extend({ userId: knowledgeBaseUserRequestSchema.shape.userId })
       .parse(params);
-    await this.knowledgeBaseService.removeMember(parsed.id, parsed.userId, this.requireUser(request));
+    await this.knowledgeBaseService.removeMember(
+      parsed.id,
+      parsed.userId,
+      this.requireUser(request),
+    );
     return {
       ok: true,
       data: {},
@@ -221,6 +232,7 @@ export class KnowledgeBaseController {
   }
 
   @Post(":id/admins")
+  @AuditLog("kb.admin.set", AuditTargetType.KNOWLEDGE_BASE)
   async addAdmin(
     @Param() params: unknown,
     @Body() body: unknown,
@@ -236,6 +248,7 @@ export class KnowledgeBaseController {
   }
 
   @Delete(":id/admins/:userId")
+  @AuditLog("kb.admin.unset", AuditTargetType.KNOWLEDGE_BASE)
   async removeAdmin(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,
@@ -243,7 +256,11 @@ export class KnowledgeBaseController {
     const parsed = uuidParamSchema
       .extend({ userId: knowledgeBaseUserRequestSchema.shape.userId })
       .parse(params);
-    await this.knowledgeBaseService.removeAdmin(parsed.id, parsed.userId, this.requireUser(request));
+    await this.knowledgeBaseService.removeAdmin(
+      parsed.id,
+      parsed.userId,
+      this.requireUser(request),
+    );
     return {
       ok: true,
       data: {},

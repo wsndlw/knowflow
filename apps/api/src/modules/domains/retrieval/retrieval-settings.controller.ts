@@ -9,12 +9,14 @@ import {
   Req,
 } from "@nestjs/common";
 import {
+  AuditTargetType,
   retrievalSettingsSchema,
   updateRetrievalSettingsRequestSchema,
   uuidParamSchema,
   type RetrievalSettings,
 } from "@knowflow/shared";
 
+import { AuditLog } from "../../../shared/audit/audit-log.decorator.js";
 import type { AuthenticatedRequest } from "../../../shared/guards/auth.guard.js";
 import { RetrievalSettingsService } from "./retrieval-settings.service.js";
 
@@ -41,6 +43,7 @@ export class RetrievalSettingsController {
   }
 
   @Put("knowledge-bases/:id/retrieval-settings")
+  @AuditLog("retrieval_settings.update", AuditTargetType.RETRIEVAL_SETTINGS)
   async update(
     @Param() params: unknown,
     @Body() body: unknown,

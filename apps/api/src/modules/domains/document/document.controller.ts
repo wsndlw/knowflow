@@ -16,6 +16,7 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
+  AuditTargetType,
   documentListResponseSchema,
   documentListQuerySchema,
   documentProgressEventSchema,
@@ -27,6 +28,7 @@ import {
 import type {} from "multer";
 import { Observable } from "rxjs";
 
+import { AuditLog } from "../../../shared/audit/audit-log.decorator.js";
 import {
   detectDocumentUploadKind,
   MAX_DOCUMENT_UPLOAD_BYTES,
@@ -57,6 +59,7 @@ export class DocumentController {
   ) {}
 
   @Post("knowledge-bases/:id/documents")
+  @AuditLog("document.upload", AuditTargetType.DOCUMENT)
   @UseInterceptors(
     FileInterceptor("file", {
       limits: { fileSize: MAX_DOCUMENT_UPLOAD_BYTES },
@@ -66,7 +69,9 @@ export class DocumentController {
           return;
         }
         callback(
-          new BadRequestException("Only PDF, Markdown, TXT, DOCX, CSV, XLSX, XLS, and image files with matching MIME types are supported"),
+          new BadRequestException(
+            "Only PDF, Markdown, TXT, DOCX, CSV, XLSX, XLS, and image files with matching MIME types are supported",
+          ),
           false,
         );
       },
@@ -114,22 +119,24 @@ export class DocumentController {
   ): Promise<Observable<MessageEvent>> {
     const { id } = uuidParamSchema.parse(params);
     await this.documentService.get(id, this.requireUser(request));
-    return this.documentService.createProgressStream(id).pipe((source) =>
-      new Observable<MessageEvent>((subscriber) =>
-        source.subscribe({
-          next: (event) => {
-            subscriber.next({
-              data: documentProgressEventSchema.parse(event),
-            });
-          },
-          error: (error: unknown) => subscriber.error(error),
-          complete: () => subscriber.complete(),
-        }),
-      ),
+    return this.documentService.createProgressStream(id).pipe(
+      (source) =>
+        new Observable<MessageEvent>((subscriber) =>
+          source.subscribe({
+            next: (event) => {
+              subscriber.next({
+                data: documentProgressEventSchema.parse(event),
+              });
+            },
+            error: (error: unknown) => subscriber.error(error),
+            complete: () => subscriber.complete(),
+          }),
+        ),
     );
   }
 
   @Delete("documents/:id")
+  @AuditLog("document.delete", AuditTargetType.DOCUMENT)
   async delete(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,
@@ -140,6 +147,7 @@ export class DocumentController {
   }
 
   @Post("documents/:id/reprocess")
+  @AuditLog("document.reprocess", AuditTargetType.DOCUMENT)
   async reprocess(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,

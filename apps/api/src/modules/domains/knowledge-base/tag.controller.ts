@@ -12,6 +12,7 @@ import {
   Req,
 } from "@nestjs/common";
 import {
+  AuditTargetType,
   createTagRequestSchema,
   replaceTagsRequestSchema,
   tagListResponseSchema,
@@ -22,6 +23,7 @@ import {
   type TagListResponse,
 } from "@knowflow/shared";
 
+import { AuditLog } from "../../../shared/audit/audit-log.decorator.js";
 import type { AuthenticatedRequest } from "../../../shared/guards/auth.guard.js";
 import { TagService } from "./tag.service.js";
 
@@ -50,6 +52,7 @@ export class TagController {
   }
 
   @Post("knowledge-bases/:id/tags")
+  @AuditLog("tag.create", AuditTargetType.TAG)
   async create(
     @Param() params: unknown,
     @Body() body: unknown,
@@ -65,6 +68,7 @@ export class TagController {
   }
 
   @Patch("tags/:id")
+  @AuditLog("tag.update", AuditTargetType.TAG)
   async update(
     @Param() params: unknown,
     @Body() body: unknown,
@@ -80,6 +84,7 @@ export class TagController {
   }
 
   @Delete("tags/:id")
+  @AuditLog("tag.delete", AuditTargetType.TAG)
   async delete(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,

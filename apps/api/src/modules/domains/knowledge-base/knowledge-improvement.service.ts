@@ -7,14 +7,13 @@ import {
 } from "@nestjs/common";
 import {
   answerFeedback,
+  analyticsEvents,
   conversationMessages,
-  conversations,
   db,
   knowledgeBases,
   knowledgeImprovementTasks,
   knowledgeItemFeedback,
   knowledgeItems,
-  messageCitations,
 } from "@knowflow/db";
 import type {
   ApproveImprovementTaskRequest,
@@ -318,11 +317,11 @@ export class KnowledgeImprovementService {
       (await db
         .select({ id: conversationMessages.id })
         .from(conversationMessages)
-        .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
-        .innerJoin(messageCitations, eq(messageCitations.messageId, conversationMessages.id))
+        .innerJoin(analyticsEvents, eq(analyticsEvents.targetId, conversationMessages.id))
         .where(
           and(
-            eq(messageCitations.knowledgeBaseId, task.knowledgeBaseId),
+            eq(analyticsEvents.eventType, "answer_generated"),
+            eq(analyticsEvents.knowledgeBaseId, task.knowledgeBaseId),
             inArray(conversationMessages.noAnswerType, ["no_answer", "low_confidence"]),
             ilike(conversationMessages.content, `%${keyword}%`),
             sql`${conversationMessages.createdAt} > ${task.updatedAt}`,
@@ -358,7 +357,8 @@ export class KnowledgeImprovementService {
     const conditions: SQL[] = [
       isNotNull(conversationMessages.noAnswerType),
       inArray(conversationMessages.noAnswerType, ["no_answer", "low_confidence", "knowledge_gap"]),
-      eq(messageCitations.knowledgeBaseId, knowledgeBaseId),
+      eq(analyticsEvents.eventType, "answer_generated"),
+      eq(analyticsEvents.knowledgeBaseId, knowledgeBaseId),
     ];
     if (messageId !== undefined) {
       conditions.push(eq(conversationMessages.id, messageId));
@@ -372,7 +372,7 @@ export class KnowledgeImprovementService {
         usedContext: conversationMessages.usedContext,
       })
       .from(conversationMessages)
-      .innerJoin(messageCitations, eq(messageCitations.messageId, conversationMessages.id))
+      .innerJoin(analyticsEvents, eq(analyticsEvents.targetId, conversationMessages.id))
       .where(and(...conditions))
       .orderBy(desc(conversationMessages.createdAt))
       .limit(SCAN_LIMIT);
@@ -397,6 +397,7 @@ export class KnowledgeImprovementService {
       .select({
         id: answerFeedback.id,
         messageId: answerFeedback.messageId,
+        conversationId: answerFeedback.conversationId,
         rating: answerFeedback.rating,
         reason: answerFeedback.reason,
         correctionContent: answerFeedback.correctionContent,
@@ -418,19 +419,24 @@ export class KnowledgeImprovementService {
       .orderBy(desc(answerFeedback.createdAt))
       .limit(SCAN_LIMIT);
 
-    return rows.map((row) => ({
-      knowledgeBaseId,
-      triggerType: row.rating === "correction" ? "user_correction" : "answer_dislike",
-      sourceMessageId: row.messageId,
-      sourceFeedbackId: row.id,
-      sourceQuestion: row.messageContent,
-      sourceContext: {
-        reason: row.reason,
-        correctionContent: row.correctionContent,
-        suggestedSource: row.suggestedSource,
-        usedContext: row.usedContext,
-      },
-    }));
+    const signals: Signal[] = [];
+    for (const row of rows) {
+      signals.push({
+        knowledgeBaseId,
+        triggerType: row.rating === "correction" ? "user_correction" : "answer_dislike",
+        sourceMessageId: row.messageId,
+        sourceFeedbackId: row.id,
+        sourceQuestion: await this.findPreviousUserQuestion(row.conversationId, row.messageId, row.messageContent),
+        sourceContext: {
+          reason: row.reason,
+          correctionContent: row.correctionContent,
+          suggestedSource: row.suggestedSource,
+          answerContent: row.messageContent,
+          usedContext: row.usedContext,
+        },
+      });
+    }
+    return signals;
   }
 
   private async collectItemFeedbackSignals(knowledgeBaseId: string): Promise<Signal[]> {
@@ -483,6 +489,35 @@ export class KnowledgeImprovementService {
       .onConflictDoNothing({ target: knowledgeImprovementTasks.dedupKey })
       .returning();
     return created ?? null;
+  }
+
+  private async findPreviousUserQuestion(
+    conversationId: string,
+    beforeMessageId: string,
+    fallback: string,
+  ): Promise<string> {
+    const [current] = await db
+      .select({ createdAt: conversationMessages.createdAt })
+      .from(conversationMessages)
+      .where(eq(conversationMessages.id, beforeMessageId))
+      .limit(1);
+    if (current === undefined) {
+      return fallback;
+    }
+
+    const [question] = await db
+      .select({ content: conversationMessages.content })
+      .from(conversationMessages)
+      .where(
+        and(
+          eq(conversationMessages.conversationId, conversationId),
+          eq(conversationMessages.role, "user"),
+          sql`${conversationMessages.createdAt} <= ${current.createdAt}`,
+        ),
+      )
+      .orderBy(desc(conversationMessages.createdAt))
+      .limit(1);
+    return question?.content ?? fallback;
   }
 
   private async generateDraft(task: TaskRow, relatedItems: { title: string; content: string }[]): Promise<CandidateDraft> {

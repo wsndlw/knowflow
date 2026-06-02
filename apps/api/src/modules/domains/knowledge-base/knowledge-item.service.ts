@@ -24,6 +24,7 @@ import type {
 import { and, asc, count, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 
 import { AliyunLlmService, EXPECTED_EMBEDDING_DIMENSION } from "../../../shared/llm/aliyun-llm.js";
+import { AnalyticsEventService } from "../analytics/analytics-event.service.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
 
@@ -58,6 +59,8 @@ export class KnowledgeItemService {
     private readonly accessService: KnowledgeBaseAccessService,
     @Inject(AliyunLlmService)
     private readonly llm: AliyunLlmService,
+    @Inject(AnalyticsEventService)
+    private readonly analytics: AnalyticsEventService,
   ) {}
 
   async listByKnowledgeBase(
@@ -88,6 +91,20 @@ export class KnowledgeItemService {
         .limit(query.pageSize)
         .offset(offset),
     ]);
+
+    if (query.keyword !== undefined) {
+      await this.analytics.recordSafe({
+        user,
+        eventType: "knowledge_searched",
+        targetType: "knowledge_base",
+        targetId: knowledgeBaseId,
+        knowledgeBaseId,
+        metadata: {
+          keyword: query.keyword,
+          resultCount: total,
+        },
+      });
+    }
 
     return {
       items: rows.map((row) => this.toKnowledgeItem(row)),
@@ -148,6 +165,13 @@ export class KnowledgeItemService {
           updatedAt: new Date(),
         })
         .where(eq(knowledgeItems.id, id));
+      await this.analytics.recordSafe({
+        user,
+        eventType: "knowledge_item_viewed",
+        targetType: "knowledge_item",
+        targetId: id,
+        knowledgeBaseId: row.knowledgeBaseId,
+      });
       return this.get(id, user, { incrementView: false });
     }
 
@@ -314,6 +338,17 @@ export class KnowledgeItemService {
           })
           .where(eq(knowledgeItems.id, id));
       }
+    });
+
+    await this.analytics.recordSafe({
+      user,
+      eventType: "feedback_submitted",
+      targetType: "knowledge_item",
+      targetId: id,
+      knowledgeBaseId: row.knowledgeBaseId,
+      metadata: {
+        rating: input.rating,
+      },
     });
 
     return this.get(id, user, { incrementView: false });

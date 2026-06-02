@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { AgentModule } from "./domains/agent/agent.module.js";
+import { AnalyticsModule } from "./domains/analytics/analytics.module.js";
 import { AuthModule } from "./domains/auth/auth.module.js";
 import { DocumentModule } from "./domains/document/document.module.js";
 import { HealthModule } from "./domains/health/health.module.js";
@@ -10,6 +11,7 @@ import { RetrievalModule } from "./domains/retrieval/retrieval.module.js";
 
 @Module({
   imports: [
+    AnalyticsModule,
     HealthModule,
     AuthModule,
     KnowledgeBaseModule,

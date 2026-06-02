@@ -101,3 +101,27 @@ export const CITATION_SOURCE_TYPES = [
 ] as const;
 
 export const FEEDBACK_RATINGS = ["useful", "not_useful", "correction"] as const;
+
+export const ANALYTICS_EVENT_TYPES = [
+  "knowledge_base_viewed",
+  "document_viewed",
+  "knowledge_item_viewed",
+  "knowledge_searched",
+  "question_asked",
+  "answer_generated",
+  "agent_called",
+  "citation_clicked",
+  "feedback_submitted",
+  "attachment_ingestion_requested",
+] as const;
+
+export const ANALYTICS_TARGET_TYPES = [
+  "knowledge_base",
+  "document",
+  "knowledge_item",
+  "agent",
+  "message",
+  "conversation",
+  "citation",
+  "attachment",
+] as const;

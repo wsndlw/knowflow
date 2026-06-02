@@ -17,6 +17,8 @@ import {
   MODEL_USAGE_TYPES,
   NO_ANSWER_TYPES,
   PLATFORM_ROLES,
+  ANALYTICS_EVENT_TYPES,
+  ANALYTICS_TARGET_TYPES,
 } from "./constants";
 
 export const platformRoleSchema = z.enum(PLATFORM_ROLES);
@@ -35,6 +37,8 @@ export const confidenceLevelSchema = z.enum(CONFIDENCE_LEVELS);
 export const noAnswerTypeSchema = z.enum(NO_ANSWER_TYPES);
 export const citationSourceTypeSchema = z.enum(CITATION_SOURCE_TYPES);
 export const feedbackRatingSchema = z.enum(FEEDBACK_RATINGS);
+export const analyticsEventTypeSchema = z.enum(ANALYTICS_EVENT_TYPES);
+export const analyticsTargetTypeSchema = z.enum(ANALYTICS_TARGET_TYPES);
 
 export const apiErrorSchema = z.object({
   code: z.string(),
@@ -454,6 +458,101 @@ export const answerFeedbackRequestSchema = z
     message: "Correction content is required",
   });
 
+export const analyticsRangeSchema = z.enum(["today", "7d", "30d", "custom"]);
+
+export const analyticsRangeQuerySchema = z
+  .object({
+    range: analyticsRangeSchema.default("7d"),
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+  })
+  .refine(
+    (value) => value.range !== "custom" || (value.from !== undefined && value.to !== undefined),
+    {
+      message: "Custom range requires from and to dates",
+    },
+  );
+
+export const analyticsEventRequestSchema = z.object({
+  eventType: analyticsEventTypeSchema,
+  targetType: analyticsTargetTypeSchema.optional(),
+  targetId: z.uuid().optional(),
+  knowledgeBaseId: z.uuid().optional(),
+  sessionId: z.string().trim().min(1).max(160).optional(),
+  agentId: z.uuid().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const analyticsEventSchema = z.object({
+  id: z.uuid(),
+  eventType: analyticsEventTypeSchema,
+  targetType: analyticsTargetTypeSchema.nullable(),
+  targetId: z.uuid().nullable(),
+  knowledgeBaseId: z.uuid().nullable(),
+  sessionId: z.string().nullable(),
+  agentId: z.uuid().nullable(),
+  durationMs: z.number().int().nonnegative().nullable(),
+  metadata: z.record(z.string(), z.unknown()),
+  createdDate: z.iso.date(),
+  createdAt: z.iso.datetime(),
+});
+
+export const analyticsMetricSchema = z.object({
+  visits: z.number().int().nonnegative(),
+  searches: z.number().int().nonnegative(),
+  questions: z.number().int().nonnegative(),
+  activeUsers: z.number().int().nonnegative(),
+});
+
+export const analyticsTopContentSchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  views: z.number().int().nonnegative(),
+  citations: z.number().int().nonnegative(),
+});
+
+export const analyticsNoAnswerQuestionSchema = z.object({
+  question: z.string(),
+  count: z.number().int().nonnegative(),
+  noAnswerType: noAnswerTypeSchema.nullable(),
+});
+
+export const analyticsFeedbackSummarySchema = z.object({
+  answerUseful: z.number().int().nonnegative(),
+  answerNotUseful: z.number().int().nonnegative(),
+  answerCorrections: z.number().int().nonnegative(),
+  knowledgeItemLikes: z.number().int().nonnegative(),
+  knowledgeItemDislikes: z.number().int().nonnegative(),
+});
+
+export const knowledgeBaseAnalyticsResponseSchema = z.object({
+  range: analyticsRangeQuerySchema,
+  knowledgeBaseId: z.uuid(),
+  metrics: analyticsMetricSchema,
+  popularDocuments: z.array(analyticsTopContentSchema),
+  popularKnowledgeItems: z.array(analyticsTopContentSchema),
+  noAnswerQuestions: z.array(analyticsNoAnswerQuestionSchema),
+  feedback: analyticsFeedbackSummarySchema,
+});
+
+export const analyticsKnowledgeBaseRankingSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  visits: z.number().int().nonnegative(),
+  questions: z.number().int().nonnegative(),
+  score: z.number().int().nonnegative(),
+});
+
+export const analyticsOverviewResponseSchema = z.object({
+  range: analyticsRangeQuerySchema,
+  totals: analyticsMetricSchema,
+  sevenDayActiveUsers: z.number().int().nonnegative(),
+  knowledgeBases: z.array(analyticsKnowledgeBaseRankingSchema),
+  topDocuments: z.array(analyticsTopContentSchema.extend({ knowledgeBaseName: z.string() })),
+  topKnowledgeItems: z.array(analyticsTopContentSchema.extend({ knowledgeBaseName: z.string() })),
+});
+
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type ApiFailure = z.infer<typeof apiFailureSchema>;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
@@ -522,3 +621,13 @@ export type ConfidenceLevel = z.infer<typeof confidenceLevelSchema>;
 export type NoAnswerType = z.infer<typeof noAnswerTypeSchema>;
 export type FeedbackRating = z.infer<typeof feedbackRatingSchema>;
 export type AnswerFeedbackRequest = z.infer<typeof answerFeedbackRequestSchema>;
+export type AnalyticsEventType = z.infer<typeof analyticsEventTypeSchema>;
+export type AnalyticsTargetType = z.infer<typeof analyticsTargetTypeSchema>;
+export type AnalyticsRangeQuery = z.infer<typeof analyticsRangeQuerySchema>;
+export type AnalyticsEventRequest = z.infer<typeof analyticsEventRequestSchema>;
+export type AnalyticsEvent = z.infer<typeof analyticsEventSchema>;
+export type AnalyticsTopContent = z.infer<typeof analyticsTopContentSchema>;
+export type KnowledgeBaseAnalyticsResponse = z.infer<
+  typeof knowledgeBaseAnalyticsResponseSchema
+>;
+export type AnalyticsOverviewResponse = z.infer<typeof analyticsOverviewResponseSchema>;

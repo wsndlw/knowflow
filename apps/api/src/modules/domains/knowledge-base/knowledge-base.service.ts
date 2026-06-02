@@ -31,6 +31,7 @@ import { and, asc, count, desc, eq, ilike, or, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
+import { AnalyticsEventService } from "../analytics/analytics-event.service.js";
 import { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
 
 const creator = alias(users, "creator");
@@ -68,6 +69,8 @@ export class KnowledgeBaseService {
   constructor(
     @Inject(KnowledgeBaseAccessService)
     private readonly accessService: KnowledgeBaseAccessService,
+    @Inject(AnalyticsEventService)
+    private readonly analytics: AnalyticsEventService,
   ) {}
 
   async list(
@@ -144,6 +147,14 @@ export class KnowledgeBaseService {
     if (row === undefined) {
       throw new NotFoundException("Knowledge base not found");
     }
+
+    await this.analytics.recordSafe({
+      user,
+      eventType: "knowledge_base_viewed",
+      targetType: "knowledge_base",
+      targetId: id,
+      knowledgeBaseId: id,
+    });
 
     return this.toKnowledgeBase(row, await this.accessService.canManage(id, user));
   }

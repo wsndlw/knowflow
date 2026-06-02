@@ -1,6 +1,7 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
   analyticsEvents,
+  conversationMessages,
   answerFeedback,
   db,
   documents,
@@ -10,6 +11,7 @@ import {
   messageCitations,
 } from "@knowflow/db";
 import type {
+  AnalyticsEventRequest,
   AnalyticsOverviewResponse,
   AnalyticsRangeQuery,
   AnalyticsTopContent,
@@ -17,9 +19,13 @@ import type {
 } from "@knowflow/shared";
 import type { AnyColumn } from "drizzle-orm";
 import { and, desc, eq, gte, inArray, isNotNull, lte, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "../knowledge-base/knowledge-base-access.service.js";
+import { AnalyticsEventService } from "./analytics-event.service.js";
+
+const noAnswerAssistantMessages = alias(conversationMessages, "no_answer_assistant_messages");
 
 type NormalizedRange = AnalyticsRangeQuery & {
   from: string;
@@ -37,7 +43,20 @@ export class AnalyticsService {
   constructor(
     @Inject(KnowledgeBaseAccessService)
     private readonly accessService: KnowledgeBaseAccessService,
+    @Inject(AnalyticsEventService)
+    private readonly eventService: AnalyticsEventService,
   ) {}
+
+  async recordUserReportedEvent(
+    user: AuthenticatedUser,
+    input: AnalyticsEventRequest,
+  ): Promise<void> {
+    if (input.knowledgeBaseId !== undefined) {
+      await this.ensureCanAccess(input.knowledgeBaseId, user);
+    }
+
+    await this.eventService.recordUserReportedEvent(user, input);
+  }
 
   async getKnowledgeBaseAnalytics(
     knowledgeBaseId: string,
@@ -404,25 +423,40 @@ export class AnalyticsService {
     range: NormalizedRange,
     knowledgeBaseId: string,
   ): Promise<KnowledgeBaseAnalyticsResponse["noAnswerQuestions"]> {
-    const questionExpression = sql<string>`coalesce(${analyticsEvents.metadata}->>'question', '')`;
-    const noAnswerTypeExpression = sql<string | null>`${analyticsEvents.metadata}->>'noAnswerType'`;
+    const questionExpression = sql<string>`coalesce((
+      select user_messages.content
+      from conversation_messages user_messages
+      where user_messages.conversation_id = ${noAnswerAssistantMessages.conversationId}
+        and user_messages.role = 'user'
+        and user_messages.created_at <= ${noAnswerAssistantMessages.createdAt}
+      order by user_messages.created_at desc, user_messages.id desc
+      limit 1
+    ), '')`;
+    const noAnswerCountExpression = sql<number>`count(distinct ${noAnswerAssistantMessages.id})::int`;
     const rows = await db
       .select({
         question: questionExpression,
-        noAnswerType: noAnswerTypeExpression,
-        count: sql<number>`count(*)::int`,
+        noAnswerType: noAnswerAssistantMessages.noAnswerType,
+        count: noAnswerCountExpression,
       })
-      .from(analyticsEvents)
-      .where(
+      .from(noAnswerAssistantMessages)
+      .innerJoin(
+        analyticsEvents,
         and(
-          this.eventRangeCondition(range),
-          eq(analyticsEvents.knowledgeBaseId, knowledgeBaseId),
+          eq(analyticsEvents.targetId, noAnswerAssistantMessages.id),
           eq(analyticsEvents.eventType, "answer_generated"),
-          sql`${analyticsEvents.metadata}->>'noAnswerType' is not null`,
+          eq(analyticsEvents.knowledgeBaseId, knowledgeBaseId),
         ),
       )
-      .groupBy(questionExpression, noAnswerTypeExpression)
-      .orderBy(desc(sql`count(*)`))
+      .where(
+        and(
+          eq(noAnswerAssistantMessages.role, "assistant"),
+          isNotNull(noAnswerAssistantMessages.noAnswerType),
+          this.createdAtRangeCondition(noAnswerAssistantMessages.createdAt, range),
+        ),
+      )
+      .groupBy(questionExpression, noAnswerAssistantMessages.noAnswerType)
+      .orderBy(desc(noAnswerCountExpression))
       .limit(10);
 
     return rows.map((row) => ({

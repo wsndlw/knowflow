@@ -21,7 +21,6 @@ import {
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import type { AuthenticatedRequest } from "../../../shared/guards/auth.guard.js";
-import { AnalyticsEventService } from "./analytics-event.service.js";
 import { AnalyticsService } from "./analytics.service.js";
 
 type EmptySuccess = {
@@ -32,8 +31,6 @@ type EmptySuccess = {
 @Controller()
 export class AnalyticsController {
   constructor(
-    @Inject(AnalyticsEventService)
-    private readonly analyticsEventService: AnalyticsEventService,
     @Inject(AnalyticsService)
     private readonly analyticsService: AnalyticsService,
   ) {}
@@ -71,7 +68,7 @@ export class AnalyticsController {
     @Req() request: AuthenticatedRequest,
   ): Promise<EmptySuccess> {
     const input = analyticsEventRequestSchema.parse(body);
-    await this.analyticsEventService.recordUserReportedEvent(this.requireUser(request), input);
+    await this.analyticsService.recordUserReportedEvent(this.requireUser(request), input);
     return { ok: true, data: {} };
   }
 

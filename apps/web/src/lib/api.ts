@@ -6,6 +6,15 @@ type ParsableSchema<T> = {
   parse: (input: unknown) => T;
 };
 
+export const emptyObjectSchema: ParsableSchema<Record<string, never>> = {
+  parse(input: unknown): Record<string, never> {
+    if (typeof input === "object" && input !== null && Object.keys(input).length === 0) {
+      return {};
+    }
+    throw new Error("响应格式无效");
+  },
+};
+
 export function apiUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }

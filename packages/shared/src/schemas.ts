@@ -626,6 +626,7 @@ export type AnalyticsTargetType = z.infer<typeof analyticsTargetTypeSchema>;
 export type AnalyticsRangeQuery = z.infer<typeof analyticsRangeQuerySchema>;
 export type AnalyticsEventRequest = z.infer<typeof analyticsEventRequestSchema>;
 export type AnalyticsEvent = z.infer<typeof analyticsEventSchema>;
+export type AnalyticsTopContent = z.infer<typeof analyticsTopContentSchema>;
 export type KnowledgeBaseAnalyticsResponse = z.infer<
   typeof knowledgeBaseAnalyticsResponseSchema
 >;

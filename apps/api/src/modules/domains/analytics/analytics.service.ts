@@ -3,12 +3,14 @@ import {
   analyticsEvents,
   conversationMessages,
   answerFeedback,
+  agents,
   db,
   documents,
   knowledgeItemFeedback,
   knowledgeItems,
   knowledgeBases,
   messageCitations,
+  users,
 } from "@knowflow/db";
 import type {
   AnalyticsEventRequest,
@@ -18,7 +20,7 @@ import type {
   KnowledgeBaseAnalyticsResponse,
 } from "@knowflow/shared";
 import type { AnyColumn } from "drizzle-orm";
-import { and, desc, eq, gte, inArray, isNotNull, lte, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, lte, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -156,6 +158,7 @@ export class AnalyticsService {
       questions,
       activeUsers,
       sevenDayActiveUsers,
+      entityTotals,
       knowledgeBaseRanking,
       topDocuments,
       topKnowledgeItems,
@@ -165,6 +168,7 @@ export class AnalyticsService {
       this.countEvents(range, { eventType: "question_asked" }),
       this.countActiveUsers(range),
       this.countActiveUsers(sevenDayRange),
+      this.getEntityTotals(),
       this.getKnowledgeBaseRanking(range),
       this.getPopularDocuments(range),
       this.getPopularKnowledgeItems(range),
@@ -178,6 +182,7 @@ export class AnalyticsService {
         questions,
         activeUsers,
       },
+      entityTotals,
       sevenDayActiveUsers,
       knowledgeBases: knowledgeBaseRanking,
       topDocuments: topDocuments.map((item) => ({
@@ -791,6 +796,27 @@ export class AnalyticsService {
       questions: row.questions,
       score: row.visits + row.questions,
     }));
+  }
+
+  private async getEntityTotals(): Promise<AnalyticsOverviewResponse["entityTotals"]> {
+    const [
+      [{ value: userCount } = { value: 0 }],
+      [{ value: knowledgeBaseCount } = { value: 0 }],
+      [{ value: documentCount } = { value: 0 }],
+      [{ value: agentCount } = { value: 0 }],
+    ] = await Promise.all([
+      db.select({ value: count() }).from(users),
+      db.select({ value: count() }).from(knowledgeBases),
+      db.select({ value: count() }).from(documents),
+      db.select({ value: count() }).from(agents).where(eq(agents.type, "official")),
+    ]);
+
+    return {
+      userCount,
+      knowledgeBaseCount,
+      documentCount,
+      agentCount,
+    };
   }
 
   private async ensureCanAccess(

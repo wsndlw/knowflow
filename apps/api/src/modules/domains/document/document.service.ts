@@ -14,12 +14,13 @@ import {
   users,
 } from "@knowflow/db";
 import type {
+  DocumentListQuery,
   DocumentListResponse,
   DocumentProgressEvent,
   DocumentSourceType,
   KnowledgeDocument,
 } from "@knowflow/shared";
-import { asc, count, eq } from "drizzle-orm";
+import { and, count, desc, eq, ilike, type SQL } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -164,18 +165,31 @@ export class DocumentService {
 
   async list(
     knowledgeBaseId: string,
+    query: DocumentListQuery,
     user: AuthenticatedUser,
   ): Promise<DocumentListResponse> {
     await this.ensureCanAccess(knowledgeBaseId, user);
 
-    const rows = await db
-      .select(this.documentSelection())
-      .from(documents)
-      .innerJoin(users, eq(users.id, documents.uploaderId))
-      .where(eq(documents.knowledgeBaseId, knowledgeBaseId))
-      .orderBy(asc(documents.createdAt));
+    const condition = this.buildListCondition(knowledgeBaseId, query);
+    const offset = (query.page - 1) * query.pageSize;
+    const [[{ value: total } = { value: 0 }], rows] = await Promise.all([
+      db.select({ value: count() }).from(documents).where(condition),
+      db
+        .select(this.documentSelection())
+        .from(documents)
+        .innerJoin(users, eq(users.id, documents.uploaderId))
+        .where(condition)
+        .orderBy(desc(documents.createdAt))
+        .limit(query.pageSize)
+        .offset(offset),
+    ]);
 
-    return { items: await this.toDocuments(rows) };
+    return {
+      items: await this.toDocuments(rows),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+    };
   }
 
   async get(id: string, user: AuthenticatedUser): Promise<KnowledgeDocument> {
@@ -221,6 +235,81 @@ export class DocumentService {
     }
   }
 
+  async reprocess(id: string, user: AuthenticatedUser): Promise<KnowledgeDocument> {
+    const row = await this.findRow(id);
+    if (row === undefined) {
+      throw new NotFoundException("Document not found");
+    }
+    await this.ensureCanManage(row.knowledgeBaseId, user);
+    if (
+      row.processStatus === "pending" ||
+      row.processStatus === "parsing" ||
+      row.processStatus === "chunking" ||
+      row.processStatus === "embedding"
+    ) {
+      throw new BadRequestException("Document is already being processed");
+    }
+
+    const [previousParentChunks, previousChildChunks] = await Promise.all([
+      db.select().from(parentChunks).where(eq(parentChunks.documentId, id)),
+      db.select().from(childChunks).where(eq(childChunks.documentId, id)),
+    ]);
+
+    await db.transaction(async (tx) => {
+      await tx.delete(childChunks).where(eq(childChunks.documentId, id));
+      await tx.delete(parentChunks).where(eq(parentChunks.documentId, id));
+      await tx
+        .update(documents)
+        .set({
+          processStatus: "pending",
+          parseStatus: "pending",
+          chunkStatus: "pending",
+          embeddingStatus: "pending",
+          errorMessage: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(documents.id, id));
+    });
+
+    const queue = createDocumentQueue();
+    try {
+      await queue.add(
+        "process",
+        { documentId: id },
+        { attempts: 2, backoff: { type: "exponential", delay: 5000 } },
+      );
+    } catch (error) {
+      await db.transaction(async (tx) => {
+        if (previousParentChunks.length > 0) {
+          await tx.insert(parentChunks).values(previousParentChunks);
+        }
+        if (previousChildChunks.length > 0) {
+          await tx.insert(childChunks).values(previousChildChunks);
+        }
+        await tx
+          .update(documents)
+          .set({
+            processStatus: row.processStatus,
+            parseStatus: row.parseStatus,
+            chunkStatus: row.chunkStatus,
+            embeddingStatus: row.embeddingStatus,
+            errorMessage: row.errorMessage,
+            updatedAt: new Date(),
+          })
+          .where(eq(documents.id, id));
+      });
+      throw error;
+    } finally {
+      await queue.close();
+    }
+
+    const updated = await this.findRow(id);
+    if (updated === undefined) {
+      throw new NotFoundException("Document not found");
+    }
+    return this.toDocument(updated, await this.countChunks(id));
+  }
+
   createProgressStream(documentId: string): Observable<DocumentProgressEvent> {
     return new Observable<DocumentProgressEvent>((subscriber) => {
       const redis = createRedisClient();
@@ -263,6 +352,18 @@ export class DocumentService {
       return;
     }
     throw new ForbiddenException("Cannot manage documents in this knowledge base");
+  }
+
+  private buildListCondition(knowledgeBaseId: string, query: DocumentListQuery): SQL | undefined {
+    const conditions: SQL[] = [eq(documents.knowledgeBaseId, knowledgeBaseId)];
+    if (query.keyword !== undefined) {
+      conditions.push(ilike(documents.title, `%${query.keyword}%`));
+    }
+    if (query.status !== undefined) {
+      conditions.push(eq(documents.processStatus, query.status));
+    }
+
+    return and(...conditions);
   }
 
   private detectFileKind(file: UploadedFile): FileKind {

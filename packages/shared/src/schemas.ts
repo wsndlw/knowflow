@@ -118,6 +118,15 @@ export const knowledgeBaseSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
+export const knowledgeBaseOverviewSchema = z.object({
+  documentCount: z.number().int().nonnegative(),
+  knowledgeItemCount: z.number().int().nonnegative(),
+  publishedKnowledgeItemCount: z.number().int().nonnegative(),
+  memberCount: z.number().int().nonnegative(),
+  documentStatusCounts: z.record(z.string(), z.number().int().nonnegative()),
+  knowledgeItemStatusCounts: z.record(z.string(), z.number().int().nonnegative()),
+});
+
 export const knowledgeBaseListQuerySchema = z.object({
   status: knowledgeBaseStatusSchema.optional(),
   visibility: knowledgeBaseVisibilitySchema.optional(),
@@ -213,6 +222,16 @@ export const documentSchema = z.object({
 
 export const documentListResponseSchema = z.object({
   items: z.array(documentSchema),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  total: z.number().int().nonnegative(),
+});
+
+export const documentListQuerySchema = z.object({
+  keyword: z.string().trim().min(1).max(120).optional(),
+  status: documentProcessStatusSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 export const documentProgressEventSchema = z.object({
@@ -584,9 +603,17 @@ export const analyticsKnowledgeBaseRankingSchema = z.object({
   score: z.number().int().nonnegative(),
 });
 
+export const analyticsEntityTotalsSchema = z.object({
+  userCount: z.number().int().nonnegative(),
+  knowledgeBaseCount: z.number().int().nonnegative(),
+  documentCount: z.number().int().nonnegative(),
+  agentCount: z.number().int().nonnegative(),
+});
+
 export const analyticsOverviewResponseSchema = z.object({
   range: analyticsRangeQuerySchema,
   totals: analyticsMetricSchema,
+  entityTotals: analyticsEntityTotalsSchema,
   sevenDayActiveUsers: z.number().int().nonnegative(),
   knowledgeBases: z.array(analyticsKnowledgeBaseRankingSchema),
   topDocuments: z.array(analyticsTopContentSchema.extend({ knowledgeBaseName: z.string() })),
@@ -723,6 +750,7 @@ export type KnowledgeBaseVisibility = z.infer<typeof knowledgeBaseVisibilitySche
 export type KnowledgeBaseStatus = z.infer<typeof knowledgeBaseStatusSchema>;
 export type KnowledgeBaseIndexStatus = z.infer<typeof knowledgeBaseIndexStatusSchema>;
 export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>;
+export type KnowledgeBaseOverview = z.infer<typeof knowledgeBaseOverviewSchema>;
 export type KnowledgeBaseListQuery = z.infer<typeof knowledgeBaseListQuerySchema>;
 export type KnowledgeBaseListResponse = z.infer<typeof knowledgeBaseListResponseSchema>;
 export type CreateKnowledgeBaseRequest = z.infer<typeof createKnowledgeBaseRequestSchema>;
@@ -739,6 +767,7 @@ export type UserOptionsResponse = z.infer<typeof userOptionsResponseSchema>;
 export type DocumentProcessStatus = z.infer<typeof documentProcessStatusSchema>;
 export type DocumentSourceType = z.infer<typeof documentSourceTypeSchema>;
 export type KnowledgeDocument = z.infer<typeof documentSchema>;
+export type DocumentListQuery = z.infer<typeof documentListQuerySchema>;
 export type DocumentListResponse = z.infer<typeof documentListResponseSchema>;
 export type DocumentProgressEvent = z.infer<typeof documentProgressEventSchema>;
 export type KnowledgeItemStatus = z.infer<typeof knowledgeItemStatusSchema>;
@@ -788,6 +817,7 @@ export type AnalyticsRangeQuery = z.infer<typeof analyticsRangeQuerySchema>;
 export type AnalyticsEventRequest = z.infer<typeof analyticsEventRequestSchema>;
 export type AnalyticsEvent = z.infer<typeof analyticsEventSchema>;
 export type AnalyticsTopContent = z.infer<typeof analyticsTopContentSchema>;
+export type AnalyticsEntityTotals = z.infer<typeof analyticsEntityTotalsSchema>;
 export type KnowledgeBaseAnalyticsResponse = z.infer<
   typeof knowledgeBaseAnalyticsResponseSchema
 >;

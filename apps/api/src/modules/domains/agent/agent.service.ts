@@ -35,6 +35,7 @@ import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
+import { AnalyticsEventService } from "../analytics/analytics-event.service.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "../knowledge-base/knowledge-base-access.service.js";
 import { RetrievalService } from "../retrieval/retrieval.service.js";
@@ -66,6 +67,8 @@ export class AgentService {
     private readonly accessService: KnowledgeBaseAccessService,
     @Inject(RetrievalService)
     private readonly retrievalService: RetrievalService,
+    @Inject(AnalyticsEventService)
+    private readonly analytics: AnalyticsEventService,
   ) {}
 
   async listAgents(user: AuthenticatedUser): Promise<AgentListResponse> {
@@ -142,6 +145,7 @@ export class AgentService {
     const conversation = await this.findConversationForUser(input.conversationId, input.user);
     const agent = await this.findAgentRow(conversation.agentId);
     await this.ensureCanUseAgent(agent, input.user);
+    const startedAt = Date.now();
 
     const [userMessage] = await db
       .insert(conversationMessages)
@@ -154,6 +158,19 @@ export class AgentService {
     if (userMessage === undefined) {
       throw new BadRequestException("Failed to create user message");
     }
+
+    await this.analytics.recordSafe({
+      user: input.user,
+      eventType: "agent_called",
+      targetType: "agent",
+      targetId: agent.id,
+      agentId: agent.id,
+      sessionId: conversation.id,
+      metadata: {
+        conversationId: conversation.id,
+        messageId: userMessage.id,
+      },
+    });
 
     await input.emit({
       type: "agent.started",
@@ -187,6 +204,7 @@ export class AgentService {
     if (result.state.assistantMessage === null) {
       throw new InternalServerErrorException("Agent did not produce an assistant message");
     }
+    await this.recordAskAnalytics(result.state, Date.now() - startedAt);
     return result.state.assistantMessage;
   }
 
@@ -221,6 +239,20 @@ export class AgentService {
       correctionContent: input.correctionContent ?? null,
       suggestedSource: input.suggestedSource ?? null,
       suggestedIngestion: input.suggestedIngestion ?? false,
+    });
+
+    await this.analytics.recordSafe({
+      user,
+      eventType: "feedback_submitted",
+      targetType: "message",
+      targetId: message.id,
+      knowledgeBaseId: firstCitation?.knowledgeBaseId ?? null,
+      sessionId: conversation.id,
+      agentId: conversation.agentId,
+      metadata: {
+        rating: input.rating,
+        reason: input.reason ?? null,
+      },
     });
   }
 
@@ -646,6 +678,57 @@ export class AgentService {
       latencyMs: Date.now() - state.startedAt,
       error: state.error,
     });
+  }
+
+  private async recordAskAnalytics(
+    state: AgentState,
+    durationMs: number,
+  ): Promise<void> {
+    const contextKnowledgeBaseIds = [
+      ...new Set((state.retrieval?.contexts ?? []).map((item) => item.knowledgeBaseId)),
+    ];
+    const citationKnowledgeBaseIds = [
+      ...new Set(state.citations.map((citation) => citation.knowledgeBaseId).filter((id): id is string => id !== null)),
+    ];
+    const questionKnowledgeBaseIds =
+      contextKnowledgeBaseIds.length > 0 ? contextKnowledgeBaseIds : state.knowledgeScope;
+    const answerKnowledgeBaseIds =
+      citationKnowledgeBaseIds.length > 0 ? citationKnowledgeBaseIds : questionKnowledgeBaseIds;
+
+    for (const knowledgeBaseId of questionKnowledgeBaseIds) {
+      await this.analytics.recordSafe({
+        user: state.user,
+        eventType: "question_asked",
+        targetType: "conversation",
+        targetId: state.conversation.id,
+        knowledgeBaseId,
+        sessionId: state.conversation.id,
+        agentId: state.conversation.agentId,
+        metadata: {
+          messageId: state.userMessageId,
+          question: state.query,
+          contextCount: state.retrieval?.contexts.length ?? 0,
+        },
+      });
+    }
+
+    for (const knowledgeBaseId of answerKnowledgeBaseIds) {
+      await this.analytics.recordSafe({
+        user: state.user,
+        eventType: "answer_generated",
+        targetType: "message",
+        ...(state.assistantMessage !== null ? { targetId: state.assistantMessage.id } : {}),
+        knowledgeBaseId,
+        sessionId: state.conversation.id,
+        agentId: state.conversation.agentId,
+        durationMs,
+        metadata: {
+          confidenceLevel: state.confidenceLevel,
+          noAnswerType: state.noAnswerType,
+          citationCount: state.citations.length,
+        },
+      });
+    }
   }
 
   private async findAgentRow(agentId: string): Promise<AgentRow> {

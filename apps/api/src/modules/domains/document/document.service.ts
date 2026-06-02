@@ -27,6 +27,7 @@ import type {} from "multer";
 import { Observable } from "rxjs";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
+import { AnalyticsEventService } from "../analytics/analytics-event.service.js";
 import { resolveLocalStorageRoot } from "../../../shared/storage/local-storage.js";
 import { KnowledgeBaseAccessService } from "../knowledge-base/knowledge-base-access.service.js";
 import { createDocumentQueue } from "./document-queue.js";
@@ -67,6 +68,8 @@ export class DocumentService {
   constructor(
     @Inject(KnowledgeBaseAccessService)
     private readonly accessService: KnowledgeBaseAccessService,
+    @Inject(AnalyticsEventService)
+    private readonly analytics: AnalyticsEventService,
   ) {}
 
   async upload(
@@ -181,6 +184,14 @@ export class DocumentService {
       throw new NotFoundException("Document not found");
     }
     await this.ensureCanAccess(row.knowledgeBaseId, user);
+
+    await this.analytics.recordSafe({
+      user,
+      eventType: "document_viewed",
+      targetType: "document",
+      targetId: id,
+      knowledgeBaseId: row.knowledgeBaseId,
+    });
 
     return this.toDocument(row, await this.countChunks(id));
   }

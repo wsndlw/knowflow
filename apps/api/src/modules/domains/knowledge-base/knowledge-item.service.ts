@@ -11,18 +11,21 @@ import {
   knowledgeBases,
   messageCitations,
   knowledgeItemFeedback,
+  knowledgeItemTags,
   knowledgeItems,
+  tags,
 } from "@knowflow/db";
 import type {
   BatchImportResponse,
   CreateKnowledgeItemRequest,
+  KnowledgeTag,
   KnowledgeItem,
   KnowledgeItemFeedbackRequest,
   KnowledgeItemListQuery,
   KnowledgeItemListResponse,
   UpdateKnowledgeItemRequest,
 } from "@knowflow/shared";
-import { and, asc, count, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { AliyunLlmService, EXPECTED_EMBEDDING_DIMENSION } from "../../../shared/llm/aliyun-llm.js";
 import { parseSpreadsheetForBatchImport } from "../../../shared/import/spreadsheet-import.js";
@@ -57,6 +60,15 @@ type KnowledgeItemRow = {
   updatedBy: string | null;
   verifiedBy: string | null;
   verifiedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type TagRow = {
+  id: string;
+  knowledgeBaseId: string;
+  name: string;
+  color: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -115,8 +127,10 @@ export class KnowledgeItemService {
       });
     }
 
+    const tagsByItemId = await this.fetchTagsByKnowledgeItemIds(rows.map((row) => row.id));
+
     return {
-      items: rows.map((row) => this.toKnowledgeItem(row)),
+      items: rows.map((row) => this.toKnowledgeItem(row, tagsByItemId.get(row.id) ?? [])),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -176,7 +190,9 @@ export class KnowledgeItemService {
     try {
       parsed = await parseSpreadsheetForBatchImport(file.buffer, kind);
     } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : "Import file is invalid");
+      throw new BadRequestException(
+        error instanceof Error ? error.message : "Import file is invalid",
+      );
     }
     if (parsed.rows.length === 0) {
       return { imported: 0, skipped: parsed.skipped, errors: parsed.errors };
@@ -239,7 +255,8 @@ export class KnowledgeItemService {
       return this.get(id, user, { incrementView: false });
     }
 
-    return this.toKnowledgeItem(row);
+    const tagsByItemId = await this.fetchTagsByKnowledgeItemIds([id]);
+    return this.toKnowledgeItem(row, tagsByItemId.get(id) ?? []);
   }
 
   async update(
@@ -349,9 +366,7 @@ export class KnowledgeItemService {
         .update(messageCitations)
         .set({ knowledgeItemId: null })
         .where(eq(messageCitations.knowledgeItemId, id));
-      await tx
-        .delete(knowledgeItemFeedback)
-        .where(eq(knowledgeItemFeedback.knowledgeItemId, id));
+      await tx.delete(knowledgeItemFeedback).where(eq(knowledgeItemFeedback.knowledgeItemId, id));
       await tx.delete(knowledgeItems).where(eq(knowledgeItems.id, id));
     });
   }
@@ -388,8 +403,7 @@ export class KnowledgeItemService {
         });
       }
 
-      const likeDelta =
-        (input.rating === "like" ? 1 : 0) - (previousRating === "like" ? 1 : 0);
+      const likeDelta = (input.rating === "like" ? 1 : 0) - (previousRating === "like" ? 1 : 0);
       const dislikeDelta =
         (input.rating === "dislike" ? 1 : 0) - (previousRating === "dislike" ? 1 : 0);
       if (likeDelta !== 0 || dislikeDelta !== 0) {
@@ -439,14 +453,58 @@ export class KnowledgeItemService {
         conditions.push(keywordCondition);
       }
     }
+    for (const tagId of query.tagIds) {
+      conditions.push(
+        exists(
+          db
+            .select({ id: knowledgeItemTags.id })
+            .from(knowledgeItemTags)
+            .where(
+              and(
+                eq(knowledgeItemTags.knowledgeItemId, knowledgeItems.id),
+                eq(knowledgeItemTags.tagId, tagId),
+              ),
+            ),
+        ),
+      );
+    }
 
     return and(...conditions);
   }
 
-  private async findRow(
-    id: string,
-    userId: string,
-  ): Promise<KnowledgeItemRow | undefined> {
+  private async fetchTagsByKnowledgeItemIds(
+    knowledgeItemIds: string[],
+  ): Promise<Map<string, KnowledgeTag[]>> {
+    const byItemId = new Map<string, KnowledgeTag[]>();
+    if (knowledgeItemIds.length === 0) {
+      return byItemId;
+    }
+
+    const rows = await db
+      .select({
+        knowledgeItemId: knowledgeItemTags.knowledgeItemId,
+        id: tags.id,
+        knowledgeBaseId: tags.knowledgeBaseId,
+        name: tags.name,
+        color: tags.color,
+        createdAt: tags.createdAt,
+        updatedAt: tags.updatedAt,
+      })
+      .from(knowledgeItemTags)
+      .innerJoin(tags, eq(tags.id, knowledgeItemTags.tagId))
+      .where(inArray(knowledgeItemTags.knowledgeItemId, knowledgeItemIds))
+      .orderBy(asc(tags.name));
+
+    for (const row of rows) {
+      const current = byItemId.get(row.knowledgeItemId) ?? [];
+      current.push(this.toTag(row));
+      byItemId.set(row.knowledgeItemId, current);
+    }
+
+    return byItemId;
+  }
+
+  private async findRow(id: string, userId: string): Promise<KnowledgeItemRow | undefined> {
     const [row] = await db
       .select(this.selection())
       .from(knowledgeItems)
@@ -511,7 +569,9 @@ export class KnowledgeItemService {
   private detectImportFileKind(file: UploadedFile): "csv" | "excel" {
     const kind = detectBatchImportKind(file);
     if (kind === null) {
-      throw new BadRequestException("Only CSV, XLSX, and XLS files with matching MIME types are supported for batch import");
+      throw new BadRequestException(
+        "Only CSV, XLSX, and XLS files with matching MIME types are supported for batch import",
+      );
     }
     if (!validateBatchImportContent(file, kind)) {
       throw new BadRequestException("Import file content does not match its declared type");
@@ -519,20 +579,14 @@ export class KnowledgeItemService {
     return kind;
   }
 
-  private async ensureCanAccess(
-    knowledgeBaseId: string,
-    user: AuthenticatedUser,
-  ): Promise<void> {
+  private async ensureCanAccess(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canAccess(knowledgeBaseId, user)) {
       return;
     }
     throw new NotFoundException("Knowledge item not found");
   }
 
-  private async ensureCanReadRow(
-    row: KnowledgeItemRow,
-    user: AuthenticatedUser,
-  ): Promise<void> {
+  private async ensureCanReadRow(row: KnowledgeItemRow, user: AuthenticatedUser): Promise<void> {
     if (!(await this.accessService.canAccess(row.knowledgeBaseId, user))) {
       throw new NotFoundException("Knowledge item not found");
     }
@@ -545,17 +599,14 @@ export class KnowledgeItemService {
     throw new NotFoundException("Knowledge item not found");
   }
 
-  private async ensureCanManage(
-    knowledgeBaseId: string,
-    user: AuthenticatedUser,
-  ): Promise<void> {
+  private async ensureCanManage(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canManage(knowledgeBaseId, user)) {
       return;
     }
     throw new ForbiddenException("Cannot manage knowledge items in this knowledge base");
   }
 
-  private toKnowledgeItem(row: KnowledgeItemRow): KnowledgeItem {
+  private toKnowledgeItem(row: KnowledgeItemRow, tagItems: KnowledgeTag[]): KnowledgeItem {
     return {
       id: row.id,
       knowledgeBaseId: row.knowledgeBaseId,
@@ -575,10 +626,19 @@ export class KnowledgeItemService {
       likeCount: row.likeCount,
       dislikeCount: row.dislikeCount,
       userFeedback: row.userFeedback,
+      tags: tagItems,
       createdBy: row.createdBy,
       updatedBy: row.updatedBy,
       verifiedBy: row.verifiedBy,
       verifiedAt: row.verifiedAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private toTag(row: TagRow): KnowledgeTag {
+    return {
+      ...row,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

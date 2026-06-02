@@ -154,10 +154,7 @@ export class KnowledgeImprovementService {
     return created;
   }
 
-  async scanKnowledgeBase(
-    knowledgeBaseId: string,
-    messageId?: string,
-  ): Promise<TaskRow[]> {
+  async scanKnowledgeBase(knowledgeBaseId: string, messageId?: string): Promise<TaskRow[]> {
     const signals = await this.collectSignals(knowledgeBaseId, messageId);
     const created: TaskRow[] = [];
     for (const signal of signals) {
@@ -243,7 +240,10 @@ export class KnowledgeImprovementService {
     }
 
     try {
-      const relatedItems = await this.findRelatedItems(processingTask.knowledgeBaseId, processingTask.sourceQuestion);
+      const relatedItems = await this.findRelatedItems(
+        processingTask.knowledgeBaseId,
+        processingTask.sourceQuestion,
+      );
       const draft = await this.generateDraft(processingTask, relatedItems);
       await db
         .update(knowledgeImprovementTasks)
@@ -268,7 +268,8 @@ export class KnowledgeImprovementService {
         .update(knowledgeImprovementTasks)
         .set({
           status: "failed",
-          aiReasoning: error instanceof Error ? error.message.slice(0, 2000) : "AI generation failed",
+          aiReasoning:
+            error instanceof Error ? error.message.slice(0, 2000) : "AI generation failed",
           updatedAt: new Date(),
         })
         .where(
@@ -300,7 +301,9 @@ export class KnowledgeImprovementService {
       throw new BadRequestException("Candidate title and content are required");
     }
 
-    const [embedding] = await this.llm.embedTexts([this.embeddingText({ title, summary, content })]);
+    const [embedding] = await this.llm.embedTexts([
+      this.embeddingText({ title, summary, content }),
+    ]);
     if (embedding?.length !== EXPECTED_EMBEDDING_DIMENSION) {
       throw new BadRequestException("Knowledge item embedding failed");
     }
@@ -434,8 +437,12 @@ export class KnowledgeImprovementService {
   private async collectSignals(knowledgeBaseId: string, messageId?: string): Promise<Signal[]> {
     const [noAnswerSignals, answerFeedbackSignals, itemFeedbackSignals] = await Promise.all([
       this.collectNoAnswerSignals(knowledgeBaseId, messageId),
-      messageId === undefined ? this.collectAnswerFeedbackSignals(knowledgeBaseId) : Promise.resolve([]),
-      messageId === undefined ? this.collectItemFeedbackSignals(knowledgeBaseId) : Promise.resolve([]),
+      messageId === undefined
+        ? this.collectAnswerFeedbackSignals(knowledgeBaseId)
+        : Promise.resolve([]),
+      messageId === undefined
+        ? this.collectItemFeedbackSignals(knowledgeBaseId)
+        : Promise.resolve([]),
     ]);
     return [...noAnswerSignals, ...answerFeedbackSignals, ...itemFeedbackSignals];
   }
@@ -464,7 +471,12 @@ export class KnowledgeImprovementService {
       eq(analyticsEvents.eventType, "answer_generated"),
       eq(analyticsEvents.knowledgeBaseId, knowledgeBaseId),
     ];
-    this.pushCursorCondition(conditions, conversationMessages.createdAt, conversationMessages.id, cursor);
+    this.pushCursorCondition(
+      conditions,
+      conversationMessages.createdAt,
+      conversationMessages.id,
+      cursor,
+    );
 
     const rows = await db
       .select({
@@ -513,9 +525,7 @@ export class KnowledgeImprovementService {
       eq(answerFeedback.rating, "not_useful"),
       and(eq(answerFeedback.rating, "correction"), isNotNull(answerFeedback.correctionContent)),
     );
-    const conditions: SQL[] = [
-      eq(answerFeedback.knowledgeBaseId, knowledgeBaseId),
-    ];
+    const conditions: SQL[] = [eq(answerFeedback.knowledgeBaseId, knowledgeBaseId)];
     if (feedbackCondition !== undefined) {
       conditions.push(feedbackCondition);
     }
@@ -550,7 +560,11 @@ export class KnowledgeImprovementService {
         triggerType: row.rating === "correction" ? "user_correction" : "answer_dislike",
         sourceMessageId: row.messageId,
         sourceFeedbackId: row.id,
-        sourceQuestion: await this.findPreviousUserQuestion(row.conversationId, row.messageId, row.messageContent),
+        sourceQuestion: await this.findPreviousUserQuestion(
+          row.conversationId,
+          row.messageId,
+          row.messageContent,
+        ),
         sourceContext: {
           reason: row.reason,
           correctionContent: row.correctionContent,
@@ -571,7 +585,12 @@ export class KnowledgeImprovementService {
       eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId),
       eq(knowledgeItemFeedback.rating, "dislike"),
     ];
-    this.pushCursorCondition(conditions, knowledgeItemFeedback.createdAt, knowledgeItemFeedback.id, cursor);
+    this.pushCursorCondition(
+      conditions,
+      knowledgeItemFeedback.createdAt,
+      knowledgeItemFeedback.id,
+      cursor,
+    );
 
     const rows = await db
       .select({
@@ -673,7 +692,10 @@ export class KnowledgeImprovementService {
           eq(answerFeedback.knowledgeBaseId, knowledgeBaseId),
           or(
             eq(answerFeedback.rating, "not_useful"),
-            and(eq(answerFeedback.rating, "correction"), isNotNull(answerFeedback.correctionContent)),
+            and(
+              eq(answerFeedback.rating, "correction"),
+              isNotNull(answerFeedback.correctionContent),
+            ),
           ),
         ),
       )
@@ -687,7 +709,11 @@ export class KnowledgeImprovementService {
         triggerType: row.rating === "correction" ? "user_correction" : "answer_dislike",
         sourceMessageId: row.messageId,
         sourceFeedbackId: row.id,
-        sourceQuestion: await this.findPreviousUserQuestion(row.conversationId, row.messageId, row.messageContent),
+        sourceQuestion: await this.findPreviousUserQuestion(
+          row.conversationId,
+          row.messageId,
+          row.messageContent,
+        ),
         sourceContext: {
           reason: row.reason,
           correctionContent: row.correctionContent,
@@ -776,12 +802,14 @@ export class KnowledgeImprovementService {
     knowledgeBaseId: string,
     sourceType: ScanSourceType,
   ): Promise<ScanCursorRow | null> {
-    return (await db.query.knowledgeImprovementScanCursors.findFirst({
-      where: and(
-        eq(knowledgeImprovementScanCursors.knowledgeBaseId, knowledgeBaseId),
-        eq(knowledgeImprovementScanCursors.sourceType, sourceType),
-      ),
-    })) ?? null;
+    return (
+      (await db.query.knowledgeImprovementScanCursors.findFirst({
+        where: and(
+          eq(knowledgeImprovementScanCursors.knowledgeBaseId, knowledgeBaseId),
+          eq(knowledgeImprovementScanCursors.sourceType, sourceType),
+        ),
+      })) ?? null
+    );
   }
 
   private async advanceScanCursor(
@@ -905,7 +933,10 @@ export class KnowledgeImprovementService {
     return false;
   }
 
-  private async generateDraft(task: TaskRow, relatedItems: { title: string; content: string }[]): Promise<CandidateDraft> {
+  private async generateDraft(
+    task: TaskRow,
+    relatedItems: { title: string; content: string }[],
+  ): Promise<CandidateDraft> {
     let response: string;
     try {
       response = await callModelByUsage(
@@ -955,13 +986,16 @@ export class KnowledgeImprovementService {
     return {
       title,
       content,
-      summary: typeof summaryValue === "string" && summaryValue.trim().length > 0
-        ? summaryValue.trim().slice(0, 2000)
-        : null,
-      confidence: typeof confidenceValue === "number"
-        ? Math.max(0, Math.min(1, confidenceValue))
-        : null,
-      reasoning: this.cleanString(parsed["reasoning"], "Generated from usage signals").slice(0, 2000),
+      summary:
+        typeof summaryValue === "string" && summaryValue.trim().length > 0
+          ? summaryValue.trim().slice(0, 2000)
+          : null,
+      confidence:
+        typeof confidenceValue === "number" ? Math.max(0, Math.min(1, confidenceValue)) : null,
+      reasoning: this.cleanString(parsed["reasoning"], "Generated from usage signals").slice(
+        0,
+        2000,
+      ),
       metadata: {
         source: "ai_generated",
         triggerType: task.triggerType,
@@ -1002,7 +1036,10 @@ export class KnowledgeImprovementService {
         and(
           eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId),
           eq(knowledgeItems.status, "published"),
-          or(ilike(knowledgeItems.title, `%${keyword}%`), ilike(knowledgeItems.content, `%${keyword}%`)),
+          or(
+            ilike(knowledgeItems.title, `%${keyword}%`),
+            ilike(knowledgeItems.content, `%${keyword}%`),
+          ),
         ),
       )
       .limit(RELATED_ITEM_LIMIT);
@@ -1032,10 +1069,7 @@ export class KnowledgeImprovementService {
     return row;
   }
 
-  private async ensureCanManage(
-    knowledgeBaseId: string,
-    user: AuthenticatedUser,
-  ): Promise<void> {
+  private async ensureCanManage(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canManage(knowledgeBaseId, user)) {
       return;
     }
@@ -1049,7 +1083,11 @@ export class KnowledgeImprovementService {
     const queue = createImprovementQueue();
     try {
       for (const taskId of taskIds) {
-        await queue.add("generate", { taskId }, { attempts: 2, backoff: { type: "exponential", delay: 5000 } });
+        await queue.add(
+          "generate",
+          { taskId },
+          { attempts: 2, backoff: { type: "exponential", delay: 5000 } },
+        );
       }
     } finally {
       await queue.close();
@@ -1139,6 +1177,7 @@ export class KnowledgeImprovementService {
       likeCount: row.likeCount,
       dislikeCount: row.dislikeCount,
       userFeedback: null,
+      tags: [],
       createdBy: row.createdBy,
       updatedBy: row.updatedBy,
       verifiedBy: row.verifiedBy,

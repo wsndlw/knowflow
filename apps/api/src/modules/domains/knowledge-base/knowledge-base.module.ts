@@ -8,12 +8,15 @@ import { KnowledgeImprovementService } from "./knowledge-improvement.service.js"
 import { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
 import { KnowledgeBaseController } from "./knowledge-base.controller.js";
 import { KnowledgeBaseService } from "./knowledge-base.service.js";
+import { TagController } from "./tag.controller.js";
+import { TagService } from "./tag.service.js";
 
 @Module({
   controllers: [
     KnowledgeBaseController,
     KnowledgeItemController,
     KnowledgeImprovementController,
+    TagController,
   ],
   providers: [
     AliyunLlmService,
@@ -21,6 +24,7 @@ import { KnowledgeBaseService } from "./knowledge-base.service.js";
     KnowledgeBaseService,
     KnowledgeItemService,
     KnowledgeImprovementService,
+    TagService,
   ],
   exports: [KnowledgeBaseAccessService, KnowledgeImprovementService],
 })

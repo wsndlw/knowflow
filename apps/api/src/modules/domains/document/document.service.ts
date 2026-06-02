@@ -8,18 +8,21 @@ import {
 import {
   childChunks,
   db,
+  documentTags,
   documents,
   files,
   parentChunks,
+  tags,
   users,
 } from "@knowflow/db";
 import type {
   DocumentListQuery,
   DocumentListResponse,
   DocumentProgressEvent,
+  KnowledgeTag,
   KnowledgeDocument,
 } from "@knowflow/shared";
-import { and, count, desc, eq, ilike, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, ilike, inArray, type SQL } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -59,6 +62,15 @@ type DocumentRow = {
   embeddingStatus: KnowledgeDocument["embeddingStatus"];
   enabled: boolean;
   errorMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type TagRow = {
+  id: string;
+  knowledgeBaseId: string;
+  name: string;
+  color: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -140,7 +152,11 @@ export class DocumentService {
 
       const queue = createDocumentQueue();
       try {
-        await queue.add("process", { documentId: created.id }, { attempts: 2, backoff: { type: "exponential", delay: 5000 } });
+        await queue.add(
+          "process",
+          { documentId: created.id },
+          { attempts: 2, backoff: { type: "exponential", delay: 5000 } },
+        );
       } finally {
         await queue.close();
       }
@@ -183,8 +199,10 @@ export class DocumentService {
         .offset(offset),
     ]);
 
+    const tagsByDocumentId = await this.fetchTagsByDocumentIds(rows.map((row) => row.id));
+
     return {
-      items: await this.toDocuments(rows),
+      items: await this.toDocuments(rows, tagsByDocumentId),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -206,7 +224,8 @@ export class DocumentService {
       knowledgeBaseId: row.knowledgeBaseId,
     });
 
-    return this.toDocument(row, await this.countChunks(id));
+    const tagsByDocumentId = await this.fetchTagsByDocumentIds([id]);
+    return this.toDocument(row, await this.countChunks(id), tagsByDocumentId.get(id) ?? []);
   }
 
   async delete(id: string, user: AuthenticatedUser): Promise<void> {
@@ -216,9 +235,14 @@ export class DocumentService {
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
 
-    const [file] = row.fileId === null
-      ? []
-      : await db.select({ storagePath: files.storagePath }).from(files).where(eq(files.id, row.fileId)).limit(1);
+    const [file] =
+      row.fileId === null
+        ? []
+        : await db
+            .select({ storagePath: files.storagePath })
+            .from(files)
+            .where(eq(files.id, row.fileId))
+            .limit(1);
 
     await db.transaction(async (tx) => {
       await tx.delete(childChunks).where(eq(childChunks.documentId, id));
@@ -306,7 +330,8 @@ export class DocumentService {
     if (updated === undefined) {
       throw new NotFoundException("Document not found");
     }
-    return this.toDocument(updated, await this.countChunks(id));
+    const tagsByDocumentId = await this.fetchTagsByDocumentIds([id]);
+    return this.toDocument(updated, await this.countChunks(id), tagsByDocumentId.get(id) ?? []);
   }
 
   createProgressStream(documentId: string): Observable<DocumentProgressEvent> {
@@ -361,6 +386,16 @@ export class DocumentService {
     if (query.status !== undefined) {
       conditions.push(eq(documents.processStatus, query.status));
     }
+    for (const tagId of query.tagIds) {
+      conditions.push(
+        exists(
+          db
+            .select({ id: documentTags.id })
+            .from(documentTags)
+            .where(and(eq(documentTags.documentId, documents.id), eq(documentTags.tagId, tagId))),
+        ),
+      );
+    }
 
     return and(...conditions);
   }
@@ -368,7 +403,9 @@ export class DocumentService {
   private detectFileKind(file: UploadedFile): FileKind {
     const kind = detectDocumentUploadKind(file);
     if (kind === null) {
-      throw new BadRequestException("Only PDF, Markdown, TXT, DOCX, CSV, XLSX, XLS, and image files with matching MIME types are supported");
+      throw new BadRequestException(
+        "Only PDF, Markdown, TXT, DOCX, CSV, XLSX, XLS, and image files with matching MIME types are supported",
+      );
     }
     if (!validateDocumentUploadContent(file, kind)) {
       throw new BadRequestException("Document file content does not match its declared type");
@@ -416,7 +453,9 @@ export class DocumentService {
 
   private isWithinDirectory(root: string, target: string): boolean {
     const relativePath = path.relative(root, target);
-    return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+    return (
+      relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+    );
   }
 
   private normalizeTitle(originalName: string): string {
@@ -458,29 +497,83 @@ export class DocumentService {
     };
   }
 
-  private async toDocuments(rows: DocumentRow[]): Promise<KnowledgeDocument[]> {
-    return Promise.all(rows.map(async (row) => this.toDocument(row, await this.countChunks(row.id))));
+  private async fetchTagsByDocumentIds(
+    documentIds: string[],
+  ): Promise<Map<string, KnowledgeTag[]>> {
+    const byDocumentId = new Map<string, KnowledgeTag[]>();
+    if (documentIds.length === 0) {
+      return byDocumentId;
+    }
+
+    const rows = await db
+      .select({
+        documentId: documentTags.documentId,
+        id: tags.id,
+        knowledgeBaseId: tags.knowledgeBaseId,
+        name: tags.name,
+        color: tags.color,
+        createdAt: tags.createdAt,
+        updatedAt: tags.updatedAt,
+      })
+      .from(documentTags)
+      .innerJoin(tags, eq(tags.id, documentTags.tagId))
+      .where(inArray(documentTags.documentId, documentIds))
+      .orderBy(asc(tags.name));
+
+    for (const row of rows) {
+      const current = byDocumentId.get(row.documentId) ?? [];
+      current.push(this.toTag(row));
+      byDocumentId.set(row.documentId, current);
+    }
+
+    return byDocumentId;
+  }
+
+  private async toDocuments(
+    rows: DocumentRow[],
+    tagsByDocumentId: Map<string, KnowledgeTag[]>,
+  ): Promise<KnowledgeDocument[]> {
+    return Promise.all(
+      rows.map(async (row) =>
+        this.toDocument(row, await this.countChunks(row.id), tagsByDocumentId.get(row.id) ?? []),
+      ),
+    );
   }
 
   private async countChunks(documentId: string): Promise<{
     parentChunkCount: number;
     childChunkCount: number;
   }> {
-    const [[{ value: parentChunkCount } = { value: 0 }], [{ value: childChunkCount } = { value: 0 }]] =
-      await Promise.all([
-        db.select({ value: count() }).from(parentChunks).where(eq(parentChunks.documentId, documentId)),
-        db.select({ value: count() }).from(childChunks).where(eq(childChunks.documentId, documentId)),
-      ]);
+    const [
+      [{ value: parentChunkCount } = { value: 0 }],
+      [{ value: childChunkCount } = { value: 0 }],
+    ] = await Promise.all([
+      db
+        .select({ value: count() })
+        .from(parentChunks)
+        .where(eq(parentChunks.documentId, documentId)),
+      db.select({ value: count() }).from(childChunks).where(eq(childChunks.documentId, documentId)),
+    ]);
     return { parentChunkCount, childChunkCount };
   }
 
   private toDocument(
     row: DocumentRow,
     counts: { parentChunkCount: number; childChunkCount: number },
+    tagItems: KnowledgeTag[],
   ): KnowledgeDocument {
     return {
       ...row,
       ...counts,
+      tags: tagItems,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private toTag(row: TagRow): KnowledgeTag {
+    return {
+      ...row,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

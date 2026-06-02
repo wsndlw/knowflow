@@ -46,6 +46,7 @@ import {
 import { createHash } from "node:crypto";
 
 import { AliyunLlmService, EXPECTED_EMBEDDING_DIMENSION } from "../../../shared/llm/aliyun-llm.js";
+import { callModelByUsage } from "../../../shared/llm/model-usage-client.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
 import { createImprovementQueue } from "./knowledge-improvement-queue.js";
@@ -907,11 +908,9 @@ export class KnowledgeImprovementService {
   private async generateDraft(task: TaskRow, relatedItems: { title: string; content: string }[]): Promise<CandidateDraft> {
     let response: string;
     try {
-      response = await this.llm.completeChat({
-        usageType: "knowledge_production",
-        temperature: 0.2,
-        maxOutputTokens: 1800,
-        messages: [
+      response = await callModelByUsage(
+        "knowledge_production",
+        [
           {
             role: "system",
             content:
@@ -934,7 +933,8 @@ export class KnowledgeImprovementService {
             }),
           },
         ],
-      });
+        { temperature: 0.2, maxOutputTokens: 1800 },
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Knowledge production model failed";
       if (message.includes("knowledge_production") || message.includes("Model usage policy")) {

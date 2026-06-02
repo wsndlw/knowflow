@@ -14,6 +14,7 @@ import {
   knowledgeItems,
 } from "@knowflow/db";
 import type {
+  BatchImportResponse,
   CreateKnowledgeItemRequest,
   KnowledgeItem,
   KnowledgeItemFeedbackRequest,
@@ -24,9 +25,17 @@ import type {
 import { and, asc, count, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 
 import { AliyunLlmService, EXPECTED_EMBEDDING_DIMENSION } from "../../../shared/llm/aliyun-llm.js";
+import { parseSpreadsheetForBatchImport } from "../../../shared/import/spreadsheet-import.js";
+import {
+  detectBatchImportKind,
+  MAX_BATCH_IMPORT_BYTES,
+  validateBatchImportContent,
+} from "../../../shared/upload/upload-file-validation.js";
 import { AnalyticsEventService } from "../analytics/analytics-event.service.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
+
+type UploadedFile = Express.Multer.File;
 
 type KnowledgeItemRow = {
   id: string;
@@ -144,6 +153,61 @@ export class KnowledgeItemService {
     }
 
     return this.get(created.id, user, { incrementView: false });
+  }
+
+  async batchImport(
+    knowledgeBaseId: string,
+    file: UploadedFile | undefined,
+    user: AuthenticatedUser,
+  ): Promise<BatchImportResponse> {
+    await this.ensureCanManage(knowledgeBaseId, user);
+    if (file === undefined) {
+      throw new BadRequestException("Import file is required");
+    }
+    if (file.size <= 0) {
+      throw new BadRequestException("Import file is empty");
+    }
+    if (file.size > MAX_BATCH_IMPORT_BYTES) {
+      throw new BadRequestException("Import file exceeds 10 MB");
+    }
+    const kind = this.detectImportFileKind(file);
+
+    let parsed: Awaited<ReturnType<typeof parseSpreadsheetForBatchImport>>;
+    try {
+      parsed = await parseSpreadsheetForBatchImport(file.buffer, kind);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : "Import file is invalid");
+    }
+    if (parsed.rows.length === 0) {
+      return { imported: 0, skipped: parsed.skipped, errors: parsed.errors };
+    }
+
+    const inserted = await db
+      .insert(knowledgeItems)
+      .values(
+        parsed.rows.map((row) => ({
+          knowledgeBaseId,
+          title: row.title,
+          content: row.content,
+          summary: row.summary,
+          status: "draft" as const,
+          enabled: false,
+          metadata: {
+            source: "batch_import",
+            fileName: file.originalname,
+            row: row.row,
+          },
+          createdBy: user.id,
+          updatedBy: user.id,
+        })),
+      )
+      .returning({ id: knowledgeItems.id });
+
+    return {
+      imported: inserted.length,
+      skipped: parsed.skipped,
+      errors: parsed.errors,
+    };
   }
 
   async get(
@@ -442,6 +506,17 @@ export class KnowledgeItemService {
     if (document === undefined) {
       throw new BadRequestException("Source document not found in this knowledge base");
     }
+  }
+
+  private detectImportFileKind(file: UploadedFile): "csv" | "excel" {
+    const kind = detectBatchImportKind(file);
+    if (kind === null) {
+      throw new BadRequestException("Only CSV, XLSX, and XLS files with matching MIME types are supported for batch import");
+    }
+    if (!validateBatchImportContent(file, kind)) {
+      throw new BadRequestException("Import file content does not match its declared type");
+    }
+    return kind;
   }
 
   private async ensureCanAccess(

@@ -8,14 +8,17 @@ import {
 } from "@knowflow/db";
 import type { DocumentSourceType } from "@knowflow/shared";
 import { asc, eq, sql } from "drizzle-orm";
+import mammoth from "mammoth";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PDFParse } from "pdf-parse";
 
+import { readSpreadsheet } from "../../../shared/import/spreadsheet-reader.js";
 import {
   createAliyunLlmClient,
   EXPECTED_EMBEDDING_DIMENSION,
 } from "../../../shared/llm/aliyun-llm.js";
+import { callModelByUsage } from "../../../shared/llm/model-usage-client.js";
 import { resolveLocalStorageRoot } from "../../../shared/storage/local-storage.js";
 import type { DocumentProcessResult } from "./document-queue.js";
 import { publishDocumentProgress } from "./document-progress.js";
@@ -24,6 +27,7 @@ const PARENT_TARGET_CHARS = 4000;
 const CHILD_TARGET_CHARS = 900;
 const CHILD_OVERLAP_CHARS = 120;
 const EMBEDDING_BATCH_SIZE = 16;
+const MAX_SPREADSHEET_ROWS = 10000;
 
 type ProcessableDocument = {
   id: string;
@@ -31,6 +35,7 @@ type ProcessableDocument = {
   sourceType: DocumentSourceType;
   sourceUri: string | null;
   fileId: string | null;
+  fileType: string | null;
   title: string;
   embeddingModel: string;
 };
@@ -38,9 +43,20 @@ type ProcessableDocument = {
 type ParsedDocument = {
   text: string;
   metadata: {
-    parser: "pdf-parse" | "plain-text";
+    parser:
+      | "pdf-parse"
+      | "plain-text"
+      | "mammoth"
+      | "csv-parse"
+      | "read-excel-file"
+      | "@e965/xlsx"
+      | "vision-ocr";
     parsedAt: string;
     textLength: number;
+    originalFormat?: "docx";
+    sheetCount?: number;
+    rowCount?: number;
+    mimeType?: string;
   };
 };
 
@@ -122,6 +138,7 @@ async function findProcessableDocument(
       sourceType: documents.sourceType,
       sourceUri: documents.sourceUri,
       fileId: documents.fileId,
+      fileType: documents.fileType,
       title: documents.title,
       embeddingModel: knowledgeBases.embeddingModel,
     })
@@ -442,8 +459,94 @@ async function parseDocument(document: ProcessableDocument): Promise<ParsedDocum
   if (document.sourceType === "markdown" || document.sourceType === "txt") {
     return toParsedDocument(buffer.toString("utf8"), "plain-text");
   }
+  if (document.sourceType === "docx") {
+    return parseDocxDocument(buffer);
+  }
+  if (document.sourceType === "csv") {
+    return parseCsvExcelDocument(buffer, "csv");
+  }
+  if (document.sourceType === "excel") {
+    return parseCsvExcelDocument(buffer, "excel");
+  }
+  if (document.sourceType === "image") {
+    return parseImageDocument(document, buffer);
+  }
 
   throw new Error(`Unsupported document source type: ${document.sourceType}`);
+}
+
+async function parseDocxDocument(buffer: Buffer): Promise<ParsedDocument> {
+  const result = await mammoth.extractRawText({ buffer });
+  return toParsedDocument(result.value, "mammoth", { originalFormat: "docx" });
+}
+
+async function parseCsvExcelDocument(
+  buffer: Buffer,
+  kind: "csv" | "excel",
+): Promise<ParsedDocument> {
+  const spreadsheet = await readSpreadsheet(buffer, kind);
+  const sheetTexts: string[] = [];
+  if (spreadsheet.rowCount > MAX_SPREADSHEET_ROWS) {
+    throw new Error("Spreadsheet exceeds 10000 rows");
+  }
+
+  for (const sheet of spreadsheet.sheets) {
+    sheetTexts.push(`## Sheet: ${sheet.name}\n\n${rowsToMarkdownTable(sheet.rows)}`);
+  }
+
+  return toParsedDocument(sheetTexts.join("\n\n"), spreadsheet.parser, {
+    sheetCount: spreadsheet.sheets.length,
+    rowCount: spreadsheet.rowCount,
+  });
+}
+
+async function parseImageDocument(
+  document: ProcessableDocument,
+  buffer: Buffer,
+): Promise<ParsedDocument> {
+  const mimeType = document.fileType ?? "image/png";
+  const text = await callModelByUsage(
+    "ocr",
+    [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "Extract all text from this image. If it contains tables, output them as Markdown tables and preserve the original structure.",
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:${mimeType};base64,${buffer.toString("base64")}`,
+            },
+          },
+        ],
+      },
+    ],
+    { temperature: 0, maxOutputTokens: 4000 },
+  );
+
+  return toParsedDocument(text, "vision-ocr", { mimeType });
+}
+
+function rowsToMarkdownTable(rows: string[][]): string {
+  const columnCount = Math.max(...rows.map((row) => row.length));
+  const lines: string[] = [];
+  rows.forEach((row, index) => {
+    const cells = Array.from({ length: columnCount }, (_value, columnIndex) =>
+      markdownTableCell(row[columnIndex] ?? ""),
+    );
+    lines.push(`| ${cells.join(" | ")} |`);
+    if (index === 0) {
+      lines.push(`| ${Array.from({ length: columnCount }, () => "---").join(" | ")} |`);
+    }
+  });
+  return lines.join("\n");
+}
+
+function markdownTableCell(value: string): string {
+  return value.replace(/\n/g, " ").replace(/\|/g, "\\|");
 }
 
 async function resolveDocumentPath(document: ProcessableDocument): Promise<string> {
@@ -473,6 +576,7 @@ async function resolveDocumentPath(document: ProcessableDocument): Promise<strin
 function toParsedDocument(
   text: string,
   parser: ParsedDocument["metadata"]["parser"],
+  extraMetadata: Omit<ParsedDocument["metadata"], "parser" | "parsedAt" | "textLength"> = {},
 ): ParsedDocument {
   const normalized = text.replace(/\r\n/g, "\n").trim();
   if (normalized.length === 0) {
@@ -485,6 +589,7 @@ function toParsedDocument(
       parser,
       parsedAt: new Date().toISOString(),
       textLength: normalized.length,
+      ...extraMetadata,
     },
   };
 }

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -26,6 +27,10 @@ import {
 import type {} from "multer";
 import { Observable } from "rxjs";
 
+import {
+  detectDocumentUploadKind,
+  MAX_DOCUMENT_UPLOAD_BYTES,
+} from "../../../shared/upload/upload-file-validation.js";
 import type { AuthenticatedRequest } from "../../../shared/guards/auth.guard.js";
 import { DocumentService } from "./document.service.js";
 
@@ -52,7 +57,21 @@ export class DocumentController {
   ) {}
 
   @Post("knowledge-bases/:id/documents")
-  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 20 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: MAX_DOCUMENT_UPLOAD_BYTES },
+      fileFilter: (_request, file, callback) => {
+        if (detectDocumentUploadKind(file) !== null) {
+          callback(null, true);
+          return;
+        }
+        callback(
+          new BadRequestException("Only PDF, Markdown, TXT, DOCX, CSV, XLSX, XLS, and image files with matching MIME types are supported"),
+          false,
+        );
+      },
+    }),
+  )
   async upload(
     @Param() params: unknown,
     @UploadedFile() file: Express.Multer.File | undefined,

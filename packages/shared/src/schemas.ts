@@ -308,6 +308,17 @@ export const knowledgeItemFeedbackRequestSchema = z.object({
   rating: knowledgeItemFeedbackRatingSchema.nullable(),
 });
 
+export const batchImportResponseSchema = z.object({
+  imported: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  errors: z.array(
+    z.object({
+      row: z.number().int().positive(),
+      reason: z.string(),
+    }),
+  ),
+});
+
 export const improvementTaskSchema = z.object({
   id: z.uuid(),
   knowledgeBaseId: z.uuid(),
@@ -857,6 +868,7 @@ export type UpdateKnowledgeItemRequest = z.infer<typeof updateKnowledgeItemReque
 export type KnowledgeItemFeedbackRequest = z.infer<
   typeof knowledgeItemFeedbackRequestSchema
 >;
+export type BatchImportResponse = z.infer<typeof batchImportResponseSchema>;
 export type ImprovementTriggerType = z.infer<typeof improvementTriggerTypeSchema>;
 export type ImprovementTaskStatus = z.infer<typeof improvementTaskStatusSchema>;
 export type VerificationStatus = z.infer<typeof verificationStatusSchema>;

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -10,8 +11,12 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import {
+  batchImportResponseSchema,
   createKnowledgeItemRequestSchema,
   knowledgeItemFeedbackRequestSchema,
   knowledgeItemListQuerySchema,
@@ -20,10 +25,16 @@ import {
   updateKnowledgeItemRequestSchema,
   uuidParamSchema,
   type KnowledgeItem,
+  type BatchImportResponse,
   type KnowledgeItemListResponse,
 } from "@knowflow/shared";
+import type {} from "multer";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
+import {
+  detectBatchImportKind,
+  MAX_BATCH_IMPORT_BYTES,
+} from "../../../shared/upload/upload-file-validation.js";
 import type { AuthenticatedRequest } from "../../../shared/guards/auth.guard.js";
 import { KnowledgeItemService } from "./knowledge-item.service.js";
 
@@ -66,6 +77,32 @@ export class KnowledgeItemController {
     const input = createKnowledgeItemRequestSchema.parse(body);
     const data = await this.knowledgeItemService.create(id, input, this.requireUser(request));
     return { ok: true, data: knowledgeItemSchema.parse(data) };
+  }
+
+  @Post("knowledge-bases/:id/knowledge-items/batch-import")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: MAX_BATCH_IMPORT_BYTES },
+      fileFilter: (_request, file, callback) => {
+        if (detectBatchImportKind(file) !== null) {
+          callback(null, true);
+          return;
+        }
+        callback(
+          new BadRequestException("Only CSV, XLSX, and XLS files with matching MIME types are supported for batch import"),
+          false,
+        );
+      },
+    }),
+  )
+  async batchImport(
+    @Param() params: unknown,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ApiSuccess<BatchImportResponse>> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.knowledgeItemService.batchImport(id, file, this.requireUser(request));
+    return { ok: true, data: batchImportResponseSchema.parse(data) };
   }
 
   @Get("knowledge-items/:id")

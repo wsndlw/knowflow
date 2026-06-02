@@ -17,7 +17,6 @@ import type {
   DocumentListQuery,
   DocumentListResponse,
   DocumentProgressEvent,
-  DocumentSourceType,
   KnowledgeDocument,
 } from "@knowflow/shared";
 import { and, count, desc, eq, ilike, type SQL } from "drizzle-orm";
@@ -29,19 +28,19 @@ import { Observable } from "rxjs";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { AnalyticsEventService } from "../analytics/analytics-event.service.js";
+import {
+  detectDocumentUploadKind,
+  MAX_DOCUMENT_UPLOAD_BYTES,
+  validateDocumentUploadContent,
+  type DocumentUploadKind,
+} from "../../../shared/upload/upload-file-validation.js";
 import { resolveLocalStorageRoot } from "../../../shared/storage/local-storage.js";
 import { KnowledgeBaseAccessService } from "../knowledge-base/knowledge-base-access.service.js";
 import { createDocumentQueue } from "./document-queue.js";
 import { createRedisClient, getDocumentProgressChannel } from "./document-progress.js";
 
-const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-
 type UploadedFile = Express.Multer.File;
-
-type FileKind = {
-  sourceType: Extract<DocumentSourceType, "pdf" | "markdown" | "txt">;
-  extension: ".pdf" | ".md" | ".txt";
-};
+type FileKind = DocumentUploadKind;
 
 type DocumentRow = {
   id: string;
@@ -85,8 +84,8 @@ export class DocumentService {
     if (file.size <= 0) {
       throw new BadRequestException("Document file is empty");
     }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      throw new BadRequestException("Document file exceeds 20 MB");
+    if (file.size > MAX_DOCUMENT_UPLOAD_BYTES) {
+      throw new BadRequestException("Document file exceeds 10 MB");
     }
 
     const kind = this.detectFileKind(file);
@@ -367,18 +366,14 @@ export class DocumentService {
   }
 
   private detectFileKind(file: UploadedFile): FileKind {
-    const extension = path.extname(file.originalname).toLowerCase();
-    if (extension === ".pdf" || file.mimetype === "application/pdf") {
-      return { sourceType: "pdf", extension: ".pdf" };
+    const kind = detectDocumentUploadKind(file);
+    if (kind === null) {
+      throw new BadRequestException("Only PDF, Markdown, TXT, DOCX, CSV, XLSX, XLS, and image files with matching MIME types are supported");
     }
-    if (extension === ".md" || extension === ".markdown" || file.mimetype === "text/markdown") {
-      return { sourceType: "markdown", extension: ".md" };
+    if (!validateDocumentUploadContent(file, kind)) {
+      throw new BadRequestException("Document file content does not match its declared type");
     }
-    if (extension === ".txt" || file.mimetype === "text/plain") {
-      return { sourceType: "txt", extension: ".txt" };
-    }
-
-    throw new BadRequestException("Only PDF, Markdown, and TXT files are supported");
+    return kind;
   }
 
   private async storeFile(

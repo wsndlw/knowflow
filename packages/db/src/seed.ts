@@ -1,8 +1,9 @@
-import "dotenv/config";
+import "./load-env.js";
 
 import { and, eq } from "drizzle-orm";
 
 import { closeDb, db } from "./client.js";
+import { encryptApiKey, requireModelApiKeyEncryptionKey } from "./api-key-encryption.js";
 import { hashPassword } from "./password.js";
 import {
   agentKnowledgeBases,
@@ -170,14 +171,29 @@ async function ensureKnowledgeBaseMember(knowledgeBaseId: string, userId: string
 
 async function ensureModelProvider(): Promise<string> {
   const providerName = "阿里云百炼";
+  const encryptedApiKey =
+    process.env["ALIYUN_API_KEY"] === undefined || process.env["ALIYUN_API_KEY"].trim() === ""
+      ? null
+      : encryptApiKey(process.env["ALIYUN_API_KEY"]);
   const existing = await db.query.modelProviders.findFirst({
     where: eq(modelProviders.name, providerName),
     columns: {
       id: true,
+      encryptedApiKey: true,
     },
   });
 
   if (existing !== undefined) {
+    if (encryptedApiKey !== null) {
+      await db
+        .update(modelProviders)
+        .set({
+          encryptedApiKey,
+          remark: "Seed default provider with encrypted API key.",
+          updatedAt: new Date(),
+        })
+        .where(eq(modelProviders.id, existing.id));
+    }
     return existing.id;
   }
 
@@ -188,11 +204,8 @@ async function ensureModelProvider(): Promise<string> {
       providerType: "aliyun",
       baseUrl:
         process.env["ALIYUN_BASE_URL"] ?? "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      encryptedApiKey:
-        process.env["ALIYUN_API_KEY"] === undefined
-          ? null
-          : `seed:${process.env["ALIYUN_API_KEY"]}`,
-      remark: "P0 seed default provider; replace encrypted_api_key in production.",
+      encryptedApiKey,
+      remark: "Seed default provider with encrypted API key.",
     })
     .returning({ id: modelProviders.id });
 
@@ -359,6 +372,7 @@ async function ensureGlobalAgent(createdBy: string): Promise<void> {
 }
 
 async function runSeed(): Promise<void> {
+  requireModelApiKeyEncryptionKey();
   const defaultDepartment = await ensureDepartment("默认部门");
   const hr = await ensureDepartment("人事部");
   const finance = await ensureDepartment("财务部");

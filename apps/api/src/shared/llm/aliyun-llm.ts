@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import {
   db,
+  decryptApiKey,
   modelCatalog,
   modelProviders,
   modelUsagePolicies,
@@ -9,13 +10,6 @@ import type { ModelUsageType } from "@knowflow/shared";
 import { and, eq } from "drizzle-orm";
 import OpenAI from "openai";
 
-const DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
-const DEFAULT_RERANK_URL =
-  "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank";
-const DEFAULT_CHAT_MODEL = "qwen-plus";
-const DEFAULT_QUERY_MODEL = "qwen-turbo";
-const DEFAULT_EMBEDDING_MODEL = "text-embedding-v4";
-const DEFAULT_RERANK_MODEL = "gte-rerank-v2";
 export const EXPECTED_EMBEDDING_DIMENSION = 1024;
 
 type ModelConfig = {
@@ -24,6 +18,11 @@ type ModelConfig = {
   maxOutputTokens: number | null;
   timeoutMs: number;
   retryCount: number;
+};
+
+type ResolvedModelConfig = ModelConfig & {
+  apiKey: string;
+  baseUrl: string;
 };
 
 type ChatMessage = {
@@ -89,20 +88,14 @@ export function createAliyunLlmClient(): AliyunLlmClient {
 }
 
 export class AliyunLlmClient {
-  private readonly apiKey = this.requireApiKey();
-  private readonly openai = new OpenAI({
-    apiKey: this.apiKey,
-    baseURL: process.env["ALIYUN_BASE_URL"] ?? DEFAULT_BASE_URL,
-  });
-
   async embedTexts(texts: string[], model?: string): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
     }
 
-    const config = model === undefined ? await this.getModelConfig("embedding") : undefined;
-    const response = await this.openai.embeddings.create({
-      model: model ?? config?.model ?? DEFAULT_EMBEDDING_MODEL,
+    const config = await this.resolveModelConfig("embedding");
+    const response = await this.createOpenAiClient(config).embeddings.create({
+      model: model ?? config.model,
       input: texts,
     });
     if (response.data.length !== texts.length) {
@@ -122,15 +115,15 @@ export class AliyunLlmClient {
       return [];
     }
 
-    const config = model === undefined ? await this.getModelConfig("rerank") : undefined;
-    const response = await fetch(process.env["ALIYUN_RERANK_URL"] ?? DEFAULT_RERANK_URL, {
+    const config = await this.resolveModelConfig("rerank");
+    const response = await fetch(process.env["ALIYUN_RERANK_URL"] ?? this.rerankUrl(config), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: model ?? config?.model ?? DEFAULT_RERANK_MODEL,
+        model: model ?? config.model,
         input: {
           query,
           documents,
@@ -169,15 +162,12 @@ export class AliyunLlmClient {
     temperature?: number;
     maxOutputTokens?: number;
   }): AsyncIterable<ChatStreamChunk> {
-    const config =
-      input.model === undefined
-        ? await this.getModelConfig(input.usageType ?? "chat")
-        : undefined;
-    const maxTokens = input.maxOutputTokens ?? config?.maxOutputTokens ?? null;
-    const stream = await this.openai.chat.completions.create({
-      model: input.model ?? config?.model ?? DEFAULT_CHAT_MODEL,
+    const config = await this.resolveModelConfig(input.usageType ?? "chat");
+    const maxTokens = input.maxOutputTokens ?? config.maxOutputTokens;
+    const stream = await this.createOpenAiClient(config).chat.completions.create({
+      model: input.model ?? config.model,
       messages: input.messages,
-      temperature: input.temperature ?? config?.temperature ?? 0.7,
+      temperature: input.temperature ?? config.temperature,
       ...(maxTokens === null ? {} : { max_tokens: maxTokens }),
       stream: true,
     });
@@ -197,18 +187,12 @@ export class AliyunLlmClient {
     temperature?: number;
     maxOutputTokens?: number;
   }): Promise<string> {
-    const config =
-      input.model === undefined
-        ? await this.getModelConfig(input.usageType ?? "chat")
-        : undefined;
-    const maxTokens = input.maxOutputTokens ?? config?.maxOutputTokens ?? null;
-    const response = await this.openai.chat.completions.create({
-      model:
-        input.model ??
-        config?.model ??
-        (input.usageType === "query_understanding" ? DEFAULT_QUERY_MODEL : DEFAULT_CHAT_MODEL),
+    const config = await this.resolveModelConfig(input.usageType ?? "chat");
+    const maxTokens = input.maxOutputTokens ?? config.maxOutputTokens;
+    const response = await this.createOpenAiClient(config).chat.completions.create({
+      model: input.model ?? config.model,
       messages: input.messages,
-      temperature: input.temperature ?? config?.temperature ?? 0.2,
+      temperature: input.temperature ?? config.temperature,
       ...(maxTokens === null ? {} : { max_tokens: maxTokens }),
     });
 
@@ -216,6 +200,17 @@ export class AliyunLlmClient {
   }
 
   async getModelConfig(usageType: ModelUsageType): Promise<ModelConfig> {
+    const config = await this.resolveModelConfig(usageType);
+    return {
+      model: config.model,
+      temperature: config.temperature,
+      maxOutputTokens: config.maxOutputTokens,
+      timeoutMs: config.timeoutMs,
+      retryCount: config.retryCount,
+    };
+  }
+
+  private async resolveModelConfig(usageType: ModelUsageType): Promise<ResolvedModelConfig> {
     const [row] = await db
       .select({
         model: modelCatalog.modelName,
@@ -223,44 +218,50 @@ export class AliyunLlmClient {
         maxOutputTokens: modelUsagePolicies.maxOutputTokens,
         timeoutMs: modelUsagePolicies.timeoutMs,
         retryCount: modelUsagePolicies.retryCount,
+        baseUrl: modelProviders.baseUrl,
+        encryptedApiKey: modelProviders.encryptedApiKey,
       })
       .from(modelUsagePolicies)
       .innerJoin(modelCatalog, eq(modelCatalog.id, modelUsagePolicies.defaultModelId))
       .innerJoin(modelProviders, eq(modelProviders.id, modelCatalog.providerId))
-      .where(and(eq(modelUsagePolicies.usageType, usageType), eq(modelUsagePolicies.enabled, true)))
+      .where(
+        and(
+          eq(modelUsagePolicies.usageType, usageType),
+          eq(modelUsagePolicies.enabled, true),
+          eq(modelCatalog.enabled, true),
+          eq(modelProviders.enabled, true),
+        ),
+      )
       .limit(1);
 
     if (row !== undefined) {
-      return row;
+      if (row.encryptedApiKey === null) {
+        throw new Error(`Model provider API key is not configured for ${usageType}`);
+      }
+      return {
+        model: row.model,
+        temperature: row.temperature,
+        maxOutputTokens: row.maxOutputTokens,
+        timeoutMs: row.timeoutMs,
+        retryCount: row.retryCount,
+        baseUrl: row.baseUrl,
+        apiKey: decryptApiKey(row.encryptedApiKey),
+      };
     }
 
-    return {
-      model: this.defaultModelForUsage(usageType),
-      temperature: usageType === "embedding" || usageType === "rerank" ? 0 : 0.7,
-      maxOutputTokens: usageType === "chat" ? 4096 : null,
-      timeoutMs: 30000,
-      retryCount: 2,
-    };
+    throw new Error(`Model usage policy is not configured for ${usageType}`);
   }
 
-  private defaultModelForUsage(usageType: ModelUsageType): string {
-    switch (usageType) {
-      case "query_understanding":
-        return DEFAULT_QUERY_MODEL;
-      case "embedding":
-        return DEFAULT_EMBEDDING_MODEL;
-      case "rerank":
-        return DEFAULT_RERANK_MODEL;
-      default:
-        return DEFAULT_CHAT_MODEL;
-    }
+  private createOpenAiClient(config: ResolvedModelConfig): OpenAI {
+    return new OpenAI({
+      apiKey: config.apiKey,
+      baseURL: config.baseUrl,
+      timeout: config.timeoutMs,
+      maxRetries: config.retryCount,
+    });
   }
 
-  private requireApiKey(): string {
-    const apiKey = process.env["ALIYUN_API_KEY"];
-    if (apiKey === undefined || apiKey.trim().length === 0) {
-      throw new Error("ALIYUN_API_KEY is required for Aliyun LLM calls");
-    }
-    return apiKey;
+  private rerankUrl(config: ResolvedModelConfig): string {
+    return `${config.baseUrl.replace(/\/compatible-mode\/v1\/?$/, "")}/api/v1/services/rerank/text-rerank/text-rerank`;
   }
 }

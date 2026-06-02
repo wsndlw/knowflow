@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import "./shared/config/load-env.js";
 import { Worker } from "bullmq";
+import { requireModelApiKeyEncryptionKey } from "@knowflow/db";
 
 import {
   DOCUMENT_QUEUE_NAME,
@@ -12,6 +13,8 @@ import {
 } from "./modules/domains/document/document-queue.js";
 import { processDocument } from "./modules/domains/document/document-processor.js";
 import { getRedisConnectionOptions } from "./shared/redis/redis-connection.js";
+
+requireModelApiKeyEncryptionKey();
 
 const worker = new Worker<DocumentQueueJob, DocumentQueueResult, DocumentJobName>(
   DOCUMENT_QUEUE_NAME,

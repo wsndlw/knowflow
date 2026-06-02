@@ -26,6 +26,26 @@ export const MODEL_USAGE_TYPES = [
   "agent_generation",
 ] as const;
 
+export const MODEL_PROVIDER_TYPES = [
+  "openai",
+  "azure_openai",
+  "aliyun",
+  "zhipu",
+  "deepseek",
+  "moonshot",
+  "ollama",
+  "openai_compatible",
+] as const;
+
+export const MODEL_TYPES = [
+  "chat",
+  "embedding",
+  "rerank",
+  "ocr",
+  "vision",
+  "moderation",
+] as const;
+
 export const KNOWLEDGE_BASE_VISIBILITIES = ["public", "department", "restricted"] as const;
 
 export const KNOWLEDGE_BASE_STATUSES = ["active", "disabled", "archived"] as const;

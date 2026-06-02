@@ -12,6 +12,7 @@ import {
   knowledgeBaseAdmins,
   knowledgeBaseMembers,
   knowledgeBases,
+  knowledgeItems,
   metadataFields,
   tags,
   users,
@@ -24,6 +25,7 @@ import type {
   KnowledgeBaseListResponse,
   KnowledgeBaseMember,
   KnowledgeBaseMembersResponse,
+  KnowledgeBaseOverview,
   UpdateKnowledgeBaseRequest,
   UserOptionsResponse,
 } from "@knowflow/shared";
@@ -157,6 +159,64 @@ export class KnowledgeBaseService {
     });
 
     return this.toKnowledgeBase(row, await this.accessService.canManage(id, user));
+  }
+
+  async getOverview(id: string, user: AuthenticatedUser): Promise<KnowledgeBaseOverview> {
+    await this.ensureCanAccess(id, user);
+
+    const [
+      [{ value: documentCount } = { value: 0 }],
+      [{ value: knowledgeItemCount } = { value: 0 }],
+      [{ value: publishedKnowledgeItemCount } = { value: 0 }],
+      [{ value: memberCount } = { value: 0 }],
+      documentStatusRows,
+      knowledgeItemStatusRows,
+    ] = await Promise.all([
+      db.select({ value: count() }).from(documents).where(eq(documents.knowledgeBaseId, id)),
+      db
+        .select({ value: count() })
+        .from(knowledgeItems)
+        .where(eq(knowledgeItems.knowledgeBaseId, id)),
+      db
+        .select({ value: count() })
+        .from(knowledgeItems)
+        .where(
+          and(eq(knowledgeItems.knowledgeBaseId, id), eq(knowledgeItems.status, "published")),
+        ),
+      db
+        .select({ value: count() })
+        .from(knowledgeBaseMembers)
+        .where(eq(knowledgeBaseMembers.knowledgeBaseId, id)),
+      db
+        .select({
+          status: documents.processStatus,
+          value: count(),
+        })
+        .from(documents)
+        .where(eq(documents.knowledgeBaseId, id))
+        .groupBy(documents.processStatus),
+      db
+        .select({
+          status: knowledgeItems.status,
+          value: count(),
+        })
+        .from(knowledgeItems)
+        .where(eq(knowledgeItems.knowledgeBaseId, id))
+        .groupBy(knowledgeItems.status),
+    ]);
+
+    return {
+      documentCount,
+      knowledgeItemCount,
+      publishedKnowledgeItemCount,
+      memberCount,
+      documentStatusCounts: Object.fromEntries(
+        documentStatusRows.map((row) => [row.status, row.value]),
+      ),
+      knowledgeItemStatusCounts: Object.fromEntries(
+        knowledgeItemStatusRows.map((row) => [row.status, row.value]),
+      ),
+    };
   }
 
   async update(

@@ -176,6 +176,12 @@ export class AgentManagementService {
     };
   }
 
+  async get(agentId: string, user: AuthenticatedUser): Promise<ManagedAgent> {
+    const agent = await this.findOfficialAgent(agentId);
+    await this.ensureCanManageAgent(agent.id, user);
+    return this.toManagedAgent(agent);
+  }
+
   async update(
     agentId: string,
     input: UpdateManagedAgentRequest,

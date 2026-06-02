@@ -75,6 +75,16 @@ export class AgentManagementController {
     return { ok: true, data: generateManagedAgentResponseSchema.parse(data) };
   }
 
+  @Get("agents/:id")
+  async get(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ApiSuccess<ManagedAgent>> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.agentManagementService.get(id, this.requireUser(request));
+    return { ok: true, data: managedAgentSchema.parse(data) };
+  }
+
   @Patch("agents/:id")
   async update(
     @Param() params: unknown,

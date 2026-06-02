@@ -14,6 +14,7 @@ import {
 import {
   createKnowledgeBaseRequestSchema,
   knowledgeBaseListQuerySchema,
+  knowledgeBaseOverviewSchema,
   knowledgeBaseUserRequestSchema,
   updateKnowledgeBaseRequestSchema,
   uuidParamSchema,
@@ -21,6 +22,7 @@ import {
   type KnowledgeBase,
   type KnowledgeBaseListResponse,
   type KnowledgeBaseMembersResponse,
+  type KnowledgeBaseOverview,
   type UserOptionsResponse,
 } from "@knowflow/shared";
 
@@ -46,6 +48,11 @@ type KnowledgeBaseListSuccess = {
 type KnowledgeBaseMembersSuccess = {
   ok: true;
   data: KnowledgeBaseMembersResponse;
+};
+
+type KnowledgeBaseOverviewSuccess = {
+  ok: true;
+  data: KnowledgeBaseOverview;
 };
 
 type DepartmentOptionsSuccess = {
@@ -113,6 +120,19 @@ export class KnowledgeBaseController {
     return {
       ok: true,
       data: await this.knowledgeBaseService.get(id, this.requireUser(request)),
+    };
+  }
+
+  @Get(":id/overview")
+  async getOverview(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<KnowledgeBaseOverviewSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.knowledgeBaseService.getOverview(id, this.requireUser(request));
+    return {
+      ok: true,
+      data: knowledgeBaseOverviewSchema.parse(data),
     };
   }
 

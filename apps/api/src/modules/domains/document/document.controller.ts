@@ -7,6 +7,7 @@ import {
   MessageEvent,
   Param,
   Post,
+  Query,
   Req,
   Sse,
   UploadedFile,
@@ -15,6 +16,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
   documentListResponseSchema,
+  documentListQuerySchema,
   documentProgressEventSchema,
   documentSchema,
   uuidParamSchema,
@@ -64,10 +66,15 @@ export class DocumentController {
   @Get("knowledge-bases/:id/documents")
   async list(
     @Param() params: unknown,
+    @Query() query: unknown,
     @Req() request: AuthenticatedRequest,
   ): Promise<DocumentListSuccess> {
     const { id } = uuidParamSchema.parse(params);
-    const data = await this.documentService.list(id, this.requireUser(request));
+    const data = await this.documentService.list(
+      id,
+      documentListQuerySchema.parse(query),
+      this.requireUser(request),
+    );
     return { ok: true, data: documentListResponseSchema.parse(data) };
   }
 
@@ -111,6 +118,16 @@ export class DocumentController {
     const { id } = uuidParamSchema.parse(params);
     await this.documentService.delete(id, this.requireUser(request));
     return { ok: true, data: {} };
+  }
+
+  @Post("documents/:id/reprocess")
+  async reprocess(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DocumentSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.documentService.reprocess(id, this.requireUser(request));
+    return { ok: true, data: documentSchema.parse(data) };
   }
 
   private requireUser(request: AuthenticatedRequest) {

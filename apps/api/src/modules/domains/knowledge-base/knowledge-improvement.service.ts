@@ -26,7 +26,7 @@ import type {
   KnowledgeItem,
   RejectImprovementTaskRequest,
 } from "@knowflow/shared";
-import { and, count, desc, eq, ilike, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gt, ilike, inArray, isNotNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { createHash } from "node:crypto";
 
 import { AliyunLlmService, EXPECTED_EMBEDDING_DIMENSION } from "../../../shared/llm/aliyun-llm.js";
@@ -312,22 +312,7 @@ export class KnowledgeImprovementService {
     }
 
     const keyword = this.normalizeQuestion(task.sourceQuestion).slice(0, 30);
-    const hasFailure =
-      keyword.length > 0 &&
-      (await db
-        .select({ id: conversationMessages.id })
-        .from(conversationMessages)
-        .innerJoin(analyticsEvents, eq(analyticsEvents.targetId, conversationMessages.id))
-        .where(
-          and(
-            eq(analyticsEvents.eventType, "answer_generated"),
-            eq(analyticsEvents.knowledgeBaseId, task.knowledgeBaseId),
-            inArray(conversationMessages.noAnswerType, ["no_answer", "low_confidence"]),
-            ilike(conversationMessages.content, `%${keyword}%`),
-            sql`${conversationMessages.createdAt} > ${task.updatedAt}`,
-          ),
-        )
-        .limit(1)).length > 0;
+    const hasFailure = keyword.length > 0 && (await this.hasLaterSimilarFailure(task, keyword));
 
     await db
       .update(knowledgeImprovementTasks)
@@ -367,9 +352,11 @@ export class KnowledgeImprovementService {
     const rows = await db
       .select({
         id: conversationMessages.id,
+        conversationId: conversationMessages.conversationId,
         noAnswerType: conversationMessages.noAnswerType,
         content: conversationMessages.content,
         usedContext: conversationMessages.usedContext,
+        createdAt: conversationMessages.createdAt,
       })
       .from(conversationMessages)
       .innerJoin(analyticsEvents, eq(analyticsEvents.targetId, conversationMessages.id))
@@ -377,9 +364,9 @@ export class KnowledgeImprovementService {
       .orderBy(desc(conversationMessages.createdAt))
       .limit(SCAN_LIMIT);
 
-    return rows
-      .filter((row) => row.noAnswerType !== null)
-      .map((row) => ({
+    const signals: Signal[] = [];
+    for (const row of rows.filter((item) => item.noAnswerType !== null)) {
+      signals.push({
         knowledgeBaseId,
         triggerType: row.noAnswerType as Extract<
           ImprovementTriggerType,
@@ -387,9 +374,15 @@ export class KnowledgeImprovementService {
         >,
         sourceMessageId: row.id,
         sourceFeedbackId: null,
-        sourceQuestion: row.content,
-        sourceContext: { usedContext: row.usedContext },
-      }));
+        sourceQuestion: await this.findPreviousUserQuestionByCreatedAt(
+          row.conversationId,
+          row.createdAt,
+          row.content,
+        ),
+        sourceContext: { answerContent: row.content, usedContext: row.usedContext },
+      });
+    }
+    return signals;
   }
 
   private async collectAnswerFeedbackSignals(knowledgeBaseId: string): Promise<Signal[]> {
@@ -505,6 +498,14 @@ export class KnowledgeImprovementService {
       return fallback;
     }
 
+    return this.findPreviousUserQuestionByCreatedAt(conversationId, current.createdAt, fallback);
+  }
+
+  private async findPreviousUserQuestionByCreatedAt(
+    conversationId: string,
+    beforeCreatedAt: Date,
+    fallback: string,
+  ): Promise<string> {
     const [question] = await db
       .select({ content: conversationMessages.content })
       .from(conversationMessages)
@@ -512,12 +513,46 @@ export class KnowledgeImprovementService {
         and(
           eq(conversationMessages.conversationId, conversationId),
           eq(conversationMessages.role, "user"),
-          sql`${conversationMessages.createdAt} <= ${current.createdAt}`,
+          lte(conversationMessages.createdAt, beforeCreatedAt),
         ),
       )
       .orderBy(desc(conversationMessages.createdAt))
       .limit(1);
     return question?.content ?? fallback;
+  }
+
+  private async hasLaterSimilarFailure(task: TaskRow, keyword: string): Promise<boolean> {
+    const rows = await db
+      .select({
+        conversationId: conversationMessages.conversationId,
+        content: conversationMessages.content,
+        createdAt: conversationMessages.createdAt,
+      })
+      .from(conversationMessages)
+      .innerJoin(analyticsEvents, eq(analyticsEvents.targetId, conversationMessages.id))
+      .where(
+        and(
+          eq(analyticsEvents.eventType, "answer_generated"),
+          eq(analyticsEvents.targetType, "message"),
+          eq(analyticsEvents.knowledgeBaseId, task.knowledgeBaseId),
+          inArray(conversationMessages.noAnswerType, ["no_answer", "low_confidence"]),
+          gt(conversationMessages.createdAt, task.updatedAt),
+        ),
+      )
+      .orderBy(desc(conversationMessages.createdAt))
+      .limit(SCAN_LIMIT);
+
+    for (const row of rows) {
+      const question = await this.findPreviousUserQuestionByCreatedAt(
+        row.conversationId,
+        row.createdAt,
+        row.content,
+      );
+      if (this.normalizeQuestion(question).includes(keyword)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private async generateDraft(task: TaskRow, relatedItems: { title: string; content: string }[]): Promise<CandidateDraft> {

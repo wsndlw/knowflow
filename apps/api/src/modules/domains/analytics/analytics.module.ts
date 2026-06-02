@@ -1,11 +1,13 @@
 import { Global, Module } from "@nestjs/common";
 
+import { KnowledgeBaseModule } from "../knowledge-base/knowledge-base.module.js";
 import { AnalyticsController } from "./analytics.controller.js";
 import { AnalyticsEventService } from "./analytics-event.service.js";
 import { AnalyticsService } from "./analytics.service.js";
 
 @Global()
 @Module({
+  imports: [KnowledgeBaseModule],
   controllers: [AnalyticsController],
   providers: [AnalyticsEventService, AnalyticsService],
   exports: [AnalyticsEventService],

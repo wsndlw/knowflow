@@ -2,6 +2,7 @@ import {
   bigint,
   boolean,
   customType,
+  date,
   index,
   integer,
   jsonb,
@@ -163,6 +164,28 @@ export const feedbackRatingEnum = pgEnum("feedback_rating", ["useful", "not_usef
 export const knowledgeItemFeedbackRatingEnum = pgEnum("knowledge_item_feedback_rating", [
   "like",
   "dislike",
+]);
+export const analyticsEventTypeEnum = pgEnum("analytics_event_type", [
+  "knowledge_base_viewed",
+  "document_viewed",
+  "knowledge_item_viewed",
+  "knowledge_searched",
+  "question_asked",
+  "answer_generated",
+  "agent_called",
+  "citation_clicked",
+  "feedback_submitted",
+  "attachment_ingestion_requested",
+]);
+export const analyticsTargetTypeEnum = pgEnum("analytics_target_type", [
+  "knowledge_base",
+  "document",
+  "knowledge_item",
+  "agent",
+  "message",
+  "conversation",
+  "citation",
+  "attachment",
 ]);
 export const backgroundJobStatusEnum = pgEnum("background_job_status", [
   "pending",
@@ -682,6 +705,35 @@ export const answerFeedback = pgTable(
     ...createdOnly(),
   },
   (table) => [index("answer_feedback_message_idx").on(table.messageId)],
+);
+
+export const analyticsEvents = pgTable(
+  "analytics_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    eventType: analyticsEventTypeEnum("event_type").notNull(),
+    targetType: analyticsTargetTypeEnum("target_type"),
+    targetId: uuid("target_id"),
+    knowledgeBaseId: uuid("knowledge_base_id").references(() => knowledgeBases.id),
+    sessionId: varchar("session_id", { length: 160 }),
+    agentId: uuid("agent_id").references(() => agents.id),
+    durationMs: integer("duration_ms"),
+    metadata: jsonb("metadata").default({}).notNull(),
+    createdDate: date("created_date").defaultNow().notNull(),
+    ...createdOnly(),
+  },
+  (table) => [
+    index("analytics_events_event_type_idx").on(table.eventType),
+    index("analytics_events_knowledge_base_date_idx").on(
+      table.knowledgeBaseId,
+      table.createdDate,
+    ),
+    index("analytics_events_user_date_idx").on(table.userId, table.createdDate),
+    index("analytics_events_agent_date_idx").on(table.agentId, table.createdDate),
+  ],
 );
 
 export const agentRuntimeTraces = pgTable(

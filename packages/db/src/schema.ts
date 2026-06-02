@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  type AnyPgColumn,
   customType,
   date,
   index,
@@ -596,6 +597,36 @@ export const knowledgeItemTags = pgTable(
     uniqueIndex("knowledge_item_tags_item_tag_uidx").on(table.knowledgeItemId, table.tagId),
     index("knowledge_item_tags_item_idx").on(table.knowledgeItemId),
     index("knowledge_item_tags_tag_idx").on(table.tagId),
+  ],
+);
+
+export const knowledgeMapNodes = pgTable(
+  "knowledge_map_nodes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .notNull()
+      .references(() => knowledgeBases.id, { onDelete: "cascade" }),
+    parentId: uuid("parent_id").references((): AnyPgColumn => knowledgeMapNodes.id, {
+      onDelete: "cascade",
+    }),
+    type: varchar("type", { length: 30 })
+      .$type<"kb" | "document" | "knowledge_item" | "topic">()
+      .notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    referenceId: uuid("reference_id"),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    status: varchar("status", { length: 20 })
+      .$type<"draft" | "published">()
+      .default("draft")
+      .notNull(),
+    createdBy: uuid("created_by").references(() => users.id),
+    ...timestamps(),
+  },
+  (table) => [
+    index("knowledge_map_nodes_kb_idx").on(table.knowledgeBaseId),
+    index("knowledge_map_nodes_parent_idx").on(table.parentId),
+    index("knowledge_map_nodes_status_idx").on(table.knowledgeBaseId, table.status),
   ],
 );
 

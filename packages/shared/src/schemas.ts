@@ -5,8 +5,12 @@ export { ZodError } from "zod";
 import {
   DOCUMENT_PROCESS_STATUSES,
   DOCUMENT_SOURCE_TYPES,
+  AUDIT_RESULTS,
+  AUDIT_TARGET_TYPES,
   RETRIEVAL_DOCUMENT_STATUS_FILTERS,
   RETRIEVAL_ITEM_STATUS_FILTERS,
+  MIND_MAP_NODE_STATUSES,
+  MIND_MAP_NODE_TYPES,
   RETRIEVAL_MODES,
   RETRIEVAL_SOURCE_TYPES,
   RETRIEVAL_TEST_MODES,
@@ -41,6 +45,10 @@ export const knowledgeItemStatusSchema = z.enum(KNOWLEDGE_ITEM_STATUSES);
 export const knowledgeItemFeedbackRatingSchema = z.enum(KNOWLEDGE_ITEM_FEEDBACK_RATINGS);
 export const documentProcessStatusSchema = z.enum(DOCUMENT_PROCESS_STATUSES);
 export const documentSourceTypeSchema = z.enum(DOCUMENT_SOURCE_TYPES);
+export const auditTargetTypeSchema = z.enum(AUDIT_TARGET_TYPES);
+export const auditResultSchema = z.enum(AUDIT_RESULTS);
+export const mindMapNodeTypeSchema = z.enum(MIND_MAP_NODE_TYPES);
+export const mindMapNodeStatusSchema = z.enum(MIND_MAP_NODE_STATUSES);
 export const modelUsageTypeSchema = z.enum(MODEL_USAGE_TYPES);
 export const modelProviderTypeSchema = z.enum(MODEL_PROVIDER_TYPES);
 export const modelTypeSchema = z.enum(MODEL_TYPES);
@@ -262,6 +270,32 @@ const commaSeparatedUuidListSchema = z.preprocess((value) => {
   }
   return value;
 }, z.array(z.uuid()).default([]));
+
+const commaSeparatedStringListSchema = z.preprocess(
+  (value) => {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (typeof value === "string") {
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+    }
+    if (Array.isArray(value)) {
+      return value.flatMap((item) =>
+        typeof item === "string"
+          ? item
+              .split(",")
+              .map((part) => part.trim())
+              .filter((part) => part.length > 0)
+          : [],
+      );
+    }
+    return value;
+  },
+  z.array(z.string().trim().min(1)).default([]),
+);
 
 export const documentSchema = z.object({
   id: z.uuid(),
@@ -491,6 +525,91 @@ export const retrievalTestResponseSchema = z.object({
       }),
     }),
   }),
+});
+
+export const auditLogListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  action: commaSeparatedStringListSchema.optional(),
+  targetType: z
+    .preprocess((value) => {
+      if (value === undefined) {
+        return undefined;
+      }
+      if (typeof value === "string") {
+        return value
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0);
+      }
+      return value;
+    }, z.array(auditTargetTypeSchema))
+    .optional(),
+  userId: z.uuid().optional(),
+  result: auditResultSchema.optional(),
+  from: z.iso.datetime().optional(),
+  to: z.iso.datetime().optional(),
+});
+
+export const auditLogSchema = z.object({
+  id: z.uuid(),
+  userId: z.uuid().nullable(),
+  userName: z.string().nullable(),
+  userAvatar: z.string().nullable(),
+  action: z.string(),
+  actionLabel: z.string(),
+  targetType: auditTargetTypeSchema,
+  targetId: z.uuid().nullable(),
+  targetLabel: z.string().nullable(),
+  result: auditResultSchema,
+  detail: z.record(z.string(), z.unknown()),
+  ip: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+});
+
+export const auditLogListResponseSchema = z.object({
+  items: z.array(auditLogSchema),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  total: z.number().int().nonnegative(),
+});
+
+export const mindMapNodeSchema = z.object({
+  id: z.uuid(),
+  knowledgeBaseId: z.uuid().optional(),
+  parentId: z.uuid().nullable(),
+  type: mindMapNodeTypeSchema,
+  title: z.string().trim().min(1).max(255),
+  referenceId: z.uuid().nullable(),
+  sortOrder: z.number().int().nonnegative().optional(),
+  status: mindMapNodeStatusSchema.optional(),
+  createdBy: z.uuid().nullable().optional(),
+  createdAt: z.iso.datetime().optional(),
+  updatedAt: z.iso.datetime().optional(),
+});
+
+export const mindMapResponseSchema = z.object({
+  nodes: z.array(mindMapNodeSchema.required({ knowledgeBaseId: true, status: true })),
+});
+
+export const saveMindMapRequestSchema = z.object({
+  nodes: z
+    .array(
+      mindMapNodeSchema.omit({
+        knowledgeBaseId: true,
+        status: true,
+        createdBy: true,
+        createdAt: true,
+        updatedAt: true,
+      }),
+    )
+    .max(200),
+});
+
+export const generateMindMapResponseSchema = z.object({
+  nodes: z.array(mindMapNodeSchema.required({ knowledgeBaseId: true, status: true })),
+  message: z.string(),
 });
 
 export const batchImportResponseSchema = z.object({
@@ -1056,6 +1175,17 @@ export type RetrievalSettings = z.infer<typeof retrievalSettingsSchema>;
 export type UpdateRetrievalSettingsRequest = z.infer<typeof updateRetrievalSettingsRequestSchema>;
 export type RetrievalTestRequest = z.infer<typeof retrievalTestRequestSchema>;
 export type RetrievalTestResponse = z.infer<typeof retrievalTestResponseSchema>;
+export type AuditTargetTypeValue = z.infer<typeof auditTargetTypeSchema>;
+export type AuditResult = z.infer<typeof auditResultSchema>;
+export type AuditLogListQuery = z.infer<typeof auditLogListQuerySchema>;
+export type AuditLogEntry = z.infer<typeof auditLogSchema>;
+export type AuditLogListResponse = z.infer<typeof auditLogListResponseSchema>;
+export type MindMapNodeType = z.infer<typeof mindMapNodeTypeSchema>;
+export type MindMapNodeStatus = z.infer<typeof mindMapNodeStatusSchema>;
+export type MindMapNode = z.infer<typeof mindMapNodeSchema>;
+export type MindMapResponse = z.infer<typeof mindMapResponseSchema>;
+export type SaveMindMapRequest = z.infer<typeof saveMindMapRequestSchema>;
+export type GenerateMindMapResponse = z.infer<typeof generateMindMapResponseSchema>;
 export type BatchImportResponse = z.infer<typeof batchImportResponseSchema>;
 export type ImprovementTriggerType = z.infer<typeof improvementTriggerTypeSchema>;
 export type ImprovementTaskStatus = z.infer<typeof improvementTaskStatusSchema>;

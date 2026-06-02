@@ -11,9 +11,11 @@ import {
 } from "@nestjs/common";
 import {
   analyticsEventRequestSchema,
+  analyticsOverviewResponseSchema,
   analyticsRangeQuerySchema,
   knowledgeBaseAnalyticsResponseSchema,
   uuidParamSchema,
+  type AnalyticsOverviewResponse,
   type KnowledgeBaseAnalyticsResponse,
 } from "@knowflow/shared";
 
@@ -49,6 +51,18 @@ export class AnalyticsController {
       this.requireUser(request),
     );
     return { ok: true, data: knowledgeBaseAnalyticsResponseSchema.parse(data) };
+  }
+
+  @Get("analytics/overview")
+  async getOverview(
+    @Query() query: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ ok: true; data: AnalyticsOverviewResponse }> {
+    const data = await this.analyticsService.getOverview(
+      analyticsRangeQuerySchema.parse(query),
+      this.requireUser(request),
+    );
+    return { ok: true, data: analyticsOverviewResponseSchema.parse(data) };
   }
 
   @Post("analytics/events")

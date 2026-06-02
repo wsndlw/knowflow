@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
   analyticsEvents,
   answerFeedback,
@@ -10,6 +10,7 @@ import {
   messageCitations,
 } from "@knowflow/db";
 import type {
+  AnalyticsOverviewResponse,
   AnalyticsRangeQuery,
   AnalyticsTopContent,
   KnowledgeBaseAnalyticsResponse,
@@ -79,6 +80,57 @@ export class AnalyticsService {
       popularKnowledgeItems,
       noAnswerQuestions,
       feedback,
+    };
+  }
+
+  async getOverview(
+    query: AnalyticsRangeQuery,
+    user: AuthenticatedUser,
+  ): Promise<AnalyticsOverviewResponse> {
+    if (user.platformRole !== "super_admin") {
+      throw new ForbiddenException("Only super admins can view platform analytics");
+    }
+
+    const range = this.normalizeRange(query);
+    const sevenDayRange = this.normalizeRange({ range: "7d" });
+    const [
+      visits,
+      searches,
+      questions,
+      activeUsers,
+      sevenDayActiveUsers,
+      knowledgeBaseRanking,
+      topDocuments,
+      topKnowledgeItems,
+    ] = await Promise.all([
+      this.countEvents(range, { eventType: "knowledge_base_viewed" }),
+      this.countEvents(range, { eventType: "knowledge_searched" }),
+      this.countEvents(range, { eventType: "question_asked" }),
+      this.countActiveUsers(range),
+      this.countActiveUsers(sevenDayRange),
+      this.getKnowledgeBaseRanking(range),
+      this.getPopularDocuments(range),
+      this.getPopularKnowledgeItems(range),
+    ]);
+
+    return {
+      range: this.toRangeResponse(range),
+      totals: {
+        visits,
+        searches,
+        questions,
+        activeUsers,
+      },
+      sevenDayActiveUsers,
+      knowledgeBases: knowledgeBaseRanking,
+      topDocuments: topDocuments.map((item) => ({
+        ...item,
+        knowledgeBaseName: item.knowledgeBaseName ?? "",
+      })),
+      topKnowledgeItems: topKnowledgeItems.map((item) => ({
+        ...item,
+        knowledgeBaseName: item.knowledgeBaseName ?? "",
+      })),
     };
   }
 
@@ -427,6 +479,37 @@ export class AnalyticsService {
       knowledgeItemLikes: itemRows[0]?.likes ?? 0,
       knowledgeItemDislikes: itemRows[0]?.dislikes ?? 0,
     };
+  }
+
+  private async getKnowledgeBaseRanking(
+    range: NormalizedRange,
+  ): Promise<AnalyticsOverviewResponse["knowledgeBases"]> {
+    const rows = await db
+      .select({
+        id: knowledgeBases.id,
+        name: knowledgeBases.name,
+        visits: sql<number>`count(*) filter (where ${analyticsEvents.eventType} = 'knowledge_base_viewed')::int`,
+        questions: sql<number>`count(*) filter (where ${analyticsEvents.eventType} = 'question_asked')::int`,
+      })
+      .from(analyticsEvents)
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, analyticsEvents.knowledgeBaseId))
+      .where(
+        and(
+          this.eventRangeCondition(range),
+          inArray(analyticsEvents.eventType, ["knowledge_base_viewed", "question_asked"]),
+        ),
+      )
+      .groupBy(knowledgeBases.id, knowledgeBases.name)
+      .orderBy(desc(sql`count(*)`))
+      .limit(10);
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      visits: row.visits,
+      questions: row.questions,
+      score: row.visits + row.questions,
+    }));
   }
 
   private async ensureCanAccess(

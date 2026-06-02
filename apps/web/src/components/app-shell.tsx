@@ -36,6 +36,7 @@ const navGroups: NavGroup[] = [
     items: [
       // 模型配置仅超级管理员可见
       { href: "/models", label: "模型配置", roles: ["super_admin"] },
+      { href: "/admin/analytics", label: "系统统计", roles: ["super_admin"] },
     ],
   },
 ];

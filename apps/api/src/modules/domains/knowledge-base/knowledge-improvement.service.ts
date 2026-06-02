@@ -142,14 +142,23 @@ export class KnowledgeImprovementService {
       return this.toTask(task);
     }
 
-    await db
+    const [processingTask] = await db
       .update(knowledgeImprovementTasks)
       .set({ status: "processing", updatedAt: new Date() })
-      .where(eq(knowledgeImprovementTasks.id, taskId));
+      .where(
+        and(
+          eq(knowledgeImprovementTasks.id, taskId),
+          inArray(knowledgeImprovementTasks.status, ["pending", "failed"]),
+        ),
+      )
+      .returning();
+    if (processingTask === undefined) {
+      return this.toTask(await this.findTask(taskId));
+    }
 
     try {
-      const relatedItems = await this.findRelatedItems(task.knowledgeBaseId, task.sourceQuestion);
-      const draft = await this.generateDraft(task, relatedItems);
+      const relatedItems = await this.findRelatedItems(processingTask.knowledgeBaseId, processingTask.sourceQuestion);
+      const draft = await this.generateDraft(processingTask, relatedItems);
       await db
         .update(knowledgeImprovementTasks)
         .set({
@@ -162,7 +171,12 @@ export class KnowledgeImprovementService {
           aiReasoning: draft.reasoning,
           updatedAt: new Date(),
         })
-        .where(eq(knowledgeImprovementTasks.id, taskId));
+        .where(
+          and(
+            eq(knowledgeImprovementTasks.id, taskId),
+            eq(knowledgeImprovementTasks.status, "processing"),
+          ),
+        );
     } catch (error) {
       await db
         .update(knowledgeImprovementTasks)
@@ -171,7 +185,12 @@ export class KnowledgeImprovementService {
           aiReasoning: error instanceof Error ? error.message.slice(0, 2000) : "AI generation failed",
           updatedAt: new Date(),
         })
-        .where(eq(knowledgeImprovementTasks.id, taskId));
+        .where(
+          and(
+            eq(knowledgeImprovementTasks.id, taskId),
+            eq(knowledgeImprovementTasks.status, "processing"),
+          ),
+        );
     }
 
     return this.toTask(await this.findTask(taskId));

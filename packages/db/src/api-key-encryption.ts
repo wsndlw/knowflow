@@ -67,4 +67,3 @@ export function maskApiKey(apiKey: string): string {
 
   return `${apiKey.slice(0, 3)}****${apiKey.slice(-4)}`;
 }
-

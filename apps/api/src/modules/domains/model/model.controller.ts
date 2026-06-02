@@ -180,4 +180,3 @@ export class ModelController {
     return request.user;
   }
 }
-

@@ -15,6 +15,8 @@ import {
   KNOWLEDGE_ITEM_FEEDBACK_RATINGS,
   KNOWLEDGE_ITEM_STATUSES,
   MODEL_USAGE_TYPES,
+  MODEL_PROVIDER_TYPES,
+  MODEL_TYPES,
   NO_ANSWER_TYPES,
   PLATFORM_ROLES,
   ANALYTICS_EVENT_TYPES,
@@ -30,6 +32,8 @@ export const knowledgeItemFeedbackRatingSchema = z.enum(KNOWLEDGE_ITEM_FEEDBACK_
 export const documentProcessStatusSchema = z.enum(DOCUMENT_PROCESS_STATUSES);
 export const documentSourceTypeSchema = z.enum(DOCUMENT_SOURCE_TYPES);
 export const modelUsageTypeSchema = z.enum(MODEL_USAGE_TYPES);
+export const modelProviderTypeSchema = z.enum(MODEL_PROVIDER_TYPES);
+export const modelTypeSchema = z.enum(MODEL_TYPES);
 export const agentTypeSchema = z.enum(AGENT_TYPES);
 export const agentVisibilitySchema = z.enum(AGENT_VISIBILITIES);
 export const agentStatusSchema = z.enum(AGENT_STATUSES);
@@ -589,6 +593,125 @@ export const analyticsOverviewResponseSchema = z.object({
   topKnowledgeItems: z.array(analyticsTopContentSchema.extend({ knowledgeBaseName: z.string() })),
 });
 
+export const modelProviderSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  providerType: modelProviderTypeSchema,
+  baseUrl: z.string(),
+  hasApiKey: z.boolean(),
+  apiKeyPreview: z.string().nullable(),
+  enabled: z.boolean(),
+  timeoutMs: z.number().int().positive(),
+  retryCount: z.number().int().nonnegative(),
+  concurrencyLimit: z.number().int().positive(),
+  dailyQuota: z.number().int().positive().nullable(),
+  remark: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const modelProviderListResponseSchema = z.object({
+  items: z.array(modelProviderSchema),
+});
+
+export const createModelProviderRequestSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  providerType: modelProviderTypeSchema,
+  baseUrl: z.url(),
+  apiKey: z.string().trim().min(1).max(4000).optional(),
+  enabled: z.boolean().optional(),
+  timeoutMs: z.number().int().min(1000).max(120000).optional(),
+  retryCount: z.number().int().min(0).max(10).optional(),
+  concurrencyLimit: z.number().int().min(1).max(100).optional(),
+  dailyQuota: z.number().int().positive().nullable().optional(),
+  remark: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const updateModelProviderRequestSchema = createModelProviderRequestSchema
+  .partial()
+  .extend({ apiKey: z.string().trim().min(1).max(4000).nullable().optional() })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required",
+  });
+
+export const modelCatalogSchema = z.object({
+  id: z.uuid(),
+  providerId: z.uuid(),
+  providerName: z.string(),
+  modelName: z.string(),
+  modelType: modelTypeSchema,
+  contextWindow: z.number().int().positive().nullable(),
+  supportsStreaming: z.boolean(),
+  enabled: z.boolean(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const modelCatalogListResponseSchema = z.object({
+  items: z.array(modelCatalogSchema),
+});
+
+export const createModelCatalogRequestSchema = z.object({
+  modelName: z.string().trim().min(1).max(160),
+  modelType: modelTypeSchema,
+  contextWindow: z.number().int().positive().nullable().optional(),
+  supportsStreaming: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const updateModelCatalogRequestSchema = createModelCatalogRequestSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required",
+  });
+
+export const modelUsagePolicySchema = z.object({
+  id: z.uuid(),
+  usageType: modelUsageTypeSchema,
+  defaultModelId: z.uuid().nullable(),
+  fallbackModelId: z.uuid().nullable(),
+  enabled: z.boolean(),
+  temperature: z.number(),
+  maxOutputTokens: z.number().int().positive().nullable(),
+  timeoutMs: z.number().int().positive(),
+  retryCount: z.number().int().nonnegative(),
+  quota: z.number().int().positive().nullable(),
+  defaultModel: modelCatalogSchema.nullable(),
+  fallbackModel: modelCatalogSchema.nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const modelUsagePolicyListResponseSchema = z.object({
+  items: z.array(modelUsagePolicySchema),
+});
+
+export const updateModelUsagePolicyRequestSchema = z
+  .object({
+    defaultModelId: z.uuid().nullable().optional(),
+    fallbackModelId: z.uuid().nullable().optional(),
+    enabled: z.boolean().optional(),
+    temperature: z.number().min(0).max(2).optional(),
+    maxOutputTokens: z.number().int().positive().nullable().optional(),
+    timeoutMs: z.number().int().min(1000).max(120000).optional(),
+    retryCount: z.number().int().min(0).max(10).optional(),
+    quota: z.number().int().positive().nullable().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required",
+  });
+
+export const testModelProviderRequestSchema = z.object({
+  modelId: z.uuid().optional(),
+});
+
+export const testModelProviderResponseSchema = z.object({
+  ok: z.boolean(),
+  latencyMs: z.number().int().nonnegative(),
+  modelName: z.string().nullable(),
+  error: z.string().nullable(),
+});
+
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type ApiFailure = z.infer<typeof apiFailureSchema>;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
@@ -631,6 +754,8 @@ export type KnowledgeItemFeedbackRequest = z.infer<
   typeof knowledgeItemFeedbackRequestSchema
 >;
 export type ModelUsageType = z.infer<typeof modelUsageTypeSchema>;
+export type ModelProviderType = z.infer<typeof modelProviderTypeSchema>;
+export type ModelType = z.infer<typeof modelTypeSchema>;
 export type Agent = z.infer<typeof agentSchema>;
 export type AgentListResponse = z.infer<typeof agentListResponseSchema>;
 export type ManagedAgent = z.infer<typeof managedAgentSchema>;
@@ -667,3 +792,18 @@ export type KnowledgeBaseAnalyticsResponse = z.infer<
   typeof knowledgeBaseAnalyticsResponseSchema
 >;
 export type AnalyticsOverviewResponse = z.infer<typeof analyticsOverviewResponseSchema>;
+export type ModelProvider = z.infer<typeof modelProviderSchema>;
+export type ModelProviderListResponse = z.infer<typeof modelProviderListResponseSchema>;
+export type CreateModelProviderRequest = z.infer<typeof createModelProviderRequestSchema>;
+export type UpdateModelProviderRequest = z.infer<typeof updateModelProviderRequestSchema>;
+export type ModelCatalog = z.infer<typeof modelCatalogSchema>;
+export type ModelCatalogListResponse = z.infer<typeof modelCatalogListResponseSchema>;
+export type CreateModelCatalogRequest = z.infer<typeof createModelCatalogRequestSchema>;
+export type UpdateModelCatalogRequest = z.infer<typeof updateModelCatalogRequestSchema>;
+export type ModelUsagePolicy = z.infer<typeof modelUsagePolicySchema>;
+export type ModelUsagePolicyListResponse = z.infer<typeof modelUsagePolicyListResponseSchema>;
+export type UpdateModelUsagePolicyRequest = z.infer<
+  typeof updateModelUsagePolicyRequestSchema
+>;
+export type TestModelProviderRequest = z.infer<typeof testModelProviderRequestSchema>;
+export type TestModelProviderResponse = z.infer<typeof testModelProviderResponseSchema>;

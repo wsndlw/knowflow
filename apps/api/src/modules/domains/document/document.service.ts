@@ -368,7 +368,7 @@ export class DocumentService {
   private detectFileKind(file: UploadedFile): FileKind {
     const kind = detectDocumentUploadKind(file);
     if (kind === null) {
-      throw new BadRequestException("Only PDF, Markdown, TXT, DOCX, CSV, XLSX, and image files with matching MIME types are supported");
+      throw new BadRequestException("Only PDF, Markdown, TXT, DOCX, CSV, XLSX, XLS, and image files with matching MIME types are supported");
     }
     if (!validateDocumentUploadContent(file, kind)) {
       throw new BadRequestException("Document file content does not match its declared type");

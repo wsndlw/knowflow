@@ -511,7 +511,7 @@ export class KnowledgeItemService {
   private detectImportFileKind(file: UploadedFile): "csv" | "excel" {
     const kind = detectBatchImportKind(file);
     if (kind === null) {
-      throw new BadRequestException("Only CSV and XLSX files with matching MIME types are supported for batch import");
+      throw new BadRequestException("Only CSV, XLSX, and XLS files with matching MIME types are supported for batch import");
     }
     if (!validateBatchImportContent(file, kind)) {
       throw new BadRequestException("Import file content does not match its declared type");

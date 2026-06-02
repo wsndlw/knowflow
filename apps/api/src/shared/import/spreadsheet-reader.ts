@@ -1,3 +1,4 @@
+import * as XLS from "@e965/xlsx";
 import { parse as parseCsv } from "csv-parse/sync";
 import readXlsxFile from "read-excel-file/node";
 import type { CellValue } from "read-excel-file/node";
@@ -5,6 +6,7 @@ import type { CellValue } from "read-excel-file/node";
 type SpreadsheetCellValue = CellValue | null;
 
 export type SpreadsheetKind = "csv" | "excel";
+export type SpreadsheetParser = "csv-parse" | "read-excel-file" | "@e965/xlsx";
 
 export type SpreadsheetSheet = {
   name: string;
@@ -14,6 +16,7 @@ export type SpreadsheetSheet = {
 export type SpreadsheetReadResult = {
   sheets: SpreadsheetSheet[];
   rowCount: number;
+  parser: SpreadsheetParser;
 };
 
 export async function readSpreadsheet(
@@ -25,7 +28,12 @@ export async function readSpreadsheet(
     return {
       sheets: rows.length === 0 ? [] : [{ name: "Sheet1", rows }],
       rowCount: rows.length,
+      parser: "csv-parse",
     };
+  }
+
+  if (hasOleCompoundSignature(buffer)) {
+    return readLegacyExcelFile(buffer);
   }
 
   const parsedSheets = await readXlsxFile(buffer);
@@ -34,7 +42,7 @@ export async function readSpreadsheet(
     .filter((sheet) => sheet.rows.length > 0);
   const rowCount = sheets.reduce((total, sheet) => total + sheet.rows.length, 0);
 
-  return { sheets, rowCount };
+  return { sheets, rowCount, parser: "read-excel-file" };
 }
 
 function parseCsvRows(buffer: Buffer): string[][] {
@@ -60,6 +68,41 @@ function worksheetRows(rows: SpreadsheetCellValue[][]): string[][] {
       return trimTrailingEmptyCells(normalized);
     })
     .filter((row) => row.some((cell) => cell.length > 0));
+}
+
+function readLegacyExcelFile(buffer: Buffer): SpreadsheetReadResult {
+  const workbook = XLS.read(buffer, {
+    type: "buffer",
+    cellDates: true,
+    cellFormula: false,
+    cellHTML: false,
+    cellNF: false,
+    cellStyles: false,
+  });
+  const sheets = workbook.SheetNames.map((name) => {
+    const worksheet = workbook.Sheets[name];
+    const rows =
+      worksheet === undefined
+        ? []
+        : worksheetRows(
+            XLS.utils.sheet_to_json<SpreadsheetCellValue[]>(worksheet, {
+              header: 1,
+              blankrows: false,
+              defval: "",
+              raw: false,
+            }),
+          );
+    return { name, rows };
+  }).filter((sheet) => sheet.rows.length > 0);
+  const rowCount = sheets.reduce((total, sheet) => total + sheet.rows.length, 0);
+
+  return { sheets, rowCount, parser: "@e965/xlsx" };
+}
+
+function hasOleCompoundSignature(buffer: Buffer): boolean {
+  return buffer
+    .subarray(0, 8)
+    .equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
 }
 
 function normalizeCell(cell: unknown): string {

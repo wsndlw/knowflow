@@ -18,7 +18,18 @@ export type DocumentUploadKind = {
     DocumentSourceType,
     "pdf" | "markdown" | "txt" | "docx" | "csv" | "excel" | "image"
   >;
-  extension: ".pdf" | ".md" | ".txt" | ".docx" | ".csv" | ".xlsx" | ".png" | ".jpg" | ".jpeg" | ".webp";
+  extension:
+    | ".pdf"
+    | ".md"
+    | ".txt"
+    | ".docx"
+    | ".csv"
+    | ".xlsx"
+    | ".xls"
+    | ".png"
+    | ".jpg"
+    | ".jpeg"
+    | ".webp";
 };
 
 export type BatchImportKind = "csv" | "excel";
@@ -66,6 +77,12 @@ const DOCUMENT_RULES: readonly DocumentRule[] = [
     mimeTypes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
   },
   {
+    sourceType: "excel",
+    extension: ".xls",
+    extensions: [".xls"],
+    mimeTypes: ["application/vnd.ms-excel"],
+  },
+  {
     sourceType: "image",
     extension: ".png",
     extensions: [".png"],
@@ -97,6 +114,11 @@ const BATCH_IMPORT_RULES: readonly { kind: BatchImportKind; extensions: readonly
     kind: "excel",
     extensions: [".xlsx"],
     mimeTypes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  },
+  {
+    kind: "excel",
+    extensions: [".xls"],
+    mimeTypes: ["application/vnd.ms-excel"],
   },
 ];
 
@@ -131,7 +153,7 @@ export function validateDocumentUploadContent(file: FileWithBuffer, kind: Docume
     case "docx":
       return hasZipSignature(file.buffer) && bufferIncludesAscii(file.buffer, "word/");
     case "excel":
-      return hasZipSignature(file.buffer) && bufferIncludesAscii(file.buffer, "xl/");
+      return hasExcelSignature(file.buffer, kind.extension);
     case "image":
       return hasImageSignature(file.buffer, kind.extension);
   }
@@ -141,7 +163,7 @@ export function validateBatchImportContent(file: FileWithBuffer, kind: BatchImpo
   if (kind === "csv") {
     return isLikelyText(file.buffer);
   }
-  return hasZipSignature(file.buffer) && bufferIncludesAscii(file.buffer, "xl/");
+  return hasExcelSignature(file.buffer, normalizedExtension(file.originalname));
 }
 
 function normalizedExtension(filename: string): string {
@@ -171,6 +193,29 @@ function hasZipSignature(buffer: Buffer): boolean {
     fourth !== undefined &&
     (third === 0x03 || third === 0x05 || third === 0x07) &&
     (fourth === 0x04 || fourth === 0x06 || fourth === 0x08)
+  );
+}
+
+function hasExcelSignature(buffer: Buffer, extension: string): boolean {
+  if (extension === ".xlsx") {
+    return hasZipSignature(buffer) && bufferIncludesAscii(buffer, "xl/");
+  }
+  if (extension === ".xls") {
+    return hasOleCompoundSignature(buffer) && hasExcelWorkbookStreamName(buffer);
+  }
+  return false;
+}
+
+function hasOleCompoundSignature(buffer: Buffer): boolean {
+  return buffer
+    .subarray(0, 8)
+    .equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
+}
+
+function hasExcelWorkbookStreamName(buffer: Buffer): boolean {
+  return (
+    buffer.includes(Buffer.from("Workbook", "utf16le")) ||
+    buffer.includes(Buffer.from("Book", "utf16le"))
   );
 }
 

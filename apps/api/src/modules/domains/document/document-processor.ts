@@ -43,7 +43,14 @@ type ProcessableDocument = {
 type ParsedDocument = {
   text: string;
   metadata: {
-    parser: "pdf-parse" | "plain-text" | "mammoth" | "csv-parse" | "exceljs" | "vision-ocr";
+    parser:
+      | "pdf-parse"
+      | "plain-text"
+      | "mammoth"
+      | "csv-parse"
+      | "read-excel-file"
+      | "@e965/xlsx"
+      | "vision-ocr";
     parsedAt: string;
     textLength: number;
     originalFormat?: "docx";
@@ -487,7 +494,7 @@ async function parseCsvExcelDocument(
     sheetTexts.push(`## Sheet: ${sheet.name}\n\n${rowsToMarkdownTable(sheet.rows)}`);
   }
 
-  return toParsedDocument(sheetTexts.join("\n\n"), kind === "csv" ? "csv-parse" : "exceljs", {
+  return toParsedDocument(sheetTexts.join("\n\n"), spreadsheet.parser, {
     sheetCount: spreadsheet.sheets.length,
     rowCount: spreadsheet.rowCount,
   });

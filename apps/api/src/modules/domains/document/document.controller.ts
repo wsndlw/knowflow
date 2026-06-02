@@ -66,7 +66,7 @@ export class DocumentController {
           return;
         }
         callback(
-          new BadRequestException("Only PDF, Markdown, TXT, DOCX, CSV, XLSX, and image files with matching MIME types are supported"),
+          new BadRequestException("Only PDF, Markdown, TXT, DOCX, CSV, XLSX, XLS, and image files with matching MIME types are supported"),
           false,
         );
       },

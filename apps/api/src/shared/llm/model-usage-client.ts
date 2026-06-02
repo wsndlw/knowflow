@@ -149,5 +149,5 @@ async function resolveCatalogModel(
 }
 
 function throwMissingPolicyError(usageType: ModelUsageType): never {
-  throw new Error(`请先在模型配置中配置 ${usageType} 模型`);
+  throw new Error(`Please configure a ${usageType} model in model settings first`);
 }

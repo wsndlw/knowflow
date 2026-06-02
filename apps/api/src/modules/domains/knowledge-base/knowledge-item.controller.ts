@@ -89,7 +89,7 @@ export class KnowledgeItemController {
           return;
         }
         callback(
-          new BadRequestException("Only CSV and XLSX files with matching MIME types are supported for batch import"),
+          new BadRequestException("Only CSV, XLSX, and XLS files with matching MIME types are supported for batch import"),
           false,
         );
       },

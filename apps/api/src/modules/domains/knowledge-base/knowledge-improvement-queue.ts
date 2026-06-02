@@ -24,6 +24,7 @@ export type ImprovementJob =
 export type ImprovementJobResult = {
   status: "completed" | "failed";
   created?: number;
+  enqueued?: number;
   taskId?: string;
 };
 

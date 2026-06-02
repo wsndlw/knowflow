@@ -4,8 +4,8 @@ import type { ImprovementJobResult } from "./knowledge-improvement-queue.js";
 export async function processImprovementScan(
   service: KnowledgeImprovementService,
 ): Promise<ImprovementJobResult> {
-  const created = await service.scanAllKnowledgeBases();
-  return { status: "completed", created };
+  const result = await service.scanAndEnqueueAllKnowledgeBases();
+  return { status: "completed", created: result.created.length, enqueued: result.enqueued };
 }
 
 export async function processImprovementGenerate(

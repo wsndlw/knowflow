@@ -62,6 +62,8 @@ await improvementQueue.add(
   {
     repeat: { pattern: "0 * * * *" },
     jobId: "knowledge-improvement-scan-hourly",
+    removeOnComplete: { count: 24 },
+    removeOnFail: { count: 24 },
   },
 );
 await improvementQueue.close();

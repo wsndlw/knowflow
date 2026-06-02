@@ -582,6 +582,27 @@ export const knowledgeImprovementTasks = pgTable(
   ],
 );
 
+export const knowledgeImprovementScanCursors = pgTable(
+  "knowledge_improvement_scan_cursors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .notNull()
+      .references(() => knowledgeBases.id),
+    sourceType: varchar("source_type", { length: 40 }).notNull(),
+    lastSourceCreatedAt: timestamp("last_source_created_at", { withTimezone: true }),
+    lastSourceId: uuid("last_source_id"),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("knowledge_improvement_scan_cursors_kb_source_uidx").on(
+      table.knowledgeBaseId,
+      table.sourceType,
+    ),
+    index("knowledge_improvement_scan_cursors_kb_idx").on(table.knowledgeBaseId),
+  ],
+);
+
 export const agents = pgTable(
   "agents",
   {

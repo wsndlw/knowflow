@@ -38,6 +38,12 @@ type TopContent = AnalyticsTopContent & {
   knowledgeBaseName?: string;
 };
 
+type CountWithLastViewed = {
+  id: string | null;
+  value: number;
+  lastViewedAt: Date | string | null;
+};
+
 @Injectable()
 export class AnalyticsService {
   constructor(
@@ -71,19 +77,42 @@ export class AnalyticsService {
       searches,
       questions,
       activeUsers,
+      previousVisits,
+      previousSearches,
+      previousQuestions,
+      previousActiveUsers,
       popularDocuments,
       popularKnowledgeItems,
+      unvisitedContent,
       noAnswerQuestions,
+      lowConfidenceQuestions,
       feedback,
+      feedbackReasons,
     ] = await Promise.all([
       this.countEvents(range, { knowledgeBaseId, eventType: "knowledge_base_viewed" }),
       this.countEvents(range, { knowledgeBaseId, eventType: "knowledge_searched" }),
       this.countEvents(range, { knowledgeBaseId, eventType: "question_asked" }),
       this.countActiveUsers(range, knowledgeBaseId),
+      this.countEvents(this.previousRange(range), {
+        knowledgeBaseId,
+        eventType: "knowledge_base_viewed",
+      }),
+      this.countEvents(this.previousRange(range), {
+        knowledgeBaseId,
+        eventType: "knowledge_searched",
+      }),
+      this.countEvents(this.previousRange(range), {
+        knowledgeBaseId,
+        eventType: "question_asked",
+      }),
+      this.countActiveUsers(this.previousRange(range), knowledgeBaseId),
       this.getPopularDocuments(range, knowledgeBaseId),
       this.getPopularKnowledgeItems(range, knowledgeBaseId),
+      this.getUnvisitedContent(range, knowledgeBaseId),
       this.getNoAnswerQuestions(range, knowledgeBaseId),
+      this.getLowConfidenceQuestions(range, knowledgeBaseId),
       this.getKnowledgeBaseFeedback(range, knowledgeBaseId),
+      this.getFeedbackReasons(range, knowledgeBaseId),
     ]);
 
     return {
@@ -95,10 +124,19 @@ export class AnalyticsService {
         questions,
         activeUsers,
       },
+      trends: {
+        visits: { current: visits, previous: previousVisits },
+        searches: { current: searches, previous: previousSearches },
+        questions: { current: questions, previous: previousQuestions },
+        activeUsers: { current: activeUsers, previous: previousActiveUsers },
+      },
       popularDocuments,
       popularKnowledgeItems,
+      unvisitedContent,
       noAnswerQuestions,
+      lowConfidenceQuestions,
       feedback,
+      feedbackReasons,
     };
   }
 
@@ -197,6 +235,30 @@ export class AnalyticsService {
     return value.toISOString().slice(0, 10);
   }
 
+  private toIsoDateTime(value: Date | string | null): string | null {
+    if (value === null) {
+      return null;
+    }
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    return new Date(value).toISOString();
+  }
+
+  private previousRange(range: NormalizedRange): NormalizedRange {
+    const days =
+      Math.floor((range.toDate.getTime() - range.fromDate.getTime()) / 86_400_000) + 1;
+    const previousTo = new Date(range.fromDate);
+    previousTo.setUTCDate(previousTo.getUTCDate() - 1);
+    const previousFrom = new Date(previousTo);
+    previousFrom.setUTCDate(previousFrom.getUTCDate() - (days - 1));
+    return this.buildRange(
+      range.range,
+      this.toDateOnly(previousFrom),
+      this.toDateOnly(previousTo),
+    );
+  }
+
   private eventRangeCondition(range: NormalizedRange): SQL {
     return this.requireCondition(
       and(gte(analyticsEvents.createdDate, range.from), lte(analyticsEvents.createdDate, range.to)),
@@ -251,6 +313,7 @@ export class AnalyticsService {
     range: NormalizedRange,
     knowledgeBaseId?: string,
   ): Promise<TopContent[]> {
+    const lastViewedAtExpression = sql<Date | null>`max(${analyticsEvents.createdAt})`;
     const viewConditions = [
       this.eventRangeCondition(range),
       eq(analyticsEvents.eventType, "document_viewed"),
@@ -271,6 +334,7 @@ export class AnalyticsService {
         .select({
           id: analyticsEvents.targetId,
           value: sql<number>`count(*)::int`,
+          lastViewedAt: lastViewedAtExpression,
         })
         .from(analyticsEvents)
         .where(and(...viewConditions))
@@ -290,14 +354,22 @@ export class AnalyticsService {
     ]);
 
     const views = this.toCountMap(viewRows);
+    const lastViewedAt = this.toLastViewedMap(viewRows);
     const citations = this.toCountMap(citationRows);
-    return this.hydrateDocuments([...new Set([...views.keys(), ...citations.keys()])], views, citations, knowledgeBaseId);
+    return this.hydrateDocuments(
+      [...new Set([...views.keys(), ...citations.keys()])],
+      views,
+      citations,
+      lastViewedAt,
+      knowledgeBaseId,
+    );
   }
 
   private async getPopularKnowledgeItems(
     range: NormalizedRange,
     knowledgeBaseId?: string,
   ): Promise<TopContent[]> {
+    const lastViewedAtExpression = sql<Date | null>`max(${analyticsEvents.createdAt})`;
     const viewConditions = [
       this.eventRangeCondition(range),
       eq(analyticsEvents.eventType, "knowledge_item_viewed"),
@@ -318,6 +390,7 @@ export class AnalyticsService {
         .select({
           id: analyticsEvents.targetId,
           value: sql<number>`count(*)::int`,
+          lastViewedAt: lastViewedAtExpression,
         })
         .from(analyticsEvents)
         .where(and(...viewConditions))
@@ -337,8 +410,15 @@ export class AnalyticsService {
     ]);
 
     const views = this.toCountMap(viewRows);
+    const lastViewedAt = this.toLastViewedMap(viewRows);
     const citations = this.toCountMap(citationRows);
-    return this.hydrateKnowledgeItems([...new Set([...views.keys(), ...citations.keys()])], views, citations, knowledgeBaseId);
+    return this.hydrateKnowledgeItems(
+      [...new Set([...views.keys(), ...citations.keys()])],
+      views,
+      citations,
+      lastViewedAt,
+      knowledgeBaseId,
+    );
   }
 
   private toCountMap(rows: { id: string | null; value: number }[]): Map<string, number> {
@@ -349,10 +429,19 @@ export class AnalyticsService {
     );
   }
 
+  private toLastViewedMap(rows: CountWithLastViewed[]): Map<string, Date | string | null> {
+    return new Map(
+      rows
+        .filter((row): row is CountWithLastViewed & { id: string } => row.id !== null)
+        .map((row) => [row.id, row.lastViewedAt]),
+    );
+  }
+
   private async hydrateDocuments(
     ids: string[],
     views: Map<string, number>,
     citations: Map<string, number>,
+    lastViewedAt: Map<string, Date | string | null>,
     knowledgeBaseId?: string,
   ): Promise<TopContent[]> {
     if (ids.length === 0) {
@@ -379,6 +468,7 @@ export class AnalyticsService {
         knowledgeBaseName: row.knowledgeBaseName,
         views: views.get(row.id) ?? 0,
         citations: citations.get(row.id) ?? 0,
+        lastViewedAt: this.toIsoDateTime(lastViewedAt.get(row.id) ?? null),
       }))
       .sort((a, b) => b.views + b.citations - (a.views + a.citations))
       .slice(0, 5);
@@ -388,6 +478,7 @@ export class AnalyticsService {
     ids: string[],
     views: Map<string, number>,
     citations: Map<string, number>,
+    lastViewedAt: Map<string, Date | string | null>,
     knowledgeBaseId?: string,
   ): Promise<TopContent[]> {
     if (ids.length === 0) {
@@ -414,9 +505,92 @@ export class AnalyticsService {
         knowledgeBaseName: row.knowledgeBaseName,
         views: views.get(row.id) ?? 0,
         citations: citations.get(row.id) ?? 0,
+        lastViewedAt: this.toIsoDateTime(lastViewedAt.get(row.id) ?? null),
       }))
       .sort((a, b) => b.views + b.citations - (a.views + a.citations))
       .slice(0, 5);
+  }
+
+  private async getUnvisitedContent(
+    range: NormalizedRange,
+    knowledgeBaseId: string,
+  ): Promise<KnowledgeBaseAnalyticsResponse["unvisitedContent"]> {
+    const documentLastViewedAtExpression = sql<Date | null>`max(${analyticsEvents.createdAt})`;
+    const documentViewsExpression = sql<number>`count(${analyticsEvents.id})::int`;
+    const documentRows = await db
+      .select({
+        id: documents.id,
+        title: documents.title,
+        views: documentViewsExpression,
+        lastViewedAt: documentLastViewedAtExpression,
+      })
+      .from(documents)
+      .leftJoin(
+        analyticsEvents,
+        and(
+          eq(analyticsEvents.targetId, documents.id),
+          eq(analyticsEvents.targetType, "document"),
+          eq(analyticsEvents.eventType, "document_viewed"),
+          eq(analyticsEvents.knowledgeBaseId, knowledgeBaseId),
+          this.eventRangeCondition(range),
+        ),
+      )
+      .where(eq(documents.knowledgeBaseId, knowledgeBaseId))
+      .groupBy(documents.id, documents.title)
+      .orderBy(sql`${documentLastViewedAtExpression} asc nulls first`)
+      .limit(5);
+
+    const knowledgeItemLastViewedAtExpression = sql<Date | null>`max(${analyticsEvents.createdAt})`;
+    const knowledgeItemViewsExpression = sql<number>`count(${analyticsEvents.id})::int`;
+    const knowledgeItemRows = await db
+      .select({
+        id: knowledgeItems.id,
+        title: knowledgeItems.title,
+        views: knowledgeItemViewsExpression,
+        lastViewedAt: knowledgeItemLastViewedAtExpression,
+      })
+      .from(knowledgeItems)
+      .leftJoin(
+        analyticsEvents,
+        and(
+          eq(analyticsEvents.targetId, knowledgeItems.id),
+          eq(analyticsEvents.targetType, "knowledge_item"),
+          eq(analyticsEvents.eventType, "knowledge_item_viewed"),
+          eq(analyticsEvents.knowledgeBaseId, knowledgeBaseId),
+          this.eventRangeCondition(range),
+        ),
+      )
+      .where(eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId))
+      .groupBy(knowledgeItems.id, knowledgeItems.title)
+      .orderBy(sql`${knowledgeItemLastViewedAtExpression} asc nulls first`)
+      .limit(5);
+
+    return [
+      ...documentRows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        type: "document" as const,
+        views: row.views,
+        lastViewedAt: this.toIsoDateTime(row.lastViewedAt),
+      })),
+      ...knowledgeItemRows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        type: "knowledge_item" as const,
+        views: row.views,
+        lastViewedAt: this.toIsoDateTime(row.lastViewedAt),
+      })),
+    ]
+      .sort((left, right) => {
+        if (left.lastViewedAt === null && right.lastViewedAt !== null) {
+          return -1;
+        }
+        if (left.lastViewedAt !== null && right.lastViewedAt === null) {
+          return 1;
+        }
+        return (left.lastViewedAt ?? "").localeCompare(right.lastViewedAt ?? "");
+      })
+      .slice(0, 10);
   }
 
   private async getNoAnswerQuestions(
@@ -473,6 +647,54 @@ export class AnalyticsService {
     }));
   }
 
+  private async getLowConfidenceQuestions(
+    range: NormalizedRange,
+    knowledgeBaseId: string,
+  ): Promise<KnowledgeBaseAnalyticsResponse["lowConfidenceQuestions"]> {
+    const questionExpression = sql<string>`coalesce((
+      select user_messages.content
+      from conversation_messages user_messages
+      where user_messages.conversation_id = ${noAnswerAssistantMessages.conversationId}
+        and user_messages.role = 'user'
+        and user_messages.created_at <= ${noAnswerAssistantMessages.createdAt}
+      order by user_messages.created_at desc, user_messages.id desc
+      limit 1
+    ), '')`;
+    const countExpression = sql<number>`count(distinct ${noAnswerAssistantMessages.id})::int`;
+    const lastAskedAtExpression = sql<Date | null>`max(${noAnswerAssistantMessages.createdAt})`;
+    const rows = await db
+      .select({
+        question: questionExpression,
+        count: countExpression,
+        lastAskedAt: lastAskedAtExpression,
+      })
+      .from(noAnswerAssistantMessages)
+      .innerJoin(
+        analyticsEvents,
+        and(
+          eq(analyticsEvents.targetId, noAnswerAssistantMessages.id),
+          eq(analyticsEvents.eventType, "answer_generated"),
+          eq(analyticsEvents.knowledgeBaseId, knowledgeBaseId),
+        ),
+      )
+      .where(
+        and(
+          eq(noAnswerAssistantMessages.role, "assistant"),
+          eq(noAnswerAssistantMessages.confidenceLevel, "weak"),
+          this.createdAtRangeCondition(noAnswerAssistantMessages.createdAt, range),
+        ),
+      )
+      .groupBy(questionExpression)
+      .orderBy(desc(countExpression))
+      .limit(10);
+
+    return rows.map((row) => ({
+      question: row.question.length > 0 ? row.question : "(unknown question)",
+      count: row.count,
+      lastAskedAt: this.toIsoDateTime(row.lastAskedAt),
+    }));
+  }
+
   private async getKnowledgeBaseFeedback(
     range: NormalizedRange,
     knowledgeBaseId: string,
@@ -513,6 +735,31 @@ export class AnalyticsService {
       knowledgeItemLikes: itemRows[0]?.likes ?? 0,
       knowledgeItemDislikes: itemRows[0]?.dislikes ?? 0,
     };
+  }
+
+  private async getFeedbackReasons(
+    range: NormalizedRange,
+    knowledgeBaseId: string,
+  ): Promise<KnowledgeBaseAnalyticsResponse["feedbackReasons"]> {
+    const reasonExpression = sql<string>`coalesce(nullif(${answerFeedback.reason}, ''), 'unspecified')`;
+    const countExpression = sql<number>`count(*)::int`;
+    const rows = await db
+      .select({
+        reason: reasonExpression,
+        count: countExpression,
+      })
+      .from(answerFeedback)
+      .where(
+        and(
+          eq(answerFeedback.knowledgeBaseId, knowledgeBaseId),
+          this.createdAtRangeCondition(answerFeedback.createdAt, range),
+        ),
+      )
+      .groupBy(reasonExpression)
+      .orderBy(desc(countExpression))
+      .limit(10);
+
+    return rows;
   }
 
   private async getKnowledgeBaseRanking(

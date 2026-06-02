@@ -510,12 +510,44 @@ export const analyticsTopContentSchema = z.object({
   title: z.string(),
   views: z.number().int().nonnegative(),
   citations: z.number().int().nonnegative(),
+  lastViewedAt: z.iso.datetime().nullable(),
 });
 
 export const analyticsNoAnswerQuestionSchema = z.object({
   question: z.string(),
   count: z.number().int().nonnegative(),
   noAnswerType: noAnswerTypeSchema.nullable(),
+});
+
+export const analyticsTrendValueSchema = z.object({
+  current: z.number().int().nonnegative(),
+  previous: z.number().int().nonnegative(),
+});
+
+export const analyticsTrendSchema = z.object({
+  visits: analyticsTrendValueSchema,
+  searches: analyticsTrendValueSchema,
+  questions: analyticsTrendValueSchema,
+  activeUsers: analyticsTrendValueSchema,
+});
+
+export const analyticsUnvisitedContentSchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  type: z.enum(["document", "knowledge_item"]),
+  views: z.number().int().nonnegative(),
+  lastViewedAt: z.iso.datetime().nullable(),
+});
+
+export const analyticsLowConfidenceQuestionSchema = z.object({
+  question: z.string(),
+  count: z.number().int().nonnegative(),
+  lastAskedAt: z.iso.datetime().nullable(),
+});
+
+export const analyticsFeedbackReasonSchema = z.object({
+  reason: z.string(),
+  count: z.number().int().nonnegative(),
 });
 
 export const analyticsFeedbackSummarySchema = z.object({
@@ -530,10 +562,14 @@ export const knowledgeBaseAnalyticsResponseSchema = z.object({
   range: analyticsRangeQuerySchema,
   knowledgeBaseId: z.uuid(),
   metrics: analyticsMetricSchema,
+  trends: analyticsTrendSchema,
   popularDocuments: z.array(analyticsTopContentSchema),
   popularKnowledgeItems: z.array(analyticsTopContentSchema),
+  unvisitedContent: z.array(analyticsUnvisitedContentSchema),
   noAnswerQuestions: z.array(analyticsNoAnswerQuestionSchema),
+  lowConfidenceQuestions: z.array(analyticsLowConfidenceQuestionSchema),
   feedback: analyticsFeedbackSummarySchema,
+  feedbackReasons: z.array(analyticsFeedbackReasonSchema),
 });
 
 export const analyticsKnowledgeBaseRankingSchema = z.object({

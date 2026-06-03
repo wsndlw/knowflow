@@ -8,6 +8,7 @@
     "worker": "tsx src/worker.ts",
     "queue:smoke": "tsx src/scripts/queue-smoke.ts",
     "lint": "eslint .",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json"
   },

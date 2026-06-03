@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  CSRF_HEADER_NAME,
   documentListResponseSchema,
   documentSchema,
   type KnowledgeDocument,
@@ -15,7 +16,7 @@ import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Input } from "../../../../components/ui/input";
 import { Select } from "../../../../components/ui/select";
 import { TagBadge } from "../../../../components/ui/tag-badge";
-import { apiRequest, apiUrl, emptyObjectSchema, parseApiError, replaceDocumentTags } from "../../../../lib/api";
+import { apiRequest, apiUrl, emptyObjectSchema, getCsrfToken, parseApiError, replaceDocumentTags } from "../../../../lib/api";
 import { useDocumentProgress } from "../_hooks/use-document-progress";
 import { useTagFilter } from "../_hooks/use-tag-filter";
 import { useTags } from "../_hooks/use-tags";
@@ -133,7 +134,12 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
       formData.set("file", file);
       const response = await fetch(
         apiUrl(`/knowledge-bases/${knowledgeBaseId}/documents`),
-        { method: "POST", body: formData, credentials: "include" },
+        {
+          method: "POST",
+          headers: { [CSRF_HEADER_NAME]: getCsrfToken() },
+          body: formData,
+          credentials: "include",
+        },
       );
       if (!response.ok) throw new Error(await parseApiError(response));
       const body: unknown = await response.json();

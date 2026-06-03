@@ -10,6 +10,12 @@ export const ACCESS_SESSION_COOKIE_NAME = "knowflow_access";
 
 export const REFRESH_SESSION_COOKIE_NAME = "knowflow_refresh";
 
+export const CSRF_COOKIE_NAME = "csrf";
+
+export const SECURE_CSRF_COOKIE_NAME = "__Host-csrf";
+
+export const CSRF_HEADER_NAME = "X-CSRF-Token";
+
 export const DEFAULT_EMBEDDING_MODEL = "text-embedding-v4";
 
 export const DEFAULT_EMBEDDING_DIMENSION = 1024;

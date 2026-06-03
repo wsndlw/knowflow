@@ -1,7 +1,8 @@
 import { Body, Controller, Get, Inject, Post, Req, Res } from "@nestjs/common";
-import { loginRequestSchema } from "@knowflow/shared";
+import { AuditTargetType, loginRequestSchema } from "@knowflow/shared";
 
 import { AuthService } from "./auth.service.js";
+import { AuditLog } from "../../../shared/audit/audit-log.decorator.js";
 import { Public } from "../../../shared/decorators/public.decorator.js";
 import type {
   AuthLoginSuccess,
@@ -17,6 +18,7 @@ export class AuthController {
 
   @Post("login")
   @Public()
+  @AuditLog("user.login", AuditTargetType.USER)
   async login(
     @Body() body: unknown,
     @Req() request: RequestLike,
@@ -34,6 +36,7 @@ export class AuthController {
 
   @Post("logout")
   @Public()
+  @AuditLog("user.logout", AuditTargetType.USER)
   async logout(
     @Req() request: RequestLike,
     @Res({ passthrough: true }) response: ResponseLike,

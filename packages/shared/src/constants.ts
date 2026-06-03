@@ -30,6 +30,66 @@ export const RETRIEVAL_DOCUMENT_STATUS_FILTERS = ["all", "completed"] as const;
 
 export const RETRIEVAL_ITEM_STATUS_FILTERS = ["all", "published"] as const;
 
+export enum AuditTargetType {
+  USER = "user",
+  KNOWLEDGE_BASE = "knowledge_base",
+  DOCUMENT = "document",
+  KNOWLEDGE_ITEM = "knowledge_item",
+  AGENT = "agent",
+  TAG = "tag",
+  RETRIEVAL_SETTINGS = "retrieval_settings",
+  MIND_MAP = "mind_map",
+}
+
+export const AUDIT_TARGET_TYPES = [
+  AuditTargetType.USER,
+  AuditTargetType.KNOWLEDGE_BASE,
+  AuditTargetType.DOCUMENT,
+  AuditTargetType.KNOWLEDGE_ITEM,
+  AuditTargetType.AGENT,
+  AuditTargetType.TAG,
+  AuditTargetType.RETRIEVAL_SETTINGS,
+  AuditTargetType.MIND_MAP,
+] as const;
+
+export const AUDIT_RESULTS = ["success", "failure"] as const;
+
+export const ACTION_LABELS: Record<string, string> = {
+  "user.login": "用户登录",
+  "user.logout": "用户登出",
+  "kb.create": "创建知识库",
+  "kb.update": "更新知识库",
+  "kb.delete": "删除知识库",
+  "kb.member.add": "添加成员",
+  "kb.member.remove": "移除成员",
+  "kb.admin.set": "设置管理员",
+  "kb.admin.unset": "取消管理员",
+  "document.upload": "上传文档",
+  "document.delete": "删除文档",
+  "document.reprocess": "重新处理文档",
+  "knowledge_item.create": "创建知识条目",
+  "knowledge_item.update": "更新知识条目",
+  "knowledge_item.publish": "发布知识条目",
+  "knowledge_item.unpublish": "下架知识条目",
+  "knowledge_item.delete": "删除知识条目",
+  "agent.create": "创建Agent",
+  "agent.update": "更新Agent",
+  "agent.publish": "发布Agent",
+  "agent.delete": "删除Agent",
+  "agent.generate": "生成Agent",
+  "retrieval_settings.update": "更新检索设置",
+  "tag.create": "创建标签",
+  "tag.update": "更新标签",
+  "tag.delete": "删除标签",
+  "mind_map.generate": "生成思维导图",
+  "mind_map.save": "保存思维导图",
+  "mind_map.publish": "发布思维导图",
+};
+
+export const MIND_MAP_NODE_TYPES = ["kb", "document", "knowledge_item", "topic"] as const;
+
+export const MIND_MAP_NODE_STATUSES = ["draft", "published"] as const;
+
 export const MODEL_USAGE_TYPES = [
   "chat",
   "query_understanding",

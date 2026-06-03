@@ -16,6 +16,7 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
+  AuditTargetType,
   batchImportResponseSchema,
   createKnowledgeItemRequestSchema,
   knowledgeItemFeedbackRequestSchema,
@@ -30,6 +31,7 @@ import {
 } from "@knowflow/shared";
 import type {} from "multer";
 
+import { AuditLog } from "../../../shared/audit/audit-log.decorator.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import {
   detectBatchImportKind,
@@ -68,6 +70,7 @@ export class KnowledgeItemController {
   }
 
   @Post("knowledge-bases/:id/knowledge-items")
+  @AuditLog("knowledge_item.create", AuditTargetType.KNOWLEDGE_ITEM)
   async create(
     @Param() params: unknown,
     @Body() body: unknown,
@@ -89,7 +92,9 @@ export class KnowledgeItemController {
           return;
         }
         callback(
-          new BadRequestException("Only CSV, XLSX, and XLS files with matching MIME types are supported for batch import"),
+          new BadRequestException(
+            "Only CSV, XLSX, and XLS files with matching MIME types are supported for batch import",
+          ),
           false,
         );
       },
@@ -116,6 +121,7 @@ export class KnowledgeItemController {
   }
 
   @Patch("knowledge-items/:id")
+  @AuditLog("knowledge_item.update", AuditTargetType.KNOWLEDGE_ITEM)
   async update(
     @Param() params: unknown,
     @Body() body: unknown,
@@ -128,6 +134,7 @@ export class KnowledgeItemController {
   }
 
   @Post("knowledge-items/:id/publish")
+  @AuditLog("knowledge_item.publish", AuditTargetType.KNOWLEDGE_ITEM)
   async publish(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,
@@ -138,6 +145,7 @@ export class KnowledgeItemController {
   }
 
   @Post("knowledge-items/:id/unpublish")
+  @AuditLog("knowledge_item.unpublish", AuditTargetType.KNOWLEDGE_ITEM)
   async unpublish(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,
@@ -148,6 +156,7 @@ export class KnowledgeItemController {
   }
 
   @Delete("knowledge-items/:id")
+  @AuditLog("knowledge_item.delete", AuditTargetType.KNOWLEDGE_ITEM)
   async delete(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,
@@ -165,11 +174,7 @@ export class KnowledgeItemController {
   ): Promise<ApiSuccess<KnowledgeItem>> {
     const { id } = uuidParamSchema.parse(params);
     const input = knowledgeItemFeedbackRequestSchema.parse(body);
-    const data = await this.knowledgeItemService.setFeedback(
-      id,
-      input,
-      this.requireUser(request),
-    );
+    const data = await this.knowledgeItemService.setFeedback(id, input, this.requireUser(request));
     return { ok: true, data: knowledgeItemSchema.parse(data) };
   }
 

@@ -695,6 +695,7 @@ export const improvementTaskSchema = z.object({
 
 export const improvementTaskListQuerySchema = z.object({
   status: improvementTaskStatusSchema.optional(),
+  source: z.enum(["feedback", "document"]).optional(),
   triggerType: improvementTriggerTypeSchema.optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -719,6 +720,11 @@ export const generateImprovementTasksRequestSchema = z
 export const createImprovementTasksResponseSchema = z.object({
   created: z.number().int().nonnegative(),
   tasks: z.array(improvementTaskSchema),
+});
+
+export const approveImprovementTaskResponseSchema = z.object({
+  task: improvementTaskSchema,
+  knowledgeItem: knowledgeItemSchema,
 });
 
 export const approveImprovementTaskRequestSchema = z.object({
@@ -1258,6 +1264,7 @@ export type ImprovementTaskListQuery = z.infer<typeof improvementTaskListQuerySc
 export type ImprovementTaskListResponse = z.infer<typeof improvementTaskListResponseSchema>;
 export type GenerateImprovementTasksRequest = z.infer<typeof generateImprovementTasksRequestSchema>;
 export type CreateImprovementTasksResponse = z.infer<typeof createImprovementTasksResponseSchema>;
+export type ApproveImprovementTaskResponse = z.infer<typeof approveImprovementTaskResponseSchema>;
 export type ApproveImprovementTaskRequest = z.infer<typeof approveImprovementTaskRequestSchema>;
 export type RejectImprovementTaskRequest = z.infer<typeof rejectImprovementTaskRequestSchema>;
 export type ImprovementTaskStats = z.infer<typeof improvementTaskStatsSchema>;

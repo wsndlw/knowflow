@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import {
   approveImprovementTaskRequestSchema,
+  approveImprovementTaskResponseSchema,
   createImprovementTasksResponseSchema,
   generateImprovementTasksRequestSchema,
   improvementTaskListQuerySchema,
@@ -19,12 +20,11 @@ import {
   improvementTaskStatsSchema,
   rejectImprovementTaskRequestSchema,
   uuidParamSchema,
+  type ApproveImprovementTaskResponse,
   type CreateImprovementTasksResponse,
   type ImprovementTask,
   type ImprovementTaskListResponse,
   type ImprovementTaskStats,
-  type KnowledgeItem,
-  knowledgeItemSchema,
 } from "@knowflow/shared";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -102,20 +102,14 @@ export class KnowledgeImprovementController {
     @Param() params: unknown,
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
-  ): Promise<ApiSuccess<{ task: ImprovementTask; knowledgeItem: KnowledgeItem }>> {
+  ): Promise<ApiSuccess<ApproveImprovementTaskResponse>> {
     const { id } = uuidParamSchema.parse(params);
     const data = await this.improvementService.approve(
       id,
       approveImprovementTaskRequestSchema.parse(body ?? {}),
       this.requireUser(request),
     );
-    return {
-      ok: true,
-      data: {
-        task: improvementTaskSchema.parse(data.task),
-        knowledgeItem: knowledgeItemSchema.parse(data.knowledgeItem),
-      },
-    };
+    return { ok: true, data: approveImprovementTaskResponseSchema.parse(data) };
   }
 
   @Post("improvement-tasks/:id/reject")

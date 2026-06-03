@@ -42,6 +42,7 @@ import {
   isNotNull,
   lte,
   min,
+  ne,
   or,
   sql,
   type AnyColumn,
@@ -1319,6 +1320,13 @@ export class KnowledgeImprovementService {
     const conditions: SQL[] = [eq(knowledgeImprovementTasks.knowledgeBaseId, knowledgeBaseId)];
     if (query.status !== undefined) {
       conditions.push(eq(knowledgeImprovementTasks.status, query.status));
+    }
+    if (query.source !== undefined) {
+      conditions.push(
+        query.source === "document"
+          ? eq(knowledgeImprovementTasks.triggerType, DOCUMENT_EXTRACTION_TRIGGER_TYPE)
+          : ne(knowledgeImprovementTasks.triggerType, DOCUMENT_EXTRACTION_TRIGGER_TYPE),
+      );
     }
     if (query.triggerType !== undefined) {
       conditions.push(eq(knowledgeImprovementTasks.triggerType, query.triggerType));

@@ -72,6 +72,15 @@ export async function parseApiError(response: Response): Promise<string> {
   }
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export async function apiRequest<TData>(
   path: string,
   dataSchema: ParsableSchema<TData>,
@@ -93,7 +102,7 @@ export async function apiRequest<TData>(
   });
 
   if (!response.ok) {
-    throw new Error(await parseApiError(response));
+    throw new ApiError(await parseApiError(response), response.status);
   }
 
   const body: unknown = await response.json();

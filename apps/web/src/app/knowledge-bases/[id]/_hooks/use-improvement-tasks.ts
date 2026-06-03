@@ -5,7 +5,7 @@ import {
   improvementTaskListResponseSchema,
   improvementTaskStatsSchema,
   improvementTaskSchema,
-  knowledgeItemSchema,
+  approveImprovementTaskResponseSchema,
 } from "@knowflow/shared";
 import { apiRequest } from "../../../../lib/api";
 
@@ -15,7 +15,7 @@ export function useImprovementTasks(knowledgeBaseId: string) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<string>("");
-  const [triggerType, setTriggerType] = useState<string>("");
+  const [source, setSource] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +35,7 @@ export function useImprovementTasks(knowledgeBaseId: string) {
       // Load tasks
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (status) params.set("status", status);
-      if (triggerType) params.set("triggerType", triggerType);
+      if (source) params.set("source", source);
 
       const tasksData = await apiRequest(
         `/knowledge-bases/${knowledgeBaseId}/improvement-tasks?${params.toString()}`,
@@ -48,7 +48,7 @@ export function useImprovementTasks(knowledgeBaseId: string) {
     } finally {
       setLoading(false);
     }
-  }, [knowledgeBaseId, page, status, triggerType]);
+  }, [knowledgeBaseId, page, status, source]);
 
   useEffect(() => {
     void loadData();
@@ -57,15 +57,7 @@ export function useImprovementTasks(knowledgeBaseId: string) {
   async function approveTask(taskId: string, data: { title?: string; content?: string; summary?: string | null }) {
     await apiRequest(
       `/improvement-tasks/${taskId}/approve`,
-      {
-        parse: (input: unknown) => {
-          const payload = input as { task?: unknown; knowledgeItem?: unknown } | null | undefined;
-          return {
-            task: improvementTaskSchema.parse(payload?.task),
-            knowledgeItem: knowledgeItemSchema.parse(payload?.knowledgeItem),
-          };
-        },
-      },
+      approveImprovementTaskResponseSchema,
       {
         method: "POST",
         body: JSON.stringify(data),
@@ -89,12 +81,12 @@ export function useImprovementTasks(knowledgeBaseId: string) {
     page,
     pageSize,
     status,
-    triggerType,
+    source,
     loading,
     error,
     setPage,
     setStatus,
-    setTriggerType,
+    setSource,
     approveTask,
     rejectTask,
     reload: loadData,

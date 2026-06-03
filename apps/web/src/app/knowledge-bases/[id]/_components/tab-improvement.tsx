@@ -21,12 +21,12 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
     page,
     pageSize,
     status,
-    triggerType,
+    source,
     loading,
     error,
     setPage,
     setStatus,
-    setTriggerType,
+    setSource,
     approveTask,
     rejectTask,
   } = useImprovementTasks(knowledgeBaseId);
@@ -106,9 +106,10 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
           <option value="published">已发布</option>
           <option value="failed">处理失败</option>
         </Select>
-        <Select value={triggerType} onChange={(e) => { setTriggerType(e.target.value); setPage(1); }} className="w-40">
+        <Select value={source} onChange={(e) => { setSource(e.target.value); setPage(1); }} className="w-40">
           <option value="">全部来源</option>
-          <option value="document_extraction">文档提炼 (Document)</option>
+          <option value="feedback">用户反馈 (Feedback)</option>
+          <option value="document">文档提炼 (Document)</option>
         </Select>
       </div>
 

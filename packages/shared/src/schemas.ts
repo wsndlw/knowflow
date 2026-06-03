@@ -344,6 +344,44 @@ export const documentProgressEventSchema = z.object({
   timestamp: z.iso.datetime(),
 });
 
+export const documentContentResponseSchema = z.object({
+  documentId: z.uuid(),
+  title: z.string(),
+  text: z.string(),
+  textLength: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  parseStatus: documentProcessStatusSchema,
+});
+
+export const documentChunkLevelSchema = z.enum(["parent", "child"]);
+
+export const documentChunksQuerySchema = z.object({
+  level: documentChunkLevelSchema.default("parent"),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const documentChunkItemSchema = z.object({
+  id: z.uuid(),
+  documentId: z.uuid(),
+  level: documentChunkLevelSchema,
+  seq: z.number().int().nonnegative(),
+  content: z.string(),
+  parentId: z.uuid().nullable(),
+  tokenCount: z.number().int().nullable(),
+});
+
+export const documentChunksResponseSchema = z.object({
+  items: z.array(documentChunkItemSchema),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  total: z.number().int().nonnegative(),
+});
+
+export const documentFileQuerySchema = z.object({
+  disposition: z.enum(["inline", "attachment"]).default("inline"),
+});
+
 export const knowledgeItemSchema = z.object({
   id: z.uuid(),
   knowledgeBaseId: z.uuid(),
@@ -1161,6 +1199,12 @@ export type KnowledgeDocument = z.infer<typeof documentSchema>;
 export type DocumentListQuery = z.infer<typeof documentListQuerySchema>;
 export type DocumentListResponse = z.infer<typeof documentListResponseSchema>;
 export type DocumentProgressEvent = z.infer<typeof documentProgressEventSchema>;
+export type DocumentContentResponse = z.infer<typeof documentContentResponseSchema>;
+export type DocumentChunkLevel = z.infer<typeof documentChunkLevelSchema>;
+export type DocumentChunksQuery = z.infer<typeof documentChunksQuerySchema>;
+export type DocumentChunkItem = z.infer<typeof documentChunkItemSchema>;
+export type DocumentChunksResponse = z.infer<typeof documentChunksResponseSchema>;
+export type DocumentFileQuery = z.infer<typeof documentFileQuerySchema>;
 export type KnowledgeItemStatus = z.infer<typeof knowledgeItemStatusSchema>;
 export type KnowledgeItemFeedbackRating = z.infer<typeof knowledgeItemFeedbackRatingSchema>;
 export type KnowledgeItem = z.infer<typeof knowledgeItemSchema>;

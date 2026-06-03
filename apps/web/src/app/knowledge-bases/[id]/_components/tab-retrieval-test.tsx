@@ -15,6 +15,7 @@ import {
   type AdvancedConfig,
   DEFAULT_ADVANCED,
   disabledParamGroups,
+  hasInvalidRerankRange,
 } from "./retrieval-test/helpers";
 
 const DEFAULT_FILTERS: RetrievalFilters = {
@@ -47,9 +48,14 @@ export function TabRetrievalTest({ knowledgeBaseId }: { knowledgeBaseId: string 
   const [filters, setFilters] = useState<RetrievalFilters>(DEFAULT_FILTERS);
   const [advanced, setAdvanced] = useState<AdvancedConfig>(DEFAULT_ADVANCED);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // 历史记录回填后给出的「请确认后再检索」轻提示，用户开始编辑或发起检索后清除
+  const [historyApplied, setHistoryApplied] = useState(false);
 
   const { result, loading, error, history, run, removeHistory, clearHistory } =
     useRetrievalTest(knowledgeBaseId);
+
+  // keepN > topN 会被后端 overrides.refine 拒绝（422）；与 config-panel 警告共用同一判定
+  const rerankRangeInvalid = hasInvalidRerankRange(mode, advanced);
 
   function composeOverrides(targetMode: RetrievalTestMode): RetrievalTestRequest["overrides"] {
     const disabled = disabledParamGroups(targetMode);
@@ -92,12 +98,16 @@ export function TabRetrievalTest({ knowledgeBaseId }: { knowledgeBaseId: string 
 
   function handleSubmit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (query.trim() === "" || loading) {
+    if (query.trim() === "" || loading || rerankRangeInvalid) {
       return;
     }
+    setHistoryApplied(false);
     void run(buildRequest(query, mode, filters));
   }
 
+  // 仅回填查询/模式/过滤条件，不自动重检索：历史未保存当时的高级参数，
+  // 自动重跑会用「当前」高级参数，与原次结果复现不一致；改为回填后由用户确认参数再点「检索」
+  // （同时让 keepN>topN 守卫在用户手动检索时生效，避免历史路径绕过校验触发 422）。
   function applyHistory(entry: RetrievalHistoryEntry) {
     setQuery(entry.query);
     setMode(entry.mode);
@@ -107,7 +117,7 @@ export function TabRetrievalTest({ knowledgeBaseId }: { knowledgeBaseId: string 
       sourceType: entry.filters.sourceType,
     });
     setHistoryOpen(false);
-    void run(buildRequest(entry.query, entry.mode, entry.filters));
+    setHistoryApplied(true);
   }
 
   return (
@@ -115,14 +125,22 @@ export function TabRetrievalTest({ knowledgeBaseId }: { knowledgeBaseId: string 
       <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Input
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setHistoryApplied(false);
+          }}
           maxLength={500}
           placeholder="输入要测试检索的问题，回车或点击检索…"
           aria-label="检索测试查询"
           className="flex-1"
         />
         <div className="flex gap-2">
-          <Button type="submit" loading={loading} disabled={query.trim() === ""}>
+          <Button
+            type="submit"
+            loading={loading}
+            disabled={query.trim() === "" || rerankRangeInvalid}
+            aria-describedby={rerankRangeInvalid ? "rerank-range-hint" : undefined}
+          >
             检索
           </Button>
           <Button type="button" variant="secondary" onClick={() => setHistoryOpen(true)}>
@@ -130,6 +148,18 @@ export function TabRetrievalTest({ knowledgeBaseId }: { knowledgeBaseId: string 
           </Button>
         </div>
       </form>
+
+      {rerankRangeInvalid ? (
+        <p id="rerank-range-hint" className="text-xs text-danger" role="alert">
+          Rerank keepN（{advanced.rerankKeepN}）不能大于 topN（{advanced.rerankTopN}），请在「高级参数」中调整后再检索。
+        </p>
+      ) : null}
+
+      {historyApplied ? (
+        <p className="text-xs text-ink-muted" role="status">
+          已回填该历史记录的查询词、模式与过滤条件（高级参数保持当前设置），请确认后点「检索」。
+        </p>
+      ) : null}
 
       {error !== null ? (
         <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger" role="alert">

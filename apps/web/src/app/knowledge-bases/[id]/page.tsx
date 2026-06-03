@@ -27,7 +27,7 @@ const TAB_DEFS: (TabItem & { value: TabValue; manageOnly?: boolean })[] = [
   { value: "members", label: "成员权限", manageOnly: true },
   { value: "analytics", label: "统计分析" },
   { value: "relations", label: "知识关系" },
-  { value: "retrieval-test", label: "检索测试" },
+  { value: "retrieval-test", label: "检索测试", manageOnly: true },
   { value: "settings", label: "设置", manageOnly: true },
   { value: "audit-log", label: "操作日志", manageOnly: true },
 ];

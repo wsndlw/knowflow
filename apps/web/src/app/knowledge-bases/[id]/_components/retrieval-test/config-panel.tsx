@@ -23,6 +23,7 @@ import {
   clamp01,
   disabledParamGroups,
   formatWeight,
+  hasInvalidRerankRange,
   rebalanceWeights,
 } from "./helpers";
 
@@ -240,8 +241,8 @@ export function ConfigPanel({
                 />
               </ParamRow>
             </div>
-            {advanced.rerankKeepN > advanced.rerankTopN && !disabled.has("rerank") ? (
-              <p className="text-xs text-danger">keepN 不能大于 topN</p>
+            {hasInvalidRerankRange(mode, advanced) ? (
+              <p className="text-xs text-danger">Rerank keepN 不能大于 topN</p>
             ) : null}
           </div>
 

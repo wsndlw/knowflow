@@ -21,6 +21,7 @@ import type {
   CreateKnowledgeBaseRequest,
   DepartmentOptionsResponse,
   KnowledgeBase,
+  KnowledgeBaseListItem,
   KnowledgeBaseListQuery,
   KnowledgeBaseListResponse,
   KnowledgeBaseMember,
@@ -29,7 +30,7 @@ import type {
   UpdateKnowledgeBaseRequest,
   UserOptionsResponse,
 } from "@knowflow/shared";
-import { and, asc, count, desc, eq, ilike, or, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -53,6 +54,12 @@ type KnowledgeBaseRow = {
   embeddingDimension: number;
   createdAt: Date;
   updatedAt: Date;
+};
+
+type KnowledgeBaseListCounts = {
+  documentCount: number;
+  knowledgeItemCount: number;
+  memberCount: number;
 };
 
 type MemberRow = {
@@ -102,8 +109,20 @@ export class KnowledgeBaseService {
       .where(this.buildListCondition(query, user))
       .orderBy(desc(knowledgeBases.updatedAt), asc(knowledgeBases.name));
 
-    const items = await Promise.all(
-      rows.map(async (row) => this.toKnowledgeBase(row, await this.accessService.canManage(row.id, user))),
+    const [manageableIds, countByKnowledgeBaseId] = await Promise.all([
+      this.listManageableIds(
+        rows.map((row) => row.id),
+        user,
+      ),
+      this.listCountsByKnowledgeBaseId(rows.map((row) => row.id)),
+    ]);
+
+    const items = rows.map((row) =>
+      this.toKnowledgeBaseListItem(
+        row,
+        manageableIds.has(row.id),
+        countByKnowledgeBaseId.get(row.id) ?? this.emptyListCounts(),
+      ),
     );
     return { items };
   }
@@ -552,12 +571,113 @@ export class KnowledgeBaseService {
     return row;
   }
 
+  private async listManageableIds(
+    knowledgeBaseIds: string[],
+    user: AuthenticatedUser,
+  ): Promise<Set<string>> {
+    if (knowledgeBaseIds.length === 0) {
+      return new Set();
+    }
+
+    const condition = this.accessService.buildManageCondition(user);
+    const rows = await db
+      .select({ id: knowledgeBases.id })
+      .from(knowledgeBases)
+      .where(
+        condition === undefined
+          ? inArray(knowledgeBases.id, knowledgeBaseIds)
+          : and(inArray(knowledgeBases.id, knowledgeBaseIds), condition),
+      );
+
+    return new Set(rows.map((row) => row.id));
+  }
+
+  private async listCountsByKnowledgeBaseId(
+    knowledgeBaseIds: string[],
+  ): Promise<Map<string, KnowledgeBaseListCounts>> {
+    const countByKnowledgeBaseId = new Map<string, KnowledgeBaseListCounts>();
+    for (const id of knowledgeBaseIds) {
+      countByKnowledgeBaseId.set(id, this.emptyListCounts());
+    }
+
+    if (knowledgeBaseIds.length === 0) {
+      return countByKnowledgeBaseId;
+    }
+
+    const [documentRows, knowledgeItemRows, memberRows] = await Promise.all([
+      db
+        .select({
+          knowledgeBaseId: documents.knowledgeBaseId,
+          value: count(),
+        })
+        .from(documents)
+        .where(inArray(documents.knowledgeBaseId, knowledgeBaseIds))
+        .groupBy(documents.knowledgeBaseId),
+      db
+        .select({
+          knowledgeBaseId: knowledgeItems.knowledgeBaseId,
+          value: count(),
+        })
+        .from(knowledgeItems)
+        .where(inArray(knowledgeItems.knowledgeBaseId, knowledgeBaseIds))
+        .groupBy(knowledgeItems.knowledgeBaseId),
+      db
+        .select({
+          knowledgeBaseId: knowledgeBaseMembers.knowledgeBaseId,
+          value: count(),
+        })
+        .from(knowledgeBaseMembers)
+        .where(inArray(knowledgeBaseMembers.knowledgeBaseId, knowledgeBaseIds))
+        .groupBy(knowledgeBaseMembers.knowledgeBaseId),
+    ]);
+
+    for (const row of documentRows) {
+      countByKnowledgeBaseId.set(row.knowledgeBaseId, {
+        ...(countByKnowledgeBaseId.get(row.knowledgeBaseId) ?? this.emptyListCounts()),
+        documentCount: row.value,
+      });
+    }
+    for (const row of knowledgeItemRows) {
+      countByKnowledgeBaseId.set(row.knowledgeBaseId, {
+        ...(countByKnowledgeBaseId.get(row.knowledgeBaseId) ?? this.emptyListCounts()),
+        knowledgeItemCount: row.value,
+      });
+    }
+    for (const row of memberRows) {
+      countByKnowledgeBaseId.set(row.knowledgeBaseId, {
+        ...(countByKnowledgeBaseId.get(row.knowledgeBaseId) ?? this.emptyListCounts()),
+        memberCount: row.value,
+      });
+    }
+
+    return countByKnowledgeBaseId;
+  }
+
+  private emptyListCounts(): KnowledgeBaseListCounts {
+    return {
+      documentCount: 0,
+      knowledgeItemCount: 0,
+      memberCount: 0,
+    };
+  }
+
   private toKnowledgeBase(row: KnowledgeBaseRow, canManage: boolean): KnowledgeBase {
     return {
       ...row,
       canManage,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private toKnowledgeBaseListItem(
+    row: KnowledgeBaseRow,
+    canManage: boolean,
+    counts: KnowledgeBaseListCounts,
+  ): KnowledgeBaseListItem {
+    return {
+      ...this.toKnowledgeBase(row, canManage),
+      ...counts,
     };
   }
 

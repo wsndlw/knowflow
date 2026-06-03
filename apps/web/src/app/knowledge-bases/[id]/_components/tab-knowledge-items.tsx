@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   knowledgeItemListResponseSchema,
+  knowledgeItemSchema,
   type KnowledgeItem,
 } from "@knowflow/shared";
 
@@ -111,9 +112,10 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
   }
 
   async function handleCreate(data: { title: string; content: string; summary: string | null }) {
+    // 创建返回完整 knowledgeItem（非空对象），同样不能用 emptyObjectSchema。
     await apiRequest(
       `/knowledge-bases/${knowledgeBaseId}/knowledge-items`,
-      emptyObjectSchema,
+      knowledgeItemSchema,
       { method: "POST", body: JSON.stringify(data) },
     );
     await loadItems();
@@ -121,9 +123,10 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
 
   async function handleUpdate(data: { title: string; content: string; summary: string | null }) {
     if (!editing) return;
+    // PATCH 返回完整 knowledgeItem（非空对象）；用 emptyObjectSchema 会误抛"响应格式无效"。
     await apiRequest(
       `/knowledge-items/${editing.id}`,
-      emptyObjectSchema,
+      knowledgeItemSchema,
       { method: "PATCH", body: JSON.stringify(data) },
     );
     await loadItems();
@@ -131,12 +134,13 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
 
   async function handleToggleStatus(item: KnowledgeItem) {
     const newStatus = item.status === "published" ? "unpublished" : "published";
+    // 走专用端点（POST publish/unpublish）：响应为完整 item，且带 @AuditLog 记录到操作日志。
+    const action = newStatus === "published" ? "publish" : "unpublish";
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: newStatus } : i)));
     setActionError(null);
     try {
-      await apiRequest(`/knowledge-items/${item.id}`, emptyObjectSchema, {
-        method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
+      await apiRequest(`/knowledge-items/${item.id}/${action}`, knowledgeItemSchema, {
+        method: "POST",
       });
       await loadItems();
     } catch (caught) {
@@ -150,7 +154,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, enabled: newEnabled } : i)));
     setActionError(null);
     try {
-      await apiRequest(`/knowledge-items/${item.id}`, emptyObjectSchema, {
+      await apiRequest(`/knowledge-items/${item.id}`, knowledgeItemSchema, {
         method: "PATCH",
         body: JSON.stringify({ enabled: newEnabled }),
       });

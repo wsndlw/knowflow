@@ -235,7 +235,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
           <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
             取消
           </Button>
-          <Button variant="danger" onClick={() => { if (deleteTarget) void handleDelete(deleteTarget); }}>
+          <Button variant="destructive" onClick={() => { if (deleteTarget) void handleDelete(deleteTarget); }}>
             确认删除
           </Button>
         </div>

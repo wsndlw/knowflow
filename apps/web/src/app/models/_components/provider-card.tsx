@@ -125,7 +125,7 @@ export function ProviderCard({
           <Button size="sm" variant="secondary" onClick={onEdit}>
             编辑
           </Button>
-          <Button size="sm" variant="danger" onClick={onDelete}>
+          <Button size="sm" variant="destructive" onClick={onDelete}>
             删除
           </Button>
         </div>

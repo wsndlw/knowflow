@@ -1,34 +1,23 @@
-"use client";
+import * as React from "react"
 
-import { type TextareaHTMLAttributes, forwardRef } from "react";
+import { cn } from "@/lib/cn"
 
-import { cn } from "../../lib/cn";
-
-type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
-  invalid?: boolean;
-};
-
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { invalid = false, className, ...props },
-  ref,
-) {
+function Textarea({
+  className,
+  invalid = false,
+  ...props
+}: React.ComponentProps<"textarea"> & { invalid?: boolean }) {
   return (
     <textarea
-      ref={ref}
+      data-slot="textarea"
       aria-invalid={invalid || undefined}
       className={cn(
-        "min-h-24 w-full resize-y rounded-md border bg-neutral-0 px-3 py-2.5 text-base text-ink",
-        "placeholder:text-ink-subtle",
-        "transition-colors duration-150",
-        "hover:border-neutral-300",
-        "focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20",
-        "disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-ink-subtle",
-        invalid
-          ? "border-danger focus:border-danger focus:ring-danger/20"
-          : "border-border",
-        className,
+        "flex field-sizing-content min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:ring-destructive/40",
+        className
       )}
       {...props}
     />
-  );
-});
+  )
+}
+
+export { Textarea }

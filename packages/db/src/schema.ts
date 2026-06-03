@@ -492,7 +492,7 @@ export const parentChunks = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     documentId: uuid("document_id")
       .notNull()
-      .references(() => documents.id),
+      .references(() => documents.id, { onDelete: "cascade" }),
     knowledgeBaseId: uuid("knowledge_base_id")
       .notNull()
       .references(() => knowledgeBases.id),
@@ -517,10 +517,10 @@ export const childChunks = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     parentChunkId: uuid("parent_chunk_id")
       .notNull()
-      .references(() => parentChunks.id),
+      .references(() => parentChunks.id, { onDelete: "cascade" }),
     documentId: uuid("document_id")
       .notNull()
-      .references(() => documents.id),
+      .references(() => documents.id, { onDelete: "cascade" }),
     knowledgeBaseId: uuid("knowledge_base_id")
       .notNull()
       .references(() => knowledgeBases.id),
@@ -553,7 +553,9 @@ export const knowledgeItems = pgTable(
     title: varchar("title", { length: 255 }).notNull(),
     content: text("content").notNull(),
     summary: text("summary"),
-    sourceDocumentId: uuid("source_document_id").references(() => documents.id),
+    sourceDocumentId: uuid("source_document_id").references(() => documents.id, {
+      onDelete: "cascade",
+    }),
     status: knowledgeItemStatusEnum("status").default("draft").notNull(),
     metadata: jsonb("metadata").default({}).notNull(),
     embedding: vector("embedding", { dimensions: 1024 }),
@@ -573,6 +575,7 @@ export const knowledgeItems = pgTable(
   },
   (table) => [
     index("knowledge_items_knowledge_base_idx").on(table.knowledgeBaseId),
+    index("knowledge_items_source_document_idx").on(table.sourceDocumentId),
     index("knowledge_items_status_idx").on(table.status),
     index("knowledge_items_embedding_hnsw_idx").using(
       "hnsw",
@@ -637,7 +640,7 @@ export const knowledgeItemFeedback = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     knowledgeItemId: uuid("knowledge_item_id")
       .notNull()
-      .references(() => knowledgeItems.id),
+      .references(() => knowledgeItems.id, { onDelete: "cascade" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
@@ -672,7 +675,9 @@ export const knowledgeImprovementTasks = pgTable(
     reviewedBy: uuid("reviewed_by").references(() => users.id),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     reviewNote: text("review_note"),
-    publishedItemId: uuid("published_item_id").references(() => knowledgeItems.id),
+    publishedItemId: uuid("published_item_id").references(() => knowledgeItems.id, {
+      onDelete: "cascade",
+    }),
     verificationStatus: verificationStatusEnum("verification_status"),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     dedupKey: varchar("dedup_key", { length: 255 }),
@@ -681,6 +686,7 @@ export const knowledgeImprovementTasks = pgTable(
   (table) => [
     index("knowledge_improvement_tasks_kb_status_idx").on(table.knowledgeBaseId, table.status),
     index("knowledge_improvement_tasks_trigger_idx").on(table.triggerType),
+    index("knowledge_improvement_tasks_published_item_idx").on(table.publishedItemId),
     uniqueIndex("knowledge_improvement_tasks_dedup_uidx").on(table.dedupKey),
   ],
 );
@@ -856,8 +862,10 @@ export const messageCitations = pgTable(
       .references(() => conversationMessages.id),
     sourceType: citationSourceTypeEnum("source_type").notNull(),
     knowledgeBaseId: uuid("knowledge_base_id").references(() => knowledgeBases.id),
-    documentId: uuid("document_id").references(() => documents.id),
-    knowledgeItemId: uuid("knowledge_item_id").references(() => knowledgeItems.id),
+    documentId: uuid("document_id").references(() => documents.id, { onDelete: "set null" }),
+    knowledgeItemId: uuid("knowledge_item_id").references(() => knowledgeItems.id, {
+      onDelete: "set null",
+    }),
     attachmentId: uuid("attachment_id"),
     chunkId: uuid("chunk_id"),
     title: varchar("title", { length: 255 }).notNull(),
@@ -865,7 +873,11 @@ export const messageCitations = pgTable(
     pageOrSection: varchar("page_or_section", { length: 120 }),
     ...createdOnly(),
   },
-  (table) => [index("message_citations_message_idx").on(table.messageId)],
+  (table) => [
+    index("message_citations_message_idx").on(table.messageId),
+    index("message_citations_document_idx").on(table.documentId),
+    index("message_citations_knowledge_item_idx").on(table.knowledgeItemId),
+  ],
 );
 
 export const answerFeedback = pgTable(

@@ -12,8 +12,14 @@ import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Input } from "../../../../components/ui/input";
 import { Select } from "../../../../components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "../../../../components/ui/table";
-import { apiRequest, emptyObjectSchema } from "../../../../lib/api";
+import { TagBadge } from "../../../../components/ui/tag-badge";
+import { apiRequest, emptyObjectSchema, replaceKnowledgeItemTags } from "../../../../lib/api";
+import { useTagFilter } from "../_hooks/use-tag-filter";
+import { useTags } from "../_hooks/use-tags";
 import { Pagination } from "./pagination";
+import { TagFilterPopover } from "./tag-filter-popover";
+import { TagManagerDialog } from "./tag-manager-dialog";
+import { TagPickerPopover } from "./tag-picker-popover";
 import { KnowledgeItemDialog } from "./dialogs/knowledge-item-dialog";
 
 type TabKnowledgeItemsProps = {
@@ -57,8 +63,18 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
   const [actionError, setActionError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<KnowledgeItem | null>(null);
+  const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pageSize = 20;
+
+  const {
+    tags: allTags,
+    loading: tagsLoading,
+    create: createTag,
+    update: updateTagFn,
+    remove: removeTag,
+  } = useTags(knowledgeBaseId);
+  const tagFilter = useTagFilter();
 
   const loadItems = useCallback(async () => {
     setLoading(true);
@@ -67,8 +83,9 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (keyword.trim()) params.set("keyword", keyword.trim());
       if (status) params.set("status", status);
+      if (tagFilter.queryValue) params.set("tagIds", tagFilter.queryValue);
       const response = await apiRequest(
-        `/knowledge-bases/${knowledgeBaseId}/knowledge-items?${params}`,
+        `/knowledge-bases/${knowledgeBaseId}/knowledge-items?${params.toString()}`,
         knowledgeItemListResponseSchema,
         { cache: "no-store" },
       );
@@ -79,9 +96,11 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
     } finally {
       setLoading(false);
     }
-  }, [knowledgeBaseId, page, keyword, status]);
+  }, [knowledgeBaseId, page, keyword, status, tagFilter.queryValue]);
 
-  useEffect(() => { void loadItems(); }, [loadItems]);
+  useEffect(() => {
+    void loadItems();
+  }, [loadItems]);
 
   function handleKeywordChange(value: string) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -151,11 +170,19 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
     }
   }
 
+  // 打标签：全量替换，用返回的标签列表更新该行
+  async function handleReplaceItemTags(itemId: string, tagIds: string[]) {
+    const updated = await replaceKnowledgeItemTags(itemId, { tagIds });
+    setItems((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, tags: updated.items } : item)),
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* 工具栏 */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 flex-1">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
           <Input
             placeholder="搜索标题..."
             defaultValue={keyword}
@@ -167,12 +194,25 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </Select>
+          <TagFilterPopover
+            allTags={allTags}
+            selectedTagIds={tagFilter.selectedTagIds}
+            onToggle={(tagId) => { tagFilter.toggle(tagId); setPage(1); }}
+            onClear={() => { tagFilter.clear(); setPage(1); }}
+          />
         </div>
-        {canManage ? (
-          <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
-            新建条目
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {canManage ? (
+            <Button variant="outline" size="sm" onClick={() => setTagManagerOpen(true)}>
+              管理标签
+            </Button>
+          ) : null}
+          {canManage ? (
+            <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+              新建条目
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {actionError ? (
@@ -189,12 +229,16 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
           <Skeleton className="h-10" />
         </div>
       ) : items.length === 0 ? (
-        <EmptyState title="暂无知识条目" description="创建知识条目以丰富知识库内容。" />
+        <EmptyState
+          title={tagFilter.selectedTagIds.length > 0 ? "没有符合标签筛选的条目" : "暂无知识条目"}
+          description={tagFilter.selectedTagIds.length > 0 ? "尝试减少所选标签。" : "创建知识条目以丰富知识库内容。"}
+        />
       ) : (
         <Table>
           <TableHead>
             <tr>
               <TableHeaderCell>标题</TableHeaderCell>
+              <TableHeaderCell>标签</TableHeaderCell>
               <TableHeaderCell>状态</TableHeaderCell>
               <TableHeaderCell>启用</TableHeaderCell>
               <TableHeaderCell>引用</TableHeaderCell>
@@ -206,6 +250,32 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
             {items.map((item) => (
               <TableRow key={item.id}>
                 <TableCell className="font-medium max-w-xs truncate">{item.title}</TableCell>
+                <TableCell>
+                  <TagPickerPopover
+                    allTags={allTags}
+                    selectedTagIds={item.tags.map((tag) => tag.id)}
+                    onChange={(tagIds) => handleReplaceItemTags(item.id, tagIds)}
+                  >
+                    <button
+                      type="button"
+                      className="inline-flex max-w-[220px] flex-wrap items-center gap-1 rounded-md border border-dashed border-transparent px-1 py-0.5 text-left transition-colors hover:border-border hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                      aria-label="编辑标签"
+                    >
+                      {item.tags.length > 0 ? (
+                        <>
+                          {item.tags.slice(0, 3).map((tag) => (
+                            <TagBadge key={tag.id} tag={tag} />
+                          ))}
+                          {item.tags.length > 3 ? (
+                            <span className="text-xs text-ink-subtle">+{item.tags.length - 3}</span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="text-xs text-ink-subtle">+ 添加标签</span>
+                      )}
+                    </button>
+                  </TagPickerPopover>
+                </TableCell>
                 <TableCell>
                   <Badge tone={statusTone[item.status] ?? "neutral"}>
                     {statusLabels[item.status] ?? item.status}
@@ -257,6 +327,16 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
         onClose={() => { setDialogOpen(false); setEditing(null); }}
         onSubmit={editing ? handleUpdate : handleCreate}
         editing={editing}
+      />
+
+      <TagManagerDialog
+        open={tagManagerOpen}
+        onOpenChange={setTagManagerOpen}
+        tags={allTags}
+        loading={tagsLoading}
+        onCreate={createTag}
+        onUpdate={updateTagFn}
+        onDelete={removeTag}
       />
     </div>
   );

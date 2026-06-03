@@ -3,11 +3,12 @@
 import {
   createKnowledgeBaseRequestSchema,
   departmentOptionsResponseSchema,
+  knowledgeBaseSchema,
   knowledgeBaseListResponseSchema,
   type CreateKnowledgeBaseRequest,
   type DepartmentOption,
-  type KnowledgeBase,
   type KnowledgeBaseIndexStatus,
+  type KnowledgeBaseListItem,
   type KnowledgeBaseVisibility,
 } from "@knowflow/shared";
 import Link from "next/link";
@@ -62,7 +63,7 @@ function buildListPath(filters: Filters): string {
 
 export default function KnowledgeBasesPage() {
   const { user } = useAuth();
-  const [items, setItems] = useState<KnowledgeBase[]>([]);
+  const [items, setItems] = useState<KnowledgeBaseListItem[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [filters, setFilters] = useState<Filters>({ visibility: "", keyword: "" });
   const [view, setView] = useState<ViewMode>("card");
@@ -130,7 +131,7 @@ export default function KnowledgeBasesPage() {
         departmentId: selectedDepartmentId,
         visibility: formData.get("visibility"),
       });
-      await apiRequest("/knowledge-bases", knowledgeBaseListResponseSchema.shape.items.element, {
+      await apiRequest("/knowledge-bases", knowledgeBaseSchema, {
         method: "POST",
         body: JSON.stringify(input),
       });
@@ -301,7 +302,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function CardView({ items }: { items: KnowledgeBase[] }) {
+function CardView({ items }: { items: KnowledgeBaseListItem[] }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => (
@@ -318,6 +319,11 @@ function CardView({ items }: { items: KnowledgeBase[] }) {
             <p className="line-clamp-2 min-h-10 text-sm text-ink-muted">
               {item.description ?? "暂无描述"}
             </p>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <CountStat label="文档" value={item.documentCount} />
+              <CountStat label="条目" value={item.knowledgeItemCount} />
+              <CountStat label="成员" value={item.memberCount} />
+            </div>
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
               <Badge tone={indexStatusMeta[item.indexStatus].tone}>
                 {indexStatusMeta[item.indexStatus].label}
@@ -334,15 +340,27 @@ function CardView({ items }: { items: KnowledgeBase[] }) {
   );
 }
 
-function TableView({ items }: { items: KnowledgeBase[] }) {
+function CountStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface">
+    <div className="rounded-md bg-neutral-50 px-2 py-1.5">
+      <div className="text-sm font-semibold text-ink">{value}</div>
+      <div className="text-xs text-ink-subtle">{label}</div>
+    </div>
+  );
+}
+
+function TableView({ items }: { items: KnowledgeBaseListItem[] }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border bg-surface">
       <table className="w-full text-left text-base">
         <thead>
           <tr className="border-b border-border bg-neutral-50 text-sm text-ink-muted">
             <th className="px-4 py-2.5 font-medium">名称</th>
             <th className="px-4 py-2.5 font-medium">可见范围</th>
             <th className="px-4 py-2.5 font-medium">索引状态</th>
+            <th className="px-4 py-2.5 font-medium">文档</th>
+            <th className="px-4 py-2.5 font-medium">条目</th>
+            <th className="px-4 py-2.5 font-medium">成员</th>
             <th className="px-4 py-2.5 font-medium">部门</th>
             <th className="px-4 py-2.5 font-medium">角色</th>
           </tr>
@@ -368,6 +386,9 @@ function TableView({ items }: { items: KnowledgeBase[] }) {
                   {indexStatusMeta[item.indexStatus].label}
                 </Badge>
               </td>
+              <td className="px-4 py-3 text-ink-muted">{item.documentCount}</td>
+              <td className="px-4 py-3 text-ink-muted">{item.knowledgeItemCount}</td>
+              <td className="px-4 py-3 text-ink-muted">{item.memberCount}</td>
               <td className="px-4 py-3 text-ink-muted">{item.departmentName}</td>
               <td className="px-4 py-3 text-ink-muted">{item.canManage ? "管理员" : "成员"}</td>
             </tr>

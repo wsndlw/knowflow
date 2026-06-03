@@ -144,6 +144,12 @@ export const knowledgeBaseSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
+export const knowledgeBaseListItemSchema = knowledgeBaseSchema.extend({
+  documentCount: z.number().int().nonnegative(),
+  knowledgeItemCount: z.number().int().nonnegative(),
+  memberCount: z.number().int().nonnegative(),
+});
+
 export const knowledgeBaseOverviewSchema = z.object({
   documentCount: z.number().int().nonnegative(),
   knowledgeItemCount: z.number().int().nonnegative(),
@@ -160,7 +166,7 @@ export const knowledgeBaseListQuerySchema = z.object({
 });
 
 export const knowledgeBaseListResponseSchema = z.object({
-  items: z.array(knowledgeBaseSchema),
+  items: z.array(knowledgeBaseListItemSchema),
 });
 
 export const createKnowledgeBaseRequestSchema = z.object({
@@ -1188,6 +1194,7 @@ export type KnowledgeBaseVisibility = z.infer<typeof knowledgeBaseVisibilitySche
 export type KnowledgeBaseStatus = z.infer<typeof knowledgeBaseStatusSchema>;
 export type KnowledgeBaseIndexStatus = z.infer<typeof knowledgeBaseIndexStatusSchema>;
 export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>;
+export type KnowledgeBaseListItem = z.infer<typeof knowledgeBaseListItemSchema>;
 export type KnowledgeBaseOverview = z.infer<typeof knowledgeBaseOverviewSchema>;
 export type KnowledgeBaseListQuery = z.infer<typeof knowledgeBaseListQuerySchema>;
 export type KnowledgeBaseListResponse = z.infer<typeof knowledgeBaseListResponseSchema>;

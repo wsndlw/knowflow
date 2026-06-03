@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type SyntheticEvent } from "react";
+import { ArrowLeftIcon } from "lucide-react";
 import type { CreateTagRequest, KnowledgeTag } from "@knowflow/shared";
 
 import {
@@ -17,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/cn";
 
 // 12 预设色（提交 hex 值，绝不传色名）
@@ -61,9 +61,19 @@ export function TagManagerDialog({
   onUpdate,
   onDelete,
 }: TagManagerDialogProps) {
+  const [mode, setMode] = useState<"list" | "create">("list");
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeTag | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function handleOpenChange(nextOpen: boolean) {
+    onOpenChange(nextOpen);
+    if (!nextOpen) {
+      setMode("list");
+      setDeleteError(null);
+      setDeleteTarget(null);
+    }
+  }
 
   async function confirmDelete() {
     if (deleteTarget === null) {
@@ -83,42 +93,79 @@ export function TagManagerDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>标签管理</DialogTitle>
-            <DialogDescription>创建、编辑或删除该知识库的标签。</DialogDescription>
-          </DialogHeader>
+          {mode === "list" ? (
+            <>
+              <DialogHeader className="flex flex-row items-center justify-between gap-4">
+                <div className="flex flex-col gap-1 text-left">
+                  <DialogTitle>标签管理</DialogTitle>
+                  <DialogDescription>编辑或删除该知识库的标签。</DialogDescription>
+                </div>
+                {!loading && tags.length > 0 && (
+                  <Button size="sm" onClick={() => setMode("create")}>
+                    新建标签
+                  </Button>
+                )}
+              </DialogHeader>
 
-          <div className="flex flex-col gap-4">
-            <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto pr-1">
-              {loading ? (
-                <>
-                  <Skeleton className="h-10" />
-                  <Skeleton className="h-10" />
-                </>
-              ) : tags.length === 0 ? (
-                <EmptyState title="暂无标签" description="在下方创建第一个标签。" className="py-8" />
-              ) : (
-                tags.map((tag) => (
-                  <TagRow key={tag.id} tag={tag} onUpdate={onUpdate} onDelete={setDeleteTarget} />
-                ))
-              )}
-            </div>
+              <div className="flex flex-col gap-4 mt-2">
+                <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto pr-1">
+                  {loading ? (
+                    <>
+                      <Skeleton className="h-10" />
+                      <Skeleton className="h-10" />
+                    </>
+                  ) : tags.length === 0 ? (
+                    <EmptyState
+                      title="暂无标签"
+                      description="创建标签以便对知识库中的文档与条目进行分类。"
+                      className="py-8"
+                      action={
+                        <Button size="sm" onClick={() => setMode("create")}>
+                          新建第一个标签
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    tags.map((tag) => (
+                      <TagRow key={tag.id} tag={tag} onUpdate={onUpdate} onDelete={setDeleteTarget} />
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <DialogHeader className="flex flex-row items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 shrink-0 rounded-full hover:bg-neutral-100"
+                  onClick={() => setMode("list")}
+                  aria-label="返回列表"
+                >
+                  <ArrowLeftIcon className="size-4" />
+                </Button>
+                <div className="flex flex-col gap-1 text-left">
+                  <DialogTitle>新建标签</DialogTitle>
+                  <DialogDescription>输入标签名称并选择标签颜色。</DialogDescription>
+                </div>
+              </DialogHeader>
 
-            <Separator />
-
-            <div className="flex flex-col gap-2">
-              <h4 className="text-sm font-semibold text-ink">新建标签</h4>
-              <TagForm
-                submitLabel="创建"
-                resetAfterSubmit
-                onSubmit={async (name, color) => {
-                  await onCreate({ name, color });
-                }}
-              />
-            </div>
-          </div>
+              <div className="flex flex-col gap-4 mt-2">
+                <TagForm
+                  submitLabel="创建"
+                  resetAfterSubmit
+                  onSubmit={async (name, color) => {
+                    await onCreate({ name, color });
+                    setMode("list");
+                  }}
+                  onCancel={() => setMode("list")}
+                />
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

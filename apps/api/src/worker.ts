@@ -18,6 +18,7 @@ import { KnowledgeImprovementService } from "./modules/domains/knowledge-base/kn
 import {
   createImprovementQueue,
   IMPROVEMENT_QUEUE_NAME,
+  type ImprovementDocumentExtractionJob,
   type ImprovementGenerateJob,
   type ImprovementJob,
   type ImprovementJobName,
@@ -25,6 +26,7 @@ import {
   type ImprovementVerifyJob,
 } from "./modules/domains/knowledge-base/knowledge-improvement-queue.js";
 import {
+  processImprovementDocumentExtraction,
   processImprovementGenerate,
   processImprovementScan,
   processImprovementVerify,
@@ -77,6 +79,10 @@ const improvementWorker = new Worker<ImprovementJob, ImprovementJobResult, Impro
     if (job.name === "generate") {
       const data = job.data as ImprovementGenerateJob;
       return processImprovementGenerate(improvementService, data.taskId);
+    }
+    if (job.name === "document_extraction") {
+      const data = job.data as ImprovementDocumentExtractionJob;
+      return processImprovementDocumentExtraction(improvementService, data.documentId);
     }
     const data = job.data as ImprovementVerifyJob;
     return processImprovementVerify(improvementService, data.taskId);

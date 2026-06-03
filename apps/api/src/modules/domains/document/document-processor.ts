@@ -20,6 +20,7 @@ import {
 } from "../../../shared/llm/aliyun-llm.js";
 import { callModelByUsage } from "../../../shared/llm/model-usage-client.js";
 import { resolveLocalStorageRoot } from "../../../shared/storage/local-storage.js";
+import { createImprovementQueue } from "../knowledge-base/knowledge-improvement-queue.js";
 import type { DocumentProcessResult } from "./document-queue.js";
 import { publishDocumentProgress } from "./document-progress.js";
 
@@ -93,6 +94,7 @@ export async function processDocument(
     await publishProgress(document.id, "embedding", 60, "Embedding child chunks");
     await embedChildChunks(document);
     await markCompleted(document.id);
+    await enqueueDocumentExtractionAfterCompletion(document.id, parsed.metadata.parsedAt);
     await publishProgress(document.id, "completed", 100, "Document processing completed");
 
     return {
@@ -111,6 +113,39 @@ export async function processDocument(
       documentId,
       status: "failed",
     };
+  }
+}
+
+async function enqueueDocumentExtractionAfterCompletion(
+  documentId: string,
+  parsedAt: string,
+): Promise<void> {
+  try {
+    await enqueueDocumentExtraction(documentId, parsedAt);
+  } catch (error) {
+    console.warn(
+      `Document ${documentId} completed, but document extraction enqueue failed`,
+      error,
+    );
+  }
+}
+
+async function enqueueDocumentExtraction(documentId: string, parsedAt: string): Promise<void> {
+  const queue = createImprovementQueue();
+  try {
+    await queue.add(
+      "document_extraction",
+      { documentId },
+      {
+        jobId: `document-extraction-${documentId}-${parsedAt.replace(/[^0-9A-Za-z_-]/g, "")}`,
+        attempts: 2,
+        backoff: { type: "exponential", delay: 5000 },
+        removeOnComplete: { count: 1000 },
+        removeOnFail: { count: 1000 },
+      },
+    );
+  } finally {
+    await queue.close();
   }
 }
 

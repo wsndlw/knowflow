@@ -181,6 +181,7 @@ export const improvementTriggerTypeEnum = pgEnum("improvement_trigger_type", [
   "user_correction",
   "answer_dislike",
   "item_dislike",
+  "document_extraction",
 ]);
 export const improvementTaskStatusEnum = pgEnum("improvement_task_status", [
   "pending",

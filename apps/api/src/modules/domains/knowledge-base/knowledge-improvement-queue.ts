@@ -12,6 +12,10 @@ export type ImprovementGenerateJob = {
   taskId: string;
 };
 
+export type ImprovementDocumentExtractionJob = {
+  documentId: string;
+};
+
 export type ImprovementVerifyJob = {
   taskId: string;
 };
@@ -19,6 +23,7 @@ export type ImprovementVerifyJob = {
 export type ImprovementJob =
   | ImprovementScanJob
   | ImprovementGenerateJob
+  | ImprovementDocumentExtractionJob
   | ImprovementVerifyJob;
 
 export type ImprovementJobResult = {
@@ -28,7 +33,7 @@ export type ImprovementJobResult = {
   taskId?: string;
 };
 
-export type ImprovementJobName = "scan" | "generate" | "verify";
+export type ImprovementJobName = "scan" | "generate" | "document_extraction" | "verify";
 
 export function createImprovementQueue(): Queue<
   ImprovementJob,

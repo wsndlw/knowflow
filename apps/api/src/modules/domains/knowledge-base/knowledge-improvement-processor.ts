@@ -16,6 +16,14 @@ export async function processImprovementGenerate(
   return { status: "completed", taskId };
 }
 
+export async function processImprovementDocumentExtraction(
+  service: KnowledgeImprovementService,
+  documentId: string,
+): Promise<ImprovementJobResult> {
+  const result = await service.extractDocument(documentId);
+  return { status: "completed", created: result.created, enqueued: result.enqueued };
+}
+
 export async function processImprovementVerify(
   service: KnowledgeImprovementService,
   taskId: string,

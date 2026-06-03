@@ -10,18 +10,26 @@ import {
   Post,
   Query,
   Req,
+  Res,
   Sse,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
   AuditTargetType,
+  documentChunksQuerySchema,
+  documentChunksResponseSchema,
+  documentContentResponseSchema,
+  documentFileQuerySchema,
   documentListResponseSchema,
   documentListQuerySchema,
   documentProgressEventSchema,
   documentSchema,
   uuidParamSchema,
+  type DocumentChunksResponse,
+  type DocumentContentResponse,
   type DocumentListResponse,
   type KnowledgeDocument,
 } from "@knowflow/shared";
@@ -49,6 +57,20 @@ type DocumentSuccess = {
 type DocumentListSuccess = {
   ok: true;
   data: DocumentListResponse;
+};
+
+type DocumentContentSuccess = {
+  ok: true;
+  data: DocumentContentResponse;
+};
+
+type DocumentChunksSuccess = {
+  ok: true;
+  data: DocumentChunksResponse;
+};
+
+type FileResponse = {
+  setHeader: (name: string, value: string | number) => void;
 };
 
 @Controller()
@@ -112,6 +134,55 @@ export class DocumentController {
     return { ok: true, data: documentSchema.parse(data) };
   }
 
+  @Get("documents/:id/content")
+  async getContent(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DocumentContentSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.documentService.getContent(id, this.requireUser(request));
+    return { ok: true, data: documentContentResponseSchema.parse(data) };
+  }
+
+  @Get("documents/:id/chunks")
+  async listChunks(
+    @Param() params: unknown,
+    @Query() query: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DocumentChunksSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.documentService.listChunks(
+      id,
+      documentChunksQuerySchema.parse(query),
+      this.requireUser(request),
+    );
+    return { ok: true, data: documentChunksResponseSchema.parse(data) };
+  }
+
+  @Get("documents/:id/file")
+  async openFile(
+    @Param() params: unknown,
+    @Query() query: unknown,
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: FileResponse,
+  ): Promise<StreamableFile> {
+    const { id } = uuidParamSchema.parse(params);
+    const file = await this.documentService.openFile(
+      id,
+      documentFileQuerySchema.parse(query),
+      this.requireUser(request),
+    );
+
+    response.setHeader("Content-Type", file.fileType);
+    response.setHeader("Content-Length", file.fileSize);
+    response.setHeader(
+      "Content-Disposition",
+      this.contentDisposition(file.disposition, file.filename),
+    );
+
+    return new StreamableFile(file.stream);
+  }
+
   @Sse("documents/:id/progress")
   async progress(
     @Param() params: unknown,
@@ -163,5 +234,26 @@ export class DocumentController {
     }
 
     return request.user;
+  }
+
+  private contentDisposition(disposition: "inline" | "attachment", filename: string): string {
+    const fallback = this.asciiFilenameFallback(filename);
+    const encodedFilename = this.encodeRfc5987Value(filename);
+    return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodedFilename}`;
+  }
+
+  private asciiFilenameFallback(filename: string): string {
+    const fallback = filename
+      .replace(/[\r\n"\\]/g, "_")
+      .replace(/[^\x20-\x7E]/g, "_")
+      .trim();
+    return fallback.length > 0 ? fallback.slice(0, 255) : "document";
+  }
+
+  private encodeRfc5987Value(value: string): string {
+    return encodeURIComponent(value.replace(/[\r\n]/g, "_")).replace(
+      /['()*]/g,
+      (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
   }
 }

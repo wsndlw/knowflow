@@ -16,15 +16,21 @@ import {
   users,
 } from "@knowflow/db";
 import type {
+  DocumentChunkItem,
+  DocumentChunksQuery,
+  DocumentChunksResponse,
+  DocumentContentResponse,
+  DocumentFileQuery,
   DocumentListQuery,
   DocumentListResponse,
   DocumentProgressEvent,
   KnowledgeTag,
   KnowledgeDocument,
 } from "@knowflow/shared";
-import { and, asc, count, desc, eq, exists, ilike, inArray, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, ilike, inArray, min, type SQL } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { createReadStream, type ReadStream } from "node:fs";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {} from "multer";
 import { Observable } from "rxjs";
@@ -61,9 +67,24 @@ type DocumentRow = {
   chunkStatus: KnowledgeDocument["chunkStatus"];
   embeddingStatus: KnowledgeDocument["embeddingStatus"];
   enabled: boolean;
+  metadata: unknown;
   errorMessage: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+type DocumentFileStream = {
+  stream: ReadStream;
+  filename: string;
+  fileType: string;
+  fileSize: number;
+  disposition: DocumentFileQuery["disposition"];
+};
+
+type OrderedParentChunkRow = {
+  id: string;
+  documentId: string;
+  content: string;
 };
 
 type TagRow = {
@@ -77,6 +98,9 @@ type TagRow = {
 
 @Injectable()
 export class DocumentService {
+  private static readonly CONTENT_PREVIEW_MAX_CHARS = 100_000;
+  private static readonly CONTENT_PREVIEW_BATCH_SIZE = 50;
+
   constructor(
     @Inject(KnowledgeBaseAccessService)
     private readonly accessService: KnowledgeBaseAccessService,
@@ -226,6 +250,90 @@ export class DocumentService {
 
     const tagsByDocumentId = await this.fetchTagsByDocumentIds([id]);
     return this.toDocument(row, await this.countChunks(id), tagsByDocumentId.get(id) ?? []);
+  }
+
+  async getContent(id: string, user: AuthenticatedUser): Promise<DocumentContentResponse> {
+    const row = await this.findRow(id);
+    if (row === undefined) {
+      throw new NotFoundException("Document not found");
+    }
+    await this.ensureCanAccess(row.knowledgeBaseId, user);
+
+    const contentPreview = await this.buildContentPreview(id);
+    const storedTextLength = this.readParsedTextLength(row.metadata);
+    const textLength = storedTextLength ?? contentPreview.previewLength;
+
+    return {
+      documentId: row.id,
+      title: row.title,
+      text: contentPreview.text,
+      textLength,
+      truncated: contentPreview.truncated || textLength > DocumentService.CONTENT_PREVIEW_MAX_CHARS,
+      parseStatus: row.parseStatus,
+    };
+  }
+
+  async listChunks(
+    id: string,
+    query: DocumentChunksQuery,
+    user: AuthenticatedUser,
+  ): Promise<DocumentChunksResponse> {
+    const row = await this.findRow(id);
+    if (row === undefined) {
+      throw new NotFoundException("Document not found");
+    }
+    await this.ensureCanAccess(row.knowledgeBaseId, user);
+
+    return query.level === "parent"
+      ? this.listParentChunks(id, query)
+      : this.listChildChunks(id, query);
+  }
+
+  async openFile(
+    id: string,
+    query: DocumentFileQuery,
+    user: AuthenticatedUser,
+  ): Promise<DocumentFileStream> {
+    const row = await this.findRow(id);
+    if (row === undefined) {
+      throw new NotFoundException("Document not found");
+    }
+    await this.ensureCanAccess(row.knowledgeBaseId, user);
+    if (row.fileId === null) {
+      throw new NotFoundException("Document has no original file");
+    }
+
+    const [file] = await db
+      .select({
+        storagePath: files.storagePath,
+        filename: files.filename,
+        fileType: files.fileType,
+        fileSize: files.fileSize,
+      })
+      .from(files)
+      .where(eq(files.id, row.fileId))
+      .limit(1);
+    if (file === undefined) {
+      throw new NotFoundException("Document file not found");
+    }
+
+    const absolutePath = this.resolveStoredFilePath(file.storagePath);
+    try {
+      const fileStat = await stat(absolutePath);
+      if (!fileStat.isFile()) {
+        throw new NotFoundException("Document file not found");
+      }
+    } catch {
+      throw new NotFoundException("Document file not found");
+    }
+
+    return {
+      stream: createReadStream(absolutePath),
+      filename: file.filename,
+      fileType: file.fileType,
+      fileSize: file.fileSize,
+      disposition: query.disposition,
+    };
   }
 
   async delete(id: string, user: AuthenticatedUser): Promise<void> {
@@ -491,6 +599,7 @@ export class DocumentService {
       chunkStatus: documents.chunkStatus,
       embeddingStatus: documents.embeddingStatus,
       enabled: documents.enabled,
+      metadata: documents.metadata,
       errorMessage: documents.errorMessage,
       createdAt: documents.createdAt,
       updatedAt: documents.updatedAt,
@@ -557,14 +666,102 @@ export class DocumentService {
     return { parentChunkCount, childChunkCount };
   }
 
+  private async listParentChunks(
+    documentId: string,
+    query: DocumentChunksQuery,
+  ): Promise<DocumentChunksResponse> {
+    const offset = (query.page - 1) * query.pageSize;
+    const [[{ value: total } = { value: 0 }], rows] = await Promise.all([
+      db
+        .select({ value: count() })
+        .from(parentChunks)
+        .where(eq(parentChunks.documentId, documentId)),
+      this.fetchOrderedParentChunks(documentId, query.pageSize, offset),
+    ]);
+
+    return {
+      items: rows.map(
+        (chunk, index): DocumentChunkItem => ({
+          id: chunk.id,
+          documentId: chunk.documentId,
+          level: "parent",
+          seq: offset + index,
+          content: chunk.content,
+          parentId: null,
+          tokenCount: null,
+        }),
+      ),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+    };
+  }
+
+  private async listChildChunks(
+    documentId: string,
+    query: DocumentChunksQuery,
+  ): Promise<DocumentChunksResponse> {
+    const offset = (query.page - 1) * query.pageSize;
+    const [[{ value: total } = { value: 0 }], rows] = await Promise.all([
+      db.select({ value: count() }).from(childChunks).where(eq(childChunks.documentId, documentId)),
+      db
+        .select({
+          id: childChunks.id,
+          documentId: childChunks.documentId,
+          content: childChunks.content,
+          parentId: childChunks.parentChunkId,
+          seq: childChunks.chunkIndex,
+          tokenCount: childChunks.tokenCount,
+        })
+        .from(childChunks)
+        .where(eq(childChunks.documentId, documentId))
+        .orderBy(asc(childChunks.chunkIndex), asc(childChunks.id))
+        .limit(query.pageSize)
+        .offset(offset),
+    ]);
+
+    return {
+      items: rows.map(
+        (chunk): DocumentChunkItem => ({
+          id: chunk.id,
+          documentId: chunk.documentId,
+          level: "child",
+          seq: chunk.seq,
+          content: chunk.content,
+          parentId: chunk.parentId,
+          tokenCount: chunk.tokenCount,
+        }),
+      ),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+    };
+  }
+
   private toDocument(
     row: DocumentRow,
     counts: { parentChunkCount: number; childChunkCount: number },
     tagItems: KnowledgeTag[],
   ): KnowledgeDocument {
     return {
-      ...row,
-      ...counts,
+      id: row.id,
+      knowledgeBaseId: row.knowledgeBaseId,
+      title: row.title,
+      sourceType: row.sourceType,
+      sourceUri: row.sourceUri,
+      fileId: row.fileId,
+      fileType: row.fileType,
+      fileSize: row.fileSize,
+      uploaderId: row.uploaderId,
+      uploaderName: row.uploaderName,
+      processStatus: row.processStatus,
+      parseStatus: row.parseStatus,
+      chunkStatus: row.chunkStatus,
+      embeddingStatus: row.embeddingStatus,
+      enabled: row.enabled,
+      errorMessage: row.errorMessage,
+      parentChunkCount: counts.parentChunkCount,
+      childChunkCount: counts.childChunkCount,
       tags: tagItems,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -603,5 +800,114 @@ export class DocumentService {
       case "failed":
         return 100;
     }
+  }
+
+  private readParsedTextLength(metadata: unknown): number | undefined {
+    if (
+      metadata !== null &&
+      typeof metadata === "object" &&
+      "textLength" in metadata &&
+      typeof metadata.textLength === "number" &&
+      Number.isInteger(metadata.textLength) &&
+      metadata.textLength >= 0
+    ) {
+      return metadata.textLength;
+    }
+    return undefined;
+  }
+
+  private resolveStoredFilePath(storagePath: string): string {
+    const storageRoot = resolveLocalStorageRoot();
+    const absolutePath = path.resolve(storageRoot, storagePath);
+    if (!this.isWithinDirectory(storageRoot, absolutePath)) {
+      throw new NotFoundException("Document file not found");
+    }
+    return absolutePath;
+  }
+
+  private async buildContentPreview(documentId: string): Promise<{
+    text: string;
+    previewLength: number;
+    truncated: boolean;
+  }> {
+    const parts: string[] = [];
+    let previewLength = 0;
+    let offset = 0;
+    let truncated = false;
+
+    for (;;) {
+      const chunks = await this.fetchOrderedParentChunks(
+        documentId,
+        DocumentService.CONTENT_PREVIEW_BATCH_SIZE,
+        offset,
+      );
+      if (chunks.length === 0) {
+        break;
+      }
+
+      for (const chunk of chunks) {
+        const separatorLength = parts.length === 0 ? 0 : 2;
+        const nextLength = previewLength + separatorLength + chunk.content.length;
+        if (nextLength > DocumentService.CONTENT_PREVIEW_MAX_CHARS) {
+          const separatorFits =
+            separatorLength > 0 &&
+            previewLength + separatorLength <= DocumentService.CONTENT_PREVIEW_MAX_CHARS;
+          if (separatorFits) {
+            parts.push("\n\n");
+            previewLength += separatorLength;
+          }
+          const remaining = DocumentService.CONTENT_PREVIEW_MAX_CHARS - previewLength;
+          if (remaining > 0) {
+            parts.push(chunk.content.slice(0, remaining));
+            previewLength += remaining;
+          }
+          truncated = true;
+          return {
+            text: parts.join(""),
+            previewLength,
+            truncated,
+          };
+        }
+
+        if (separatorLength > 0) {
+          parts.push("\n\n");
+          previewLength += separatorLength;
+        }
+        parts.push(chunk.content);
+        previewLength = nextLength;
+      }
+
+      if (chunks.length < DocumentService.CONTENT_PREVIEW_BATCH_SIZE) {
+        break;
+      }
+      offset += chunks.length;
+    }
+
+    return {
+      text: parts.join(""),
+      previewLength,
+      truncated,
+    };
+  }
+
+  private async fetchOrderedParentChunks(
+    documentId: string,
+    limit: number,
+    offset: number,
+  ): Promise<OrderedParentChunkRow[]> {
+    return db
+      .select({
+        id: parentChunks.id,
+        documentId: parentChunks.documentId,
+        content: parentChunks.content,
+        firstChildIndex: min(childChunks.chunkIndex),
+      })
+      .from(parentChunks)
+      .leftJoin(childChunks, eq(childChunks.parentChunkId, parentChunks.id))
+      .where(eq(parentChunks.documentId, documentId))
+      .groupBy(parentChunks.id, parentChunks.documentId, parentChunks.content)
+      .orderBy(asc(min(childChunks.chunkIndex)), asc(parentChunks.createdAt), asc(parentChunks.id))
+      .limit(limit)
+      .offset(offset);
   }
 }

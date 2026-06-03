@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { RETRIEVAL_TEST_MODES, ZodError } from "@knowflow/shared";
 import type {
   RetrievalTestMode,
   RetrievalTestRequest,
@@ -37,10 +38,12 @@ function isValidEntry(value: unknown): value is RetrievalHistoryEntry {
     return false;
   }
   const entry = value as Record<string, unknown>;
+  const mode = entry["mode"];
   return (
     typeof entry["id"] === "string" &&
     typeof entry["query"] === "string" &&
-    typeof entry["mode"] === "string" &&
+    typeof mode === "string" &&
+    (RETRIEVAL_TEST_MODES as readonly string[]).includes(mode) &&
     typeof entry["timestamp"] === "string" &&
     typeof entry["resultCount"] === "number" &&
     typeof entry["filters"] === "object" &&
@@ -145,7 +148,13 @@ export function useRetrievalTest(knowledgeBaseId: string): UseRetrievalTest {
         });
       } catch (caught) {
         // 错误时保留上次结果，仅提示错误
-        setError(caught instanceof Error ? caught.message : "检索失败");
+        if (caught instanceof ZodError) {
+          // 响应 schema 不匹配：原始 zod 报文太长不适合直接展示，走 console，界面给友好文案
+          console.error("检索响应格式校验失败", caught);
+          setError("检索响应格式异常，请联系管理员");
+        } else {
+          setError(caught instanceof Error ? caught.message : "检索失败");
+        }
       } finally {
         setLoading(false);
       }

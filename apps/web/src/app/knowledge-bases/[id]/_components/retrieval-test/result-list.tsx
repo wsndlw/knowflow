@@ -41,7 +41,10 @@ export function ResultList({
     );
   }
 
-  const sorted = [...result.results].sort((a, b) => b.scores.finalScore - a.scores.finalScore);
+  // 后端已按 finalScore 降序排好并据此赋 rank（rank=1 即最高分），返回数组本身即最终顺序。
+  // 这里按 rank 升序展示，与卡片角标（result.rank）同一真相源，避免二次按 finalScore 重排
+  // 在分数相等/浮点边界时与角标错位。rank 升序 === finalScore 降序，下方文案仍成立。
+  const sorted = [...result.results].sort((a, b) => a.rank - b.rank);
 
   return (
     <div className="flex flex-col gap-3">

@@ -125,6 +125,16 @@ export function disabledParamGroups(mode: RetrievalTestMode): Set<AdvancedParamG
   return disabled;
 }
 
+// keepN > topN 会触发后端 overrides.refine 返回 422（见 retrievalTestRequestSchema）。
+// 仅当该模式会实际下发 rerank 参数（即 hybrid_rerank，rerank 组未被禁用）时才需校验；
+// config-panel 的即时警告与 tab 的「检索」按钮禁用共用此判定，保证两处口径一致。
+export function hasInvalidRerankRange(mode: RetrievalTestMode, advanced: AdvancedConfig): boolean {
+  if (disabledParamGroups(mode).has("rerank")) {
+    return false;
+  }
+  return advanced.rerankKeepN > advanced.rerankTopN;
+}
+
 // ── 权重联动：调一个，另两个按比例缩放，总和保持 1 ──────────────
 
 export function clamp01(value: number): number {

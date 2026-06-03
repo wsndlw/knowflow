@@ -240,7 +240,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
       ) : (
         <Table>
           <TableHead>
-            <tr>
+            <TableRow>
               <TableHeaderCell>标题</TableHeaderCell>
               <TableHeaderCell>标签</TableHeaderCell>
               <TableHeaderCell>状态</TableHeaderCell>
@@ -248,7 +248,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
               <TableHeaderCell>引用</TableHeaderCell>
               <TableHeaderCell>更新时间</TableHeaderCell>
               {canManage ? <TableHeaderCell className="text-right">操作</TableHeaderCell> : null}
-            </tr>
+            </TableRow>
           </TableHead>
           <TableBody>
             {items.map((item) => (

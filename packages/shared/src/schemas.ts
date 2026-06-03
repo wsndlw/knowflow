@@ -980,6 +980,11 @@ export const analyticsTopContentSchema = z.object({
   lastViewedAt: z.iso.datetime().nullable(),
 });
 
+export const analyticsTopKeywordSchema = z.object({
+  keyword: z.string(),
+  count: z.number().int().nonnegative(),
+});
+
 export const analyticsNoAnswerQuestionSchema = z.object({
   question: z.string(),
   count: z.number().int().nonnegative(),
@@ -1032,6 +1037,7 @@ export const knowledgeBaseAnalyticsResponseSchema = z.object({
   trends: analyticsTrendSchema,
   popularDocuments: z.array(analyticsTopContentSchema),
   popularKnowledgeItems: z.array(analyticsTopContentSchema),
+  topKeywords: z.array(analyticsTopKeywordSchema),
   unvisitedContent: z.array(analyticsUnvisitedContentSchema),
   noAnswerQuestions: z.array(analyticsNoAnswerQuestionSchema),
   lowConfidenceQuestions: z.array(analyticsLowConfidenceQuestionSchema),
@@ -1062,6 +1068,7 @@ export const analyticsOverviewResponseSchema = z.object({
   knowledgeBases: z.array(analyticsKnowledgeBaseRankingSchema),
   topDocuments: z.array(analyticsTopContentSchema.extend({ knowledgeBaseName: z.string() })),
   topKnowledgeItems: z.array(analyticsTopContentSchema.extend({ knowledgeBaseName: z.string() })),
+  topKeywords: z.array(analyticsTopKeywordSchema),
 });
 
 export const modelProviderSchema = z.object({
@@ -1290,6 +1297,7 @@ export type AnalyticsRangeQuery = z.infer<typeof analyticsRangeQuerySchema>;
 export type AnalyticsEventRequest = z.infer<typeof analyticsEventRequestSchema>;
 export type AnalyticsEvent = z.infer<typeof analyticsEventSchema>;
 export type AnalyticsTopContent = z.infer<typeof analyticsTopContentSchema>;
+export type AnalyticsTopKeyword = z.infer<typeof analyticsTopKeywordSchema>;
 export type AnalyticsEntityTotals = z.infer<typeof analyticsEntityTotalsSchema>;
 export type KnowledgeBaseAnalyticsResponse = z.infer<typeof knowledgeBaseAnalyticsResponseSchema>;
 export type AnalyticsOverviewResponse = z.infer<typeof analyticsOverviewResponseSchema>;

@@ -55,8 +55,8 @@ export function TagPickerPopover({
       <PopoverTrigger asChild disabled={disabled}>
         {children}
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-0">
-        <Command>
+      <PopoverContent align="start" className="w-64 p-0 bg-surface">
+        <Command className="bg-surface">
           <CommandInput placeholder="搜索标签…" />
           <CommandList>
             <CommandEmpty>

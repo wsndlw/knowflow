@@ -13,6 +13,7 @@ export type TabValue =
   | "relations"
   | "retrieval-test"
   | "settings"
+  | "improvement"
   | "audit-log";
 
 export function useTabState(validTabs: TabValue[]): {

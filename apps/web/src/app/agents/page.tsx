@@ -16,8 +16,18 @@ import {
   type Conversation,
   type ConversationMessage,
   type FeedbackRating,
+  type NoAnswerType,
 } from "@knowflow/shared";
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import {
+  HelpCircle,
+  AlertTriangle,
+  Compass,
+  ShieldAlert,
+  AlertCircle,
+  FileText,
+  ArrowRight,
+} from "lucide-react";
 
 import { Button } from "../../components/ui/button";
 import { CitationPopover } from "../../components/ui/citation-popover";
@@ -32,7 +42,7 @@ type DraftAssistantMessage = {
   role: "assistant";
   content: string;
   confidenceLevel: ConfidenceLevel | null;
-  noAnswerType: string | null;
+  noAnswerType: NoAnswerType | null;
   citations: Citation[];
   recommendedQuestions: string[];
   relatedDocuments: ConversationMessage["relatedDocuments"];
@@ -55,6 +65,53 @@ const confidenceMeta: Record<ConfidenceLevel, { label: string; cls: string }> = 
   medium: { label: "依据一般", cls: "bg-info-bg text-info" },
   weak: { label: "依据不足", cls: "bg-warning-bg text-warning" },
   not_found: { label: "未找到依据", cls: "bg-neutral-100 text-neutral-600" },
+};
+
+const noAnswerMeta: Record<
+  NoAnswerType,
+  {
+    label: string;
+    description: string;
+    bgCls: string;
+    textCls: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }
+> = {
+  no_answer: {
+    label: "无匹配答案",
+    description: "未在知识库中找到相关内容。",
+    bgCls: "bg-neutral-100/80 border border-neutral-200",
+    textCls: "text-neutral-700",
+    icon: HelpCircle,
+  },
+  low_confidence: {
+    label: "回答可信度较低",
+    description: "此回答依据不足，可信度较低，请谨慎参考。",
+    bgCls: "bg-warning-bg border border-warning/20",
+    textCls: "text-warning",
+    icon: AlertTriangle,
+  },
+  knowledge_gap: {
+    label: "知识库空白",
+    description: "知识库中尚无相关内容，无法回答该问题。",
+    bgCls: "bg-info-bg border border-info/20",
+    textCls: "text-info",
+    icon: Compass,
+  },
+  permission_limited: {
+    label: "权限受限",
+    description: "受权限限制，无法读取与此问题相关的知识库文档。",
+    bgCls: "bg-danger-bg border border-danger/20",
+    textCls: "text-danger",
+    icon: ShieldAlert,
+  },
+  attachment_parse_failed: {
+    label: "附件解析失败",
+    description: "上传的附件解析失败，无法提取有效信息进行回答。",
+    bgCls: "bg-danger-bg border border-danger/20",
+    textCls: "text-danger",
+    icon: AlertCircle,
+  },
 };
 
 export default function ChatPage() {
@@ -471,6 +528,27 @@ function AssistantBubble({
           AI
         </span>
         <div className="min-w-0 flex-1">
+          {/* noAnswerType 提示 */}
+          {!showSkeleton && message.noAnswerType ? (
+            (() => {
+              const meta = noAnswerMeta[message.noAnswerType];
+              const Icon = meta.icon;
+              return (
+                <div className={cn("mb-3 flex items-start gap-2.5 rounded-lg border p-3 text-sm transition-all shadow-xs", meta.bgCls)}>
+                  <Icon className={cn("mt-0.5 size-4 shrink-0", meta.textCls)} />
+                  <div className="flex-1">
+                    <span className={cn("font-semibold block", meta.textCls)}>
+                      {meta.label}
+                    </span>
+                    <span className="text-ink-muted text-xs mt-0.5 block">
+                      {meta.description}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()
+          ) : null}
+
           {showSkeleton ? (
             <p className="text-sm text-ink-subtle">{statusText || "思考中"}…</p>
           ) : (
@@ -492,6 +570,37 @@ function AssistantBubble({
                   {confidenceMeta[message.confidenceLevel].label}
                 </span>
               ) : null}
+            </div>
+          ) : null}
+
+          {/* 相关文档区块 */}
+          {!showSkeleton && message.relatedDocuments.length > 0 ? (
+            <div className="mt-4 border-t border-dashed border-border pt-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted mb-2">
+                <FileText className="size-3.5 text-ink-subtle" />
+                <span>相关文档</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {message.relatedDocuments.map((doc) => (
+                  <a
+                    key={doc.id}
+                    href={`/knowledge-bases/${doc.knowledgeBaseId}`}
+                    className="flex items-start justify-between gap-3 rounded-lg border border-border bg-neutral-0 p-2.5 shadow-xs hover:border-brand-300 hover:bg-brand-50/10 transition-all group"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-ink group-hover:text-brand-700 transition-colors line-clamp-1">
+                        {doc.title}
+                      </span>
+                      {doc.knowledgeBaseName ? (
+                        <span className="block text-xs text-ink-subtle mt-0.5 line-clamp-1">
+                          知识库: {doc.knowledgeBaseName}
+                        </span>
+                      ) : null}
+                    </div>
+                    <ArrowRight className="size-4 shrink-0 self-center text-ink-subtle opacity-0 group-hover:opacity-100 group-hover:text-brand-600 transition-all" />
+                  </a>
+                ))}
+              </div>
             </div>
           ) : null}
 

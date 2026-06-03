@@ -80,7 +80,7 @@ function MindMapNodeComponent({ id, data }: NodeProps<MindMapNodeData>) {
         if (data.editable && isEditableTitle) setEditing(true);
       }}
       className={cn(
-        "group relative flex items-center gap-2 rounded-lg border-2 px-3 py-2 shadow-xs transition-all",
+        "relative flex items-center gap-2 rounded-lg border-2 px-3 py-2 shadow-xs transition-all",
         style.box,
         data.selected && "ring-2 ring-ring ring-offset-1",
         data.matched && "ring-2 ring-warning",
@@ -121,7 +121,8 @@ function MindMapNodeComponent({ id, data }: NodeProps<MindMapNodeData>) {
             callbacks.onJump(id);
           }}
           onMouseDown={(e) => e.stopPropagation()}
-          className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-black/5 group-hover:opacity-100"
+          // 始终半可见（移动端无 hover 也能看到/点击），hover 时加深
+          className="shrink-0 rounded p-0.5 opacity-60 transition-opacity hover:bg-black/5 hover:opacity-100"
         >
           <ExternalLinkIcon className="size-3.5" />
         </button>

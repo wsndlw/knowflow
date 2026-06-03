@@ -7,7 +7,6 @@ import ReactFlow, {
   MiniMap,
   ReactFlowProvider,
   useReactFlow,
-  type Edge,
   type Node,
   type NodeMouseHandler,
   type OnNodesChange,
@@ -22,7 +21,7 @@ import {
 } from "@/components/ui/context-menu";
 
 import { type EditableNode } from "../../_hooks/use-mind-map";
-import { layoutMindMap } from "./mind-map-layout";
+import { buildRfNodes, computeDagreLayout } from "./mind-map-layout";
 import { MindMapNode, setMindMapNodeCallbacks, type MindMapNodeData } from "./mind-map-node";
 
 const NODE_TYPES = { mindMap: MindMapNode };
@@ -64,12 +63,14 @@ function CanvasInner({
     setMindMapNodeCallbacks({ onRename, onJump });
   }, [onRename, onJump]);
 
-  const { rfNodes, rfEdges } = useMemo<{
-    rfNodes: Node<MindMapNodeData>[];
-    rfEdges: Edge[];
-  }>(
-    () => layoutMindMap({ nodes, selectedId, matchedIds, editable }),
-    [nodes, selectedId, matchedIds, editable],
+  // 第一层：仅在节点结构（增删/改父子/改名）变化时跑 dagre 布局。
+  // 选中、搜索等装饰态变化时 nodes 引用不变，不会重算布局。
+  const { positions, edges: rfEdges } = useMemo(() => computeDagreLayout(nodes), [nodes]);
+
+  // 第二层：用已算好的位置 + 当前装饰态组装节点（纯 map，开销低）。
+  const rfNodes = useMemo<Node<MindMapNodeData>[]>(
+    () => buildRfNodes(nodes, positions, { selectedId, matchedIds, editable }),
+    [nodes, positions, selectedId, matchedIds, editable],
   );
 
   // 初始与节点结构变化后居中

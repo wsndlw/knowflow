@@ -8,6 +8,9 @@ import {
 } from "@knowflow/shared";
 
 import { apiRequest } from "../../../../lib/api";
+import { translateApiError } from "../../../../lib/api-error";
+
+export type AuditTimePreset = "7d" | "30d" | "all" | "custom";
 
 export type AuditLogFilters = {
   /** 操作类型 action，多选(OR) */
@@ -20,6 +23,8 @@ export type AuditLogFilters = {
   from: string;
   /** ISO datetime 结束，空串表示不限 */
   to: string;
+  /** 时间范围预设（仅前端显示态，不参与查询；避免跨天用绝对日期反推导致高亮漂移） */
+  timePreset: AuditTimePreset;
 };
 
 export const EMPTY_AUDIT_FILTERS: AuditLogFilters = {
@@ -28,6 +33,7 @@ export const EMPTY_AUDIT_FILTERS: AuditLogFilters = {
   result: "",
   from: "",
   to: "",
+  timePreset: "all",
 };
 
 const PAGE_SIZE = 20;
@@ -89,7 +95,7 @@ export function useAuditLogs(knowledgeBaseId: string): UseAuditLogsReturn {
       setItems(data.items);
       setTotal(data.total);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "加载操作日志失败");
+      setError(caught instanceof Error ? translateApiError(caught.message) : "加载操作日志失败");
       setItems([]);
       setTotal(0);
     } finally {

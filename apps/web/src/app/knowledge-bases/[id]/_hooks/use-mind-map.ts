@@ -9,6 +9,7 @@ import {
 } from "@knowflow/shared";
 
 import { apiRequest } from "@/lib/api";
+import { translateApiError } from "@/lib/api-error";
 
 /** 画布编辑用的规范化节点（不含服务端派生字段）。 */
 export type EditableNode = {
@@ -28,7 +29,11 @@ type UseMindMapReturn = {
   generating: boolean;
   saving: boolean;
   publishing: boolean;
-  error: string | null;
+  /** 初始加载/重载/切换视图失败：此时无可用画布，适合全屏错误。 */
+  loadError: string | null;
+  /** 生成/保存/发布等操作失败：画布仍在，用内联条提示，不吞操作入口。 */
+  actionError: string | null;
+  clearActionError: () => void;
   dirty: boolean;
   hasPublished: boolean;
   hasDraft: boolean;
@@ -100,8 +105,11 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+
+  const clearActionError = useCallback(() => setActionError(null), []);
 
   const fetchPublished = useCallback(async (): Promise<MindMapNode[]> => {
     const data = await apiRequest(
@@ -124,7 +132,8 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
   /** 初始加载：member 看 published；admin 进编辑态（draft 为空但有 published 则克隆）。 */
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
+    setActionError(null);
     try {
       if (!canManage) {
         const published = await fetchPublished();
@@ -148,7 +157,9 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
       }
       setMode("edit");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "加载思维导图失败");
+      setLoadError(
+        caught instanceof Error ? translateApiError(caught.message) : "加载思维导图失败",
+      );
     } finally {
       setLoading(false);
     }
@@ -165,7 +176,8 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
 
   const enterView = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
+    setActionError(null);
     try {
       const published = await fetchPublished();
       setPublishedNodes(published);
@@ -173,7 +185,9 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
       setMode("view");
       setDirty(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "加载思维导图失败");
+      setLoadError(
+        caught instanceof Error ? translateApiError(caught.message) : "加载思维导图失败",
+      );
     } finally {
       setLoading(false);
     }
@@ -227,7 +241,7 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
 
   const generate = useCallback(async (): Promise<string | null> => {
     setGenerating(true);
-    setError(null);
+    setActionError(null);
     try {
       const data = await apiRequest(
         `/knowledge-bases/${knowledgeBaseId}/mind-map/generate`,
@@ -239,7 +253,9 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
       setDirty(false);
       return data.message;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "生成思维导图失败");
+      setActionError(
+        caught instanceof Error ? translateApiError(caught.message) : "生成思维导图失败",
+      );
       throw caught;
     } finally {
       setGenerating(false);
@@ -248,7 +264,7 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
 
   const save = useCallback(async (): Promise<boolean> => {
     setSaving(true);
-    setError(null);
+    setActionError(null);
     try {
       // PUT = 全量替换：提交整棵树完整 nodes；数组顺序即 sortOrder（后端按索引重排）
       const body = {
@@ -269,7 +285,7 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
       setDirty(false);
       return true;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "保存失败");
+      setActionError(caught instanceof Error ? translateApiError(caught.message) : "保存失败");
       return false;
     } finally {
       setSaving(false);
@@ -278,7 +294,7 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
 
   const publish = useCallback(async (): Promise<boolean> => {
     setPublishing(true);
-    setError(null);
+    setActionError(null);
     try {
       // 发布前若有未保存改动，先保存，避免发布旧 draft
       if (dirty) {
@@ -305,7 +321,7 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
       setPublishedNodes(data.nodes);
       return true;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "发布失败");
+      setActionError(caught instanceof Error ? translateApiError(caught.message) : "发布失败");
       return false;
     } finally {
       setPublishing(false);
@@ -319,7 +335,9 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
     generating,
     saving,
     publishing,
-    error,
+    loadError,
+    actionError,
+    clearActionError,
     dirty,
     hasPublished: publishedNodes.length > 0,
     hasDraft: nodes.length > 0,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Edit3Icon, Loader2Icon, NetworkIcon } from "lucide-react";
+import { Edit3Icon, Loader2Icon, NetworkIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
@@ -26,7 +26,9 @@ export function TabMindMap({ knowledgeBaseId, canManage, onJumpTab }: TabMindMap
     generating,
     saving,
     publishing,
-    error,
+    loadError,
+    actionError,
+    clearActionError,
     dirty,
     hasPublished,
     enterEdit,
@@ -38,6 +40,7 @@ export function TabMindMap({ knowledgeBaseId, canManage, onJumpTab }: TabMindMap
     generate,
     save,
     publish,
+    reload,
   } = useMindMap(knowledgeBaseId, canManage);
 
   // 是否处于可编辑态：仅当有管理权限且当前为编辑模式。
@@ -65,7 +68,7 @@ export function TabMindMap({ knowledgeBaseId, canManage, onJumpTab }: TabMindMap
       const message = await generate();
       if (message) showToast(message);
     } catch {
-      // 错误已由 hook 写入 error 态
+      // 错误已由 hook 写入 actionError（内联条展示），此处无需额外处理
     }
   }, [generate, showToast]);
 
@@ -105,40 +108,75 @@ export function TabMindMap({ knowledgeBaseId, canManage, onJumpTab }: TabMindMap
     );
   }
 
-  if (error) {
-    return <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{error}</p>;
+  if (loadError) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{loadError}</p>
+        <div>
+          <Button variant="outline" size="sm" onClick={() => void reload()}>
+            重试
+          </Button>
+        </div>
+      </div>
+    );
   }
+
+  // 操作（生成/保存/发布）失败的内联提示条：保留画布与操作入口，不全屏吞掉
+  const actionErrorBar = actionError ? (
+    <div className="flex items-center justify-between gap-2 rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">
+      <span>{actionError}</span>
+      <button
+        type="button"
+        aria-label="关闭提示"
+        onClick={clearActionError}
+        className="shrink-0 rounded p-0.5 hover:bg-danger/10"
+      >
+        <XIcon className="size-4" />
+      </button>
+    </div>
+  ) : null;
 
   // 空态：member 无 published
   if (!canManage && nodes.length === 0) {
     return (
-      <EmptyState
-        icon={<NetworkIcon className="size-8" />}
-        title="管理员尚未生成知识关系图"
-        description="知识关系图会以思维导图的形式展示该知识库的主题、文档与条目结构。"
-      />
+      <div className="flex flex-col gap-3">
+        {actionErrorBar}
+        <EmptyState
+          icon={<NetworkIcon className="size-8" />}
+          title="管理员尚未生成知识关系图"
+          description="知识关系图会以思维导图的形式展示该知识库的主题、文档与条目结构。"
+        />
+      </div>
     );
   }
 
   // 空态：admin 无 draft 且无 published
   if (canManage && nodes.length === 0) {
     return (
-      <EmptyState
-        icon={<NetworkIcon className="size-8" />}
-        title="还没有知识关系图"
-        description="基于知识库的文档与条目，AI 将自动分析并生成主题分类的思维导图。"
-        action={
-          <Button onClick={() => void handleGenerate()} disabled={generating} className="gap-1.5">
-            {generating ? <Loader2Icon className="size-4 animate-spin" /> : <NetworkIcon className="size-4" />}
-            {generating ? "正在生成…" : "生成思维导图"}
-          </Button>
-        }
-      />
+      <div className="flex flex-col gap-3">
+        {actionErrorBar}
+        <EmptyState
+          icon={<NetworkIcon className="size-8" />}
+          title="还没有知识关系图"
+          description="基于知识库的文档与条目，AI 将自动分析并生成主题分类的思维导图。"
+          action={
+            <Button onClick={() => void handleGenerate()} disabled={generating} className="gap-1.5">
+              {generating ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <NetworkIcon className="size-4" />
+              )}
+              {generating ? "正在生成…" : "生成思维导图"}
+            </Button>
+          }
+        />
+      </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
+      {actionErrorBar}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {editable ? (
           <MindMapToolbar

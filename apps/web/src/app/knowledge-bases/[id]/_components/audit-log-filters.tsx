@@ -27,7 +27,11 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/cn";
 
-import { EMPTY_AUDIT_FILTERS, type AuditLogFilters } from "../_hooks/use-audit-logs";
+import {
+  EMPTY_AUDIT_FILTERS,
+  type AuditLogFilters,
+  type AuditTimePreset,
+} from "../_hooks/use-audit-logs";
 
 type AuditLogFiltersBarProps = {
   filters: AuditLogFilters;
@@ -46,8 +50,6 @@ const RESULT_OPTIONS: { value: AuditResult; label: string }[] = [
 ];
 
 const ALL_VALUE = "__all__";
-
-type TimePreset = "7d" | "30d" | "custom" | "all";
 
 function isoStartOfDay(date: Date): string {
   const d = new Date(date);
@@ -77,12 +79,8 @@ export function AuditLogFiltersBar({ filters, onChange, members }: AuditLogFilte
     [filters.actions],
   );
 
-  const activePreset: TimePreset = useMemo(() => {
-    if (!filters.from && !filters.to) return "all";
-    if (filters.from === daysAgoIso(7) && !filters.to) return "7d";
-    if (filters.from === daysAgoIso(30) && !filters.to) return "30d";
-    return "custom";
-  }, [filters.from, filters.to]);
+  // 显示态直接读 filters.timePreset，不再用绝对日期反推（避免跨天高亮漂移）
+  const activePreset = filters.timePreset;
 
   const customRange: DateRange | undefined = useMemo(() => {
     if (activePreset !== "custom") return undefined;
@@ -99,13 +97,13 @@ export function AuditLogFiltersBar({ filters, onChange, members }: AuditLogFilte
     onChange({ ...filters, actions: next });
   }
 
-  function applyPreset(preset: TimePreset) {
+  function applyPreset(preset: AuditTimePreset) {
     if (preset === "7d") {
-      onChange({ ...filters, from: daysAgoIso(7), to: "" });
+      onChange({ ...filters, from: daysAgoIso(7), to: "", timePreset: "7d" });
     } else if (preset === "30d") {
-      onChange({ ...filters, from: daysAgoIso(30), to: "" });
+      onChange({ ...filters, from: daysAgoIso(30), to: "", timePreset: "30d" });
     } else if (preset === "all") {
-      onChange({ ...filters, from: "", to: "" });
+      onChange({ ...filters, from: "", to: "", timePreset: "all" });
     }
   }
 
@@ -114,6 +112,7 @@ export function AuditLogFiltersBar({ filters, onChange, members }: AuditLogFilte
       ...filters,
       from: range?.from ? isoStartOfDay(range.from) : "",
       to: range?.to ? isoEndOfDay(range.to) : "",
+      timePreset: "custom",
     });
   }
 

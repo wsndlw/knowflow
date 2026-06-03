@@ -159,9 +159,6 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.8
         version: 1.2.8(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      '@types/dagre':
-        specifier: ^0.7.54
-        version: 0.7.54
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -208,6 +205,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4.3.0
         version: 4.3.0
+      '@types/dagre':
+        specifier: ^0.7.54
+        version: 0.7.54
       '@types/react':
         specifier: ^19.2.15
         version: 19.2.15

@@ -29,8 +29,10 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 import { Button } from "../../components/ui/button";
-import { CitationPopover } from "../../components/ui/citation-popover";
 import { Dialog } from "../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../components/ui/feedback";
 import { apiRequest, apiUrl, getCsrfToken, parseApiError } from "../../lib/api";
@@ -148,7 +150,7 @@ export default function ChatPage() {
         (c) => c.agentId === globalAgent?.id,
       );
       setConversations(globalConversations);
-      setSelectedConversationId(globalConversations[0]?.id ?? "");
+      setSelectedConversationId("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "加载失败");
     } finally {
@@ -552,10 +554,94 @@ function AssistantBubble({
           {showSkeleton ? (
             <p className="text-sm text-ink-subtle">{statusText || "思考中"}…</p>
           ) : (
-            <div className="text-base leading-relaxed whitespace-pre-wrap text-ink">
-              {renderWithCitations(message.content, message.citations)}
+            <div className="prose prose-sm max-w-none text-base leading-relaxed text-ink">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  pre: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <pre className="my-2 overflow-x-auto rounded-md bg-neutral-100 p-3 text-sm" {...rest} />;
+                  },
+                  code: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, className, children, ...rest } = props;
+                    return !className ? (
+                      <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-sm text-brand-700" {...rest}>
+                        {children}
+                      </code>
+                    ) : (
+                      <code className={className} {...rest}>
+                        {children}
+                      </code>
+                    );
+                  },
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
             </div>
           )}
+
+          {/* 引用展示区 */}
+          {!showSkeleton && message.citations.length > 0 ? (
+            <div className="mt-4 border-t border-dashed border-border pt-3">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
+                <FileText className="size-3.5 text-ink-subtle" />
+                <span>引用来源</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {(() => {
+                  const hasScores = message.citations.some((c) => "relevanceScore" in c || "score" in c);
+                  let topCitations = message.citations;
+                  if (hasScores) {
+                    topCitations = [...message.citations].sort((a, b) => {
+                      const aRec = a as Record<string, unknown>;
+                      const bRec = b as Record<string, unknown>;
+                      const scoreA = Number(aRec['relevanceScore'] ?? aRec['score'] ?? 0);
+                      const scoreB = Number(bRec['relevanceScore'] ?? bRec['score'] ?? 0);
+                      return scoreB - scoreA;
+                    });
+                  }
+                  return topCitations.slice(0, 3).map((citation, idx) => {
+                    const content = (
+                      <>
+                        <span className="line-clamp-1 block text-sm font-medium text-ink transition-colors group-hover:text-brand-700">
+                          [{idx + 1}] {citation.title}
+                        </span>
+                        {citation.knowledgeBaseName ? (
+                          <span className="mt-0.5 line-clamp-1 block text-xs text-ink-subtle">
+                            知识库: {citation.knowledgeBaseName}
+                          </span>
+                        ) : null}
+                      </>
+                    );
+                    
+                    if (citation.knowledgeBaseId !== null) {
+                      return (
+                        <a
+                          key={citation.id ?? idx}
+                          href={`/knowledge-bases/${citation.knowledgeBaseId}`}
+                          className="group flex flex-col justify-center gap-0.5 rounded-lg border border-border bg-neutral-0 p-2.5 shadow-xs transition-all hover:border-brand-300 hover:bg-brand-50/10"
+                        >
+                          {content}
+                        </a>
+                      );
+                    }
+                    return (
+                      <div
+                        key={citation.id ?? idx}
+                        className="flex flex-col justify-center gap-0.5 rounded-lg border border-border bg-neutral-50 p-2.5 shadow-xs"
+                      >
+                        {content}
+                        <span className="mt-0.5 text-xs text-ink-subtle">(该文档已被删除)</span>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          ) : null}
 
           {/* 可信度 + 元信息 */}
           {!message.id.startsWith("draft-") ? (
@@ -649,39 +735,7 @@ function AssistantBubble({
   );
 }
 
-// 回答正文里的 [n] 标号渲染成带悬停来源卡片的引用(卡片可点击跳转)
-function renderWithCitations(content: string, citations: Citation[]) {
-  if (citations.length === 0) {
-    return content;
-  }
-  const parts = content.split(/(\[\d+\])/g);
-  return parts.map((part, idx) => {
-    const match = /^\[(\d+)\]$/.exec(part);
-    if (match !== null) {
-      const n = Number(match[1]);
-      const citation = citations[n - 1];
-      if (citation !== undefined) {
-        return (
-          <CitationPopover
-            key={idx}
-            data={{
-              index: n,
-              title: citation.title,
-              knowledgeBaseName: citation.knowledgeBaseName,
-              snippet: citation.snippet,
-              pageOrSection: citation.pageOrSection,
-              href:
-                citation.knowledgeBaseId !== null
-                  ? `/knowledge-bases/${citation.knowledgeBaseId}`
-                  : null,
-            }}
-          />
-        );
-      }
-    }
-    return <span key={idx}>{part}</span>;
-  });
-}
+
 
 function IconAction({
   label,

@@ -10,6 +10,7 @@ import type {
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import type { RetrievalResult } from "../retrieval/retrieval.types.js";
+import type { AccessibleKnowledgeBase } from "./agent-scope.js";
 
 export type SseEmitter = (event: AskStreamEvent) => Promise<void>;
 
@@ -24,6 +25,7 @@ export type AgentState = {
   query: string;
   agent: RuntimeAgent | null;
   knowledgeScope: string[];
+  accessibleKnowledgeBases: AccessibleKnowledgeBase[];
   rewrittenQueries: string[];
   retrieval: RetrievalResult | null;
   promptSnapshot: string | null;

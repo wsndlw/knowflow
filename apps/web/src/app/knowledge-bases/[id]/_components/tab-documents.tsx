@@ -14,9 +14,15 @@ import { Dialog } from "../../../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Input } from "../../../../components/ui/input";
 import { Select } from "../../../../components/ui/select";
-import { apiRequest, apiUrl, emptyObjectSchema, parseApiError } from "../../../../lib/api";
+import { TagBadge } from "../../../../components/ui/tag-badge";
+import { apiRequest, apiUrl, emptyObjectSchema, parseApiError, replaceDocumentTags } from "../../../../lib/api";
 import { useDocumentProgress } from "../_hooks/use-document-progress";
+import { useTagFilter } from "../_hooks/use-tag-filter";
+import { useTags } from "../_hooks/use-tags";
 import { Pagination } from "./pagination";
+import { TagFilterPopover } from "./tag-filter-popover";
+import { TagManagerDialog } from "./tag-manager-dialog";
+import { TagPickerPopover } from "./tag-picker-popover";
 
 type TabDocumentsProps = {
   knowledgeBaseId: string;
@@ -62,8 +68,18 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
   const [actionError, setActionError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const {
+    tags: allTags,
+    loading: tagsLoading,
+    create: createTag,
+    update: updateTagFn,
+    remove: removeTag,
+  } = useTags(knowledgeBaseId);
+  const tagFilter = useTagFilter();
 
   const pageSize = 20;
 
@@ -74,8 +90,9 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (keyword.trim()) params.set("keyword", keyword.trim());
       if (status) params.set("status", status);
+      if (tagFilter.queryValue) params.set("tagIds", tagFilter.queryValue);
       const response = await apiRequest(
-        `/knowledge-bases/${knowledgeBaseId}/documents?${params}`,
+        `/knowledge-bases/${knowledgeBaseId}/documents?${params.toString()}`,
         documentListResponseSchema,
         { cache: "no-store" },
       );
@@ -86,9 +103,11 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     } finally {
       setLoading(false);
     }
-  }, [knowledgeBaseId, page, keyword, status]);
+  }, [knowledgeBaseId, page, keyword, status, tagFilter.queryValue]);
 
-  useEffect(() => { void loadDocuments(); }, [loadDocuments]);
+  useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
 
   const progressMap = useDocumentProgress(documents, () => void loadDocuments());
 
@@ -156,11 +175,19 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     }
   }
 
+  // 打标签：全量替换，用返回的标签列表更新该行
+  async function handleReplaceDocTags(docId: string, tagIds: string[]) {
+    const updated = await replaceDocumentTags(docId, { tagIds });
+    setDocuments((prev) =>
+      prev.map((doc) => (doc.id === docId ? { ...doc, tags: updated.items } : doc)),
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* 工具栏 */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 flex-1">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
           <Input
             placeholder="搜索文档名..."
             defaultValue={keyword}
@@ -176,9 +203,18 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </Select>
+          <TagFilterPopover
+            allTags={allTags}
+            selectedTagIds={tagFilter.selectedTagIds}
+            onToggle={(tagId) => { tagFilter.toggle(tagId); setPage(1); }}
+            onClear={() => { tagFilter.clear(); setPage(1); }}
+          />
         </div>
         {canManage ? (
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setTagManagerOpen(true)}>
+              管理标签
+            </Button>
             <input
               ref={fileInputRef}
               type="file"
@@ -207,7 +243,10 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
           <Skeleton className="h-16" />
         </div>
       ) : documents.length === 0 ? (
-        <EmptyState title="暂无文档" description="上传文档后将在此显示。" />
+        <EmptyState
+          title={tagFilter.selectedTagIds.length > 0 ? "没有符合标签筛选的文档" : "暂无文档"}
+          description={tagFilter.selectedTagIds.length > 0 ? "尝试减少所选标签。" : "上传文档后将在此显示。"}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {documents.map((doc) => (
@@ -216,8 +255,10 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               doc={doc}
               progress={progressMap[doc.id]}
               canManage={canManage}
+              allTags={allTags}
               onReprocess={() => void handleReprocess(doc.id)}
               onDelete={() => setDeleteTarget(doc.id)}
+              onReplaceTags={handleReplaceDocTags}
             />
           ))}
         </div>
@@ -240,6 +281,16 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
           </Button>
         </div>
       </Dialog>
+
+      <TagManagerDialog
+        open={tagManagerOpen}
+        onOpenChange={setTagManagerOpen}
+        tags={allTags}
+        loading={tagsLoading}
+        onCreate={createTag}
+        onUpdate={updateTagFn}
+        onDelete={removeTag}
+      />
     </div>
   );
 }
@@ -248,14 +299,18 @@ function DocumentRow({
   doc,
   progress,
   canManage,
+  allTags,
   onReprocess,
   onDelete,
+  onReplaceTags,
 }: {
   doc: KnowledgeDocument;
   progress: DocumentProgressEvent | undefined;
   canManage: boolean;
+  allTags: KnowledgeDocument["tags"];
   onReprocess: () => void;
   onDelete: () => void;
+  onReplaceTags: (docId: string, tagIds: string[]) => Promise<void>;
 }) {
   const percent = progress?.percent ?? statusPercent(doc.processStatus);
   const message = progress?.message ?? doc.errorMessage ?? statusLabels[doc.processStatus] ?? doc.processStatus;
@@ -269,6 +324,33 @@ function DocumentRow({
         <p className="text-xs text-ink-muted mt-0.5">
           {doc.sourceType} · {formatBytes(doc.fileSize)} · {doc.uploaderName}
         </p>
+        {/* 标签区：点击弹出打标签 Popover */}
+        <div className="mt-1.5">
+          <TagPickerPopover
+            allTags={allTags}
+            selectedTagIds={doc.tags.map((tag) => tag.id)}
+            onChange={(tagIds) => onReplaceTags(doc.id, tagIds)}
+          >
+            <button
+              type="button"
+              className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-dashed border-transparent px-1 py-0.5 text-left transition-colors hover:border-border hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+              aria-label="编辑标签"
+            >
+              {doc.tags.length > 0 ? (
+                <>
+                  {doc.tags.slice(0, 3).map((tag) => (
+                    <TagBadge key={tag.id} tag={tag} />
+                  ))}
+                  {doc.tags.length > 3 ? (
+                    <span className="text-xs text-ink-subtle">+{doc.tags.length - 3}</span>
+                  ) : null}
+                </>
+              ) : (
+                <span className="text-xs text-ink-subtle">+ 添加标签</span>
+              )}
+            </button>
+          </TagPickerPopover>
+        </div>
         {isActive ? (
           <div className="mt-2 flex items-center gap-2">
             <div className="h-1.5 flex-1 rounded-full bg-neutral-200 overflow-hidden">

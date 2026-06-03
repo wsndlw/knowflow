@@ -17,6 +17,7 @@ import { TabAnalytics } from "./_components/tab-analytics";
 import { TabAuditLogs } from "./_components/tab-audit-logs";
 import { TabMindMap } from "./_components/tab-mind-map";
 import { TabPlaceholder } from "./_components/tab-placeholder";
+import { TabRetrievalTest } from "./_components/tab-retrieval-test";
 
 const TAB_DEFS: (TabItem & { value: TabValue; manageOnly?: boolean })[] = [
   { value: "overview", label: "概览" },
@@ -26,7 +27,7 @@ const TAB_DEFS: (TabItem & { value: TabValue; manageOnly?: boolean })[] = [
   { value: "members", label: "成员权限", manageOnly: true },
   { value: "analytics", label: "统计分析" },
   { value: "relations", label: "知识关系" },
-  { value: "retrieval-test", label: "检索测试", manageOnly: true },
+  { value: "retrieval-test", label: "检索测试" },
   { value: "settings", label: "设置", manageOnly: true },
   { value: "audit-log", label: "操作日志", manageOnly: true },
 ];
@@ -115,7 +116,9 @@ function KnowledgeBaseDetailContent() {
             onJumpTab={setActiveTab}
           />
         ) : null}
-        {activeTab === "retrieval-test" ? <TabPlaceholder title="检索测试" /> : null}
+        {activeTab === "retrieval-test" ? (
+          <TabRetrievalTest knowledgeBaseId={knowledgeBaseId} />
+        ) : null}
         {activeTab === "settings" ? <TabPlaceholder title="设置" /> : null}
         {activeTab === "audit-log" ? (
           <TabAuditLogs knowledgeBaseId={knowledgeBaseId} onJumpTab={setActiveTab} />

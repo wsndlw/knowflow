@@ -330,6 +330,14 @@ function DocumentRow({
         <p className="text-xs text-ink-muted mt-0.5">
           {doc.sourceType} · {formatBytes(doc.fileSize)} · {doc.uploaderName}
         </p>
+        {/* 已返回但此前未展示的字段：分块数 + 创建/更新时间（M5） */}
+        <p className="text-xs text-ink-subtle mt-0.5">
+          {doc.processStatus === "completed" ? (
+            <>父块 {doc.parentChunkCount} · 子块 {doc.childChunkCount} · </>
+          ) : null}
+          上传 {formatDate(doc.createdAt)}
+          {doc.updatedAt !== doc.createdAt ? <> · 更新 {formatDate(doc.updatedAt)}</> : null}
+        </p>
         {/* 标签区：canManage 可打标签（写）；member 仅只读展示已有标签 */}
         <div className="mt-1.5">
           {canManage ? (
@@ -417,4 +425,10 @@ function formatBytes(value: number | null): string {
   if (value < 1024) return `${String(value)} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return `${String(date.getFullYear())}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }

@@ -7,7 +7,6 @@ import {
   knowledgeBaseListResponseSchema,
   type CreateKnowledgeBaseRequest,
   type DepartmentOption,
-  type KnowledgeBaseIndexStatus,
   type KnowledgeBaseListItem,
   type KnowledgeBaseVisibility,
 } from "@knowflow/shared";
@@ -36,17 +35,6 @@ const visibilityMeta: Record<KnowledgeBaseVisibility, { label: string; tone: "in
   public: { label: "公开", tone: "info" },
   department: { label: "部门", tone: "neutral" },
   restricted: { label: "受限", tone: "warning" },
-};
-
-const indexStatusMeta: Record<
-  KnowledgeBaseIndexStatus,
-  { label: string; tone: "neutral" | "info" | "success" | "warning" | "danger" }
-> = {
-  not_indexed: { label: "未构建", tone: "neutral" },
-  indexing: { label: "构建中", tone: "info" },
-  ready: { label: "可用", tone: "success" },
-  partial_failed: { label: "部分失败", tone: "warning" },
-  failed: { label: "失败", tone: "danger" },
 };
 
 function buildListPath(filters: Filters): string {
@@ -325,9 +313,6 @@ function CardView({ items }: { items: KnowledgeBaseListItem[] }) {
               <CountStat label="成员" value={item.memberCount} />
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-              <Badge tone={indexStatusMeta[item.indexStatus].tone}>
-                {indexStatusMeta[item.indexStatus].label}
-              </Badge>
               <span className="text-xs text-ink-subtle">{item.departmentName}</span>
               {item.canManage ? (
                 <span className="ml-auto text-xs font-medium text-brand-600">管理员</span>
@@ -357,7 +342,6 @@ function TableView({ items }: { items: KnowledgeBaseListItem[] }) {
           <tr className="border-b border-border bg-neutral-50 text-sm text-ink-muted">
             <th className="px-4 py-2.5 font-medium">名称</th>
             <th className="px-4 py-2.5 font-medium">可见范围</th>
-            <th className="px-4 py-2.5 font-medium">索引状态</th>
             <th className="px-4 py-2.5 font-medium">文档</th>
             <th className="px-4 py-2.5 font-medium">条目</th>
             <th className="px-4 py-2.5 font-medium">成员</th>
@@ -379,11 +363,6 @@ function TableView({ items }: { items: KnowledgeBaseListItem[] }) {
               <td className="px-4 py-3">
                 <Badge tone={visibilityMeta[item.visibility].tone}>
                   {visibilityMeta[item.visibility].label}
-                </Badge>
-              </td>
-              <td className="px-4 py-3">
-                <Badge tone={indexStatusMeta[item.indexStatus].tone}>
-                  {indexStatusMeta[item.indexStatus].label}
                 </Badge>
               </td>
               <td className="px-4 py-3 text-ink-muted">{item.documentCount}</td>

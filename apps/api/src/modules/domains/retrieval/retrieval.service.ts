@@ -171,6 +171,7 @@ export class RetrievalService {
     const useVector = this.shouldUseVector(mode, input.request.filters.sourceType);
     const useFts = this.shouldUseFts(mode, input.request.filters.sourceType);
     const useKnowledgeItems = this.shouldUseKnowledgeItems(mode, input.request.filters.sourceType);
+    const candidateLimit = this.resolveTestCandidateLimit(settings, mode);
     const embeddingConfig = await this.llm.getModelConfig("embedding");
 
     let embedding: number[] = [];
@@ -195,6 +196,7 @@ export class RetrievalService {
                 input.knowledgeBaseId,
                 settings,
                 input.request.filters.documentStatus,
+                candidateLimit,
               ),
             ),
           [],
@@ -210,6 +212,7 @@ export class RetrievalService {
                 input.knowledgeBaseId,
                 settings,
                 input.request.filters.documentStatus,
+                candidateLimit,
               ),
             ),
           [],
@@ -227,6 +230,7 @@ export class RetrievalService {
                 settings,
                 input.request.filters.itemStatus,
                 input.canManage,
+                candidateLimit,
               ),
             ),
           [],
@@ -453,6 +457,7 @@ export class RetrievalService {
     knowledgeBaseId: string,
     settings: RetrievalSettings,
     documentStatus: "all" | "completed",
+    candidateLimit: number,
   ): Promise<DocumentRecallRow[]> {
     if (embedding.length === 0) {
       return [];
@@ -480,7 +485,7 @@ export class RetrievalService {
         ),
       )
       .orderBy(desc(scoreSql))
-      .limit(settings.topK);
+      .limit(candidateLimit);
   }
 
   private async recallFtsForTest(
@@ -488,6 +493,7 @@ export class RetrievalService {
     knowledgeBaseId: string,
     settings: RetrievalSettings,
     documentStatus: "all" | "completed",
+    candidateLimit: number,
   ): Promise<DocumentRecallRow[]> {
     const scoreSql = sql<number>`ts_rank_cd(${childChunks.searchVector}, plainto_tsquery('simple', ${query}))`;
     return db
@@ -508,7 +514,7 @@ export class RetrievalService {
         ),
       )
       .orderBy(desc(scoreSql))
-      .limit(settings.topK);
+      .limit(candidateLimit);
   }
 
   private async recallKnowledgeItemsForTest(
@@ -518,6 +524,7 @@ export class RetrievalService {
     settings: RetrievalSettings,
     itemStatus: "all" | "published",
     canManage: boolean,
+    candidateLimit: number,
   ): Promise<KnowledgeItemRecallRow[]> {
     if (embedding.length === 0) {
       return [];
@@ -540,7 +547,7 @@ export class RetrievalService {
         ),
       )
       .orderBy(desc(scoreSql))
-      .limit(settings.topK);
+      .limit(candidateLimit);
   }
 
   private documentRecallSelection(score: ReturnType<typeof sql<number>>) {
@@ -839,6 +846,14 @@ export class RetrievalService {
       ftsWeight: overrides?.ftsWeight ?? storedSettings.ftsWeight,
       kiWeight: overrides?.kiWeight ?? storedSettings.kiWeight,
     };
+  }
+
+  private resolveTestCandidateLimit(settings: RetrievalSettings, mode: RetrievalMode): number {
+    if (mode === "hybrid_rerank" && settings.rerankEnabled) {
+      return Math.max(settings.topK, settings.rerankTopN);
+    }
+
+    return settings.topK;
   }
 
   private shouldUseVector(

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export { ZodError } from "zod";
+
 import {
   DOCUMENT_PROCESS_STATUSES,
   DOCUMENT_SOURCE_TYPES,

@@ -24,6 +24,7 @@ import { Pagination } from "./pagination";
 import { TagFilterPopover } from "./tag-filter-popover";
 import { TagManagerDialog } from "./tag-manager-dialog";
 import { TagPickerPopover } from "./tag-picker-popover";
+import { DocumentPreviewDialog } from "./document-preview-dialog";
 
 type TabDocumentsProps = {
   knowledgeBaseId: string;
@@ -69,6 +70,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
   const [actionError, setActionError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<KnowledgeDocument | null>(null);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -224,7 +226,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.md,.markdown,.txt,.docx,.csv,.xls,.xlsx,application/pdf,text/markdown,text/plain"
+              accept=".pdf,.md,.markdown,.txt,.docx,.csv,.xls,.xlsx,.png,.jpg,.jpeg,.webp,application/pdf,text/markdown,text/plain,image/png,image/jpeg,image/webp"
               className="text-sm file:mr-2 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
             />
             <Button size="sm" loading={isUploading} onClick={() => void handleUpload()}>
@@ -265,6 +267,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               onReprocess={() => void handleReprocess(doc.id)}
               onDelete={() => setDeleteTarget(doc.id)}
               onReplaceTags={handleReplaceDocTags}
+              onPreview={() => setPreviewTarget(doc)}
             />
           ))}
         </div>
@@ -297,6 +300,11 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
         onUpdate={updateTagFn}
         onDelete={removeTag}
       />
+      
+      <DocumentPreviewDialog 
+        doc={previewTarget} 
+        onClose={() => setPreviewTarget(null)} 
+      />
     </div>
   );
 }
@@ -309,6 +317,7 @@ function DocumentRow({
   onReprocess,
   onDelete,
   onReplaceTags,
+  onPreview,
 }: {
   doc: KnowledgeDocument;
   progress: DocumentProgressEvent | undefined;
@@ -317,6 +326,7 @@ function DocumentRow({
   onReprocess: () => void;
   onDelete: () => void;
   onReplaceTags: (docId: string, tagIds: string[]) => Promise<void>;
+  onPreview: () => void;
 }) {
   const percent = progress?.percent ?? statusPercent(doc.processStatus);
   const message = progress?.message ?? doc.errorMessage ?? statusLabels[doc.processStatus] ?? doc.processStatus;
@@ -393,6 +403,9 @@ function DocumentRow({
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <Badge tone={tone}>{statusLabels[doc.processStatus] ?? doc.processStatus}</Badge>
+        <Button variant="outline" size="sm" onClick={onPreview}>
+          预览
+        </Button>
         {canManage && doc.processStatus === "failed" ? (
           <Button variant="secondary" size="sm" onClick={onReprocess}>
             重试

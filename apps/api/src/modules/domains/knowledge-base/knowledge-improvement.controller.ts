@@ -78,7 +78,10 @@ export class KnowledgeImprovementController {
     const input = generateImprovementTasksRequestSchema.parse(body ?? {});
     const data = await this.improvementService.generate(
       id,
-      input.messageId === undefined ? {} : { messageId: input.messageId },
+      {
+        ...(input.messageId === undefined ? {} : { messageId: input.messageId }),
+        ...(input.documentId === undefined ? {} : { documentId: input.documentId }),
+      },
       this.requireUser(request),
     );
     return { ok: true, data: createImprovementTasksResponseSchema.parse(data) };

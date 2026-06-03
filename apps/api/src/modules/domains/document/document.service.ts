@@ -11,6 +11,7 @@ import {
   documentTags,
   documents,
   files,
+  knowledgeItems,
   parentChunks,
   tags,
   users,
@@ -353,6 +354,13 @@ export class DocumentService {
             .limit(1);
 
     await db.transaction(async (tx) => {
+      await tx
+        .update(knowledgeItems)
+        .set({
+          sourceDocumentId: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(knowledgeItems.sourceDocumentId, id));
       await tx.delete(childChunks).where(eq(childChunks.documentId, id));
       await tx.delete(parentChunks).where(eq(parentChunks.documentId, id));
       await tx.delete(documents).where(eq(documents.id, id));

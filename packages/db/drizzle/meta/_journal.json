@@ -64,6 +64,13 @@
       "when": 1780460975829,
       "tag": "0008_tranquil_ted_forrester",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780463000000,
+      "tag": "0009_document_extraction_trigger",
+      "breakpoints": true
     }
   ]
 }

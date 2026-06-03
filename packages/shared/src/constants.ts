@@ -198,6 +198,7 @@ export const IMPROVEMENT_TRIGGER_TYPES = [
   "user_correction",
   "answer_dislike",
   "item_dislike",
+  "document_extraction",
 ] as const;
 
 export const IMPROVEMENT_TASK_STATUSES = [

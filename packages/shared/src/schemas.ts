@@ -701,9 +701,14 @@ export const improvementTaskListResponseSchema = z.object({
   total: z.number().int().nonnegative(),
 });
 
-export const generateImprovementTasksRequestSchema = z.object({
-  messageId: z.uuid().optional(),
-});
+export const generateImprovementTasksRequestSchema = z
+  .object({
+    messageId: z.uuid().optional(),
+    documentId: z.uuid().optional(),
+  })
+  .refine((value) => value.messageId === undefined || value.documentId === undefined, {
+    message: "messageId and documentId are mutually exclusive",
+  });
 
 export const createImprovementTasksResponseSchema = z.object({
   created: z.number().int().nonnegative(),
@@ -720,7 +725,7 @@ export const rejectImprovementTaskRequestSchema = z.object({
   reason: z.string().trim().min(1).max(2000),
 });
 
-export const improvementTaskStatsSchema = z.object({
+const improvementTaskStatsBucketSchema = z.object({
   pending: z.number().int().nonnegative(),
   candidateReady: z.number().int().nonnegative(),
   approved: z.number().int().nonnegative(),
@@ -728,6 +733,13 @@ export const improvementTaskStatsSchema = z.object({
   published: z.number().int().nonnegative(),
   verified: z.number().int().nonnegative(),
   stillFailing: z.number().int().nonnegative(),
+});
+
+export const improvementTaskStatsSchema = improvementTaskStatsBucketSchema.extend({
+  sources: z.object({
+    feedback: improvementTaskStatsBucketSchema,
+    document: improvementTaskStatsBucketSchema,
+  }),
 });
 
 export const agentSchema = z.object({

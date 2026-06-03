@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
 } from "@nestjs/common";
+import { ZodError } from "@knowflow/shared";
 
 type JsonResponse = {
   status: (statusCode: number) => {
@@ -16,19 +17,40 @@ type JsonResponse = {
 export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<JsonResponse>();
-    const status =
-      exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+    const status = this.resolveStatus(exception);
 
     response.status(status).json({
       ok: false,
       error: {
-        code: exception instanceof HttpException ? exception.name : "InternalServerError",
+        code: this.resolveCode(exception),
         message: this.resolveMessage(exception),
       },
     });
   }
 
+  private resolveStatus(exception: unknown): number {
+    if (exception instanceof ZodError) {
+      return HttpStatus.BAD_REQUEST;
+    }
+
+    return exception instanceof HttpException
+      ? exception.getStatus()
+      : HttpStatus.INTERNAL_SERVER_ERROR;
+  }
+
+  private resolveCode(exception: unknown): string {
+    if (exception instanceof ZodError) {
+      return "BadRequestException";
+    }
+
+    return exception instanceof HttpException ? exception.name : "InternalServerError";
+  }
+
   private resolveMessage(exception: unknown): string {
+    if (exception instanceof ZodError) {
+      return this.formatZodError(exception);
+    }
+
     if (exception instanceof HttpException) {
       const response = exception.getResponse();
       if (typeof response === "string") {
@@ -39,6 +61,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     return exception instanceof Error ? exception.message : "Unexpected server error";
+  }
+
+  private formatZodError(error: ZodError): string {
+    return error.issues
+      .map((issue) => {
+        const path = issue.path.length > 0 ? issue.path.join(".") : "request";
+        return `${path}: ${issue.message}`;
+      })
+      .join("; ");
   }
 
   private formatExceptionResponse(

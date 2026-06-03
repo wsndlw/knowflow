@@ -6,6 +6,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   real,
@@ -110,6 +111,13 @@ export const agentStatusEnum = pgEnum("agent_status", [
   "published",
   "disabled",
   "archived",
+]);
+export const retrievalModeEnum = pgEnum("retrieval_mode", [
+  "hybrid",
+  "hybrid_rerank",
+  "vector_only",
+  "fts_only",
+  "ki_only",
 ]);
 export const modelProviderTypeEnum = pgEnum("model_provider_type", [
   "openai",
@@ -353,12 +361,43 @@ export const tags = pgTable(
   "tags",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    knowledgeBaseId: uuid("knowledge_base_id").references(() => knowledgeBases.id),
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .notNull()
+      .references(() => knowledgeBases.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 80 }).notNull(),
-    color: varchar("color", { length: 24 }),
-    ...createdOnly(),
+    color: varchar("color", { length: 7 }).default("#3B82F6").notNull(),
+    ...timestamps(),
   },
-  (table) => [index("tags_knowledge_base_idx").on(table.knowledgeBaseId)],
+  (table) => [
+    index("tags_knowledge_base_idx").on(table.knowledgeBaseId),
+    uniqueIndex("tags_knowledge_base_name_uidx").on(table.knowledgeBaseId, table.name),
+  ],
+);
+
+export const retrievalSettings = pgTable(
+  "retrieval_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .notNull()
+      .references(() => knowledgeBases.id, { onDelete: "cascade" }),
+    mode: retrievalModeEnum("mode").default("hybrid_rerank").notNull(),
+    topK: integer("top_k").default(5).notNull(),
+    similarityThreshold: numeric("similarity_threshold", {
+      precision: 3,
+      scale: 2,
+    })
+      .default("0.70")
+      .notNull(),
+    rerankEnabled: boolean("rerank_enabled").default(true).notNull(),
+    rerankTopN: integer("rerank_top_n").default(30).notNull(),
+    rerankKeepN: integer("rerank_keep_n").default(10).notNull(),
+    vectorWeight: numeric("vector_weight", { precision: 3, scale: 2 }).default("0.50").notNull(),
+    ftsWeight: numeric("fts_weight", { precision: 3, scale: 2 }).default("0.30").notNull(),
+    kiWeight: numeric("ki_weight", { precision: 3, scale: 2 }).default("0.20").notNull(),
+    ...timestamps(),
+  },
+  (table) => [uniqueIndex("retrieval_settings_knowledge_base_uidx").on(table.knowledgeBaseId)],
 );
 
 export const metadataFields = pgTable(
@@ -423,6 +462,25 @@ export const documents = pgTable(
   (table) => [
     index("documents_knowledge_base_idx").on(table.knowledgeBaseId),
     index("documents_process_status_idx").on(table.processStatus),
+  ],
+);
+
+export const documentTags = pgTable(
+  "document_tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    ...createdOnly(),
+  },
+  (table) => [
+    uniqueIndex("document_tags_document_tag_uidx").on(table.documentId, table.tagId),
+    index("document_tags_document_idx").on(table.documentId),
+    index("document_tags_tag_idx").on(table.tagId),
   ],
 );
 
@@ -522,6 +580,25 @@ export const knowledgeItems = pgTable(
   ],
 );
 
+export const knowledgeItemTags = pgTable(
+  "knowledge_item_tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    knowledgeItemId: uuid("knowledge_item_id")
+      .notNull()
+      .references(() => knowledgeItems.id, { onDelete: "cascade" }),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    ...createdOnly(),
+  },
+  (table) => [
+    uniqueIndex("knowledge_item_tags_item_tag_uidx").on(table.knowledgeItemId, table.tagId),
+    index("knowledge_item_tags_item_idx").on(table.knowledgeItemId),
+    index("knowledge_item_tags_tag_idx").on(table.tagId),
+  ],
+);
+
 export const knowledgeItemFeedback = pgTable(
   "knowledge_item_feedback",
   {
@@ -536,10 +613,7 @@ export const knowledgeItemFeedback = pgTable(
     ...timestamps(),
   },
   (table) => [
-    uniqueIndex("knowledge_item_feedback_item_user_uidx").on(
-      table.knowledgeItemId,
-      table.userId,
-    ),
+    uniqueIndex("knowledge_item_feedback_item_user_uidx").on(table.knowledgeItemId, table.userId),
     index("knowledge_item_feedback_user_idx").on(table.userId),
   ],
 );
@@ -573,10 +647,7 @@ export const knowledgeImprovementTasks = pgTable(
     ...timestamps(),
   },
   (table) => [
-    index("knowledge_improvement_tasks_kb_status_idx").on(
-      table.knowledgeBaseId,
-      table.status,
-    ),
+    index("knowledge_improvement_tasks_kb_status_idx").on(table.knowledgeBaseId, table.status),
     index("knowledge_improvement_tasks_trigger_idx").on(table.triggerType),
     uniqueIndex("knowledge_improvement_tasks_dedup_uidx").on(table.dedupKey),
   ],
@@ -809,10 +880,7 @@ export const analyticsEvents = pgTable(
   },
   (table) => [
     index("analytics_events_event_type_idx").on(table.eventType),
-    index("analytics_events_knowledge_base_date_idx").on(
-      table.knowledgeBaseId,
-      table.createdDate,
-    ),
+    index("analytics_events_knowledge_base_date_idx").on(table.knowledgeBaseId, table.createdDate),
     index("analytics_events_user_date_idx").on(table.userId, table.createdDate),
     index("analytics_events_agent_date_idx").on(table.agentId, table.createdDate),
   ],

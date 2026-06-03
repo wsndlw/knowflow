@@ -14,6 +14,22 @@ export const DEFAULT_EMBEDDING_MODEL = "text-embedding-v4";
 
 export const DEFAULT_EMBEDDING_DIMENSION = 1024;
 
+export const RETRIEVAL_MODES = [
+  "hybrid",
+  "hybrid_rerank",
+  "vector_only",
+  "fts_only",
+  "ki_only",
+] as const;
+
+export const RETRIEVAL_TEST_MODES = ["default", ...RETRIEVAL_MODES] as const;
+
+export const RETRIEVAL_SOURCE_TYPES = ["all", "chunk", "knowledge_item"] as const;
+
+export const RETRIEVAL_DOCUMENT_STATUS_FILTERS = ["all", "completed"] as const;
+
+export const RETRIEVAL_ITEM_STATUS_FILTERS = ["all", "published"] as const;
+
 export const MODEL_USAGE_TYPES = [
   "chat",
   "query_understanding",
@@ -37,14 +53,7 @@ export const MODEL_PROVIDER_TYPES = [
   "openai_compatible",
 ] as const;
 
-export const MODEL_TYPES = [
-  "chat",
-  "embedding",
-  "rerank",
-  "ocr",
-  "vision",
-  "moderation",
-] as const;
+export const MODEL_TYPES = ["chat", "embedding", "rerank", "ocr", "vision", "moderation"] as const;
 
 export const KNOWLEDGE_BASE_VISIBILITIES = ["public", "department", "restricted"] as const;
 
@@ -141,12 +150,7 @@ export const IMPROVEMENT_TASK_STATUSES = [
   "failed",
 ] as const;
 
-export const VERIFICATION_STATUSES = [
-  "pending",
-  "verified",
-  "still_failing",
-  "expired",
-] as const;
+export const VERIFICATION_STATUSES = ["pending", "verified", "still_failing", "expired"] as const;
 
 export const ANALYTICS_EVENT_TYPES = [
   "knowledge_base_viewed",

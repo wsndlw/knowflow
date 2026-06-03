@@ -1,8 +1,15 @@
 import { z } from "zod";
 
+export { ZodError } from "zod";
+
 import {
   DOCUMENT_PROCESS_STATUSES,
   DOCUMENT_SOURCE_TYPES,
+  RETRIEVAL_DOCUMENT_STATUS_FILTERS,
+  RETRIEVAL_ITEM_STATUS_FILTERS,
+  RETRIEVAL_MODES,
+  RETRIEVAL_SOURCE_TYPES,
+  RETRIEVAL_TEST_MODES,
   AGENT_STATUSES,
   AGENT_TYPES,
   AGENT_VISIBILITIES,
@@ -40,6 +47,11 @@ export const modelTypeSchema = z.enum(MODEL_TYPES);
 export const agentTypeSchema = z.enum(AGENT_TYPES);
 export const agentVisibilitySchema = z.enum(AGENT_VISIBILITIES);
 export const agentStatusSchema = z.enum(AGENT_STATUSES);
+export const retrievalModeSchema = z.enum(RETRIEVAL_MODES);
+export const retrievalTestModeSchema = z.enum(RETRIEVAL_TEST_MODES);
+export const retrievalSourceTypeSchema = z.enum(RETRIEVAL_SOURCE_TYPES);
+export const retrievalDocumentStatusFilterSchema = z.enum(RETRIEVAL_DOCUMENT_STATUS_FILTERS);
+export const retrievalItemStatusFilterSchema = z.enum(RETRIEVAL_ITEM_STATUS_FILTERS);
 export const confidenceLevelSchema = z.enum(CONFIDENCE_LEVELS);
 export const noAnswerTypeSchema = z.enum(NO_ANSWER_TYPES);
 export const citationSourceTypeSchema = z.enum(CITATION_SOURCE_TYPES);
@@ -203,6 +215,54 @@ export const userOptionsResponseSchema = z.object({
   items: z.array(userOptionSchema),
 });
 
+export const tagColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "颜色必须是hex格式，如#FF5733");
+
+export const tagSchema = z.object({
+  id: z.uuid(),
+  knowledgeBaseId: z.uuid(),
+  name: z.string(),
+  color: tagColorSchema,
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const tagListResponseSchema = z.object({
+  items: z.array(tagSchema),
+});
+
+export const createTagRequestSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  color: tagColorSchema,
+});
+
+export const updateTagRequestSchema = createTagRequestSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required",
+  });
+
+export const replaceTagsRequestSchema = z.object({
+  tagIds: z.array(z.uuid()).max(100),
+});
+
+const commaSeparatedUuidListSchema = z.preprocess((value) => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => (typeof item === "string" ? item.split(",") : []))
+      .filter((item) => item.length > 0);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+  return value;
+}, z.array(z.uuid()).default([]));
+
 export const documentSchema = z.object({
   id: z.uuid(),
   knowledgeBaseId: z.uuid(),
@@ -222,6 +282,7 @@ export const documentSchema = z.object({
   errorMessage: z.string().nullable(),
   parentChunkCount: z.number().int().nonnegative(),
   childChunkCount: z.number().int().nonnegative(),
+  tags: z.array(tagSchema),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -236,6 +297,7 @@ export const documentListResponseSchema = z.object({
 export const documentListQuerySchema = z.object({
   keyword: z.string().trim().min(1).max(120).optional(),
   status: documentProcessStatusSchema.optional(),
+  tagIds: commaSeparatedUuidListSchema,
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -264,6 +326,7 @@ export const knowledgeItemSchema = z.object({
   likeCount: z.number().int().nonnegative(),
   dislikeCount: z.number().int().nonnegative(),
   userFeedback: knowledgeItemFeedbackRatingSchema.nullable(),
+  tags: z.array(tagSchema),
   createdBy: z.uuid(),
   updatedBy: z.uuid().nullable(),
   verifiedBy: z.uuid().nullable(),
@@ -275,6 +338,7 @@ export const knowledgeItemSchema = z.object({
 export const knowledgeItemListQuerySchema = z.object({
   keyword: z.string().trim().min(1).max(120).optional(),
   status: knowledgeItemStatusSchema.optional(),
+  tagIds: commaSeparatedUuidListSchema,
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -306,6 +370,127 @@ export const updateKnowledgeItemRequestSchema = createKnowledgeItemRequestSchema
 
 export const knowledgeItemFeedbackRequestSchema = z.object({
   rating: knowledgeItemFeedbackRatingSchema.nullable(),
+});
+
+export const retrievalSettingsSchema = z.object({
+  mode: retrievalModeSchema,
+  topK: z.number().int().min(1).max(50),
+  similarityThreshold: z.number().min(0).max(1),
+  rerankEnabled: z.boolean(),
+  rerankTopN: z.number().int().min(1).max(100),
+  rerankKeepN: z.number().int().min(1).max(50),
+  vectorWeight: z.number().min(0).max(1),
+  ftsWeight: z.number().min(0).max(1),
+  kiWeight: z.number().min(0).max(1),
+});
+
+export const updateRetrievalSettingsRequestSchema = retrievalSettingsSchema.refine(
+  (value) => value.rerankKeepN <= value.rerankTopN,
+  {
+    message: "rerankKeepN must be less than or equal to rerankTopN",
+    path: ["rerankKeepN"],
+  },
+);
+
+export const retrievalTestRequestSchema = z.object({
+  query: z.string().trim().min(1).max(500),
+  mode: retrievalTestModeSchema.optional(),
+  filters: z
+    .object({
+      documentStatus: retrievalDocumentStatusFilterSchema.default("completed"),
+      itemStatus: retrievalItemStatusFilterSchema.default("published"),
+      sourceType: retrievalSourceTypeSchema.default("all"),
+    })
+    .default({
+      documentStatus: "completed",
+      itemStatus: "published",
+      sourceType: "all",
+    }),
+  overrides: retrievalSettingsSchema
+    .omit({ mode: true })
+    .partial()
+    .refine(
+      (value) =>
+        value.rerankKeepN === undefined ||
+        value.rerankTopN === undefined ||
+        value.rerankKeepN <= value.rerankTopN,
+      {
+        message: "rerankKeepN must be less than or equal to rerankTopN",
+        path: ["rerankKeepN"],
+      },
+    )
+    .optional(),
+});
+
+export const retrievalTestResultSchema = z.object({
+  rank: z.number().int().positive(),
+  type: z.enum(["child_chunk", "knowledge_item"]),
+  id: z.uuid(),
+  content: z.string(),
+  snippet: z.string(),
+  channels: z.array(z.enum(["vector", "fts", "knowledge_item"])),
+  scores: z.object({
+    vectorScore: z.number().nullable(),
+    ftsScore: z.number().nullable(),
+    kiScore: z.number().nullable(),
+    hybridScore: z.number().nullable(),
+    rerankScore: z.number().nullable(),
+    finalScore: z.number(),
+  }),
+  source: z.object({
+    documentId: z.uuid().nullable(),
+    documentTitle: z.string().nullable(),
+    parentChunkId: z.uuid().nullable(),
+    parentChunkTitle: z.string().nullable(),
+    parentContent: z.string().nullable(),
+    headingPath: z.array(z.string()).nullable(),
+    pageStart: z.number().int().nullable(),
+    pageEnd: z.number().int().nullable(),
+    chunkIndex: z.number().int().nullable(),
+    tokenCount: z.number().int().nullable(),
+    createdAt: z.iso.datetime().nullable(),
+  }),
+  knowledgeItem: z
+    .object({
+      title: z.string(),
+      status: knowledgeItemStatusSchema,
+      summary: z.string().nullable(),
+      createdBy: z.uuid(),
+      verifiedBy: z.uuid().nullable(),
+      verifiedAt: z.iso.datetime().nullable(),
+      viewCount: z.number().int().nonnegative(),
+      citeCount: z.number().int().nonnegative(),
+      likeCount: z.number().int().nonnegative(),
+    })
+    .optional(),
+});
+
+export const retrievalTestResponseSchema = z.object({
+  results: z.array(retrievalTestResultSchema),
+  debug: z.object({
+    settings: retrievalSettingsSchema.omit({ mode: true }).extend({
+      embeddingModel: z.string(),
+      embeddingDimensions: z.number().int().positive(),
+      retrievalMode: retrievalModeSchema,
+      rerankModel: z.string().nullable(),
+    }),
+    performance: z.object({
+      vectorRecalled: z.number().int().nonnegative(),
+      ftsRecalled: z.number().int().nonnegative(),
+      kiRecalled: z.number().int().nonnegative(),
+      afterMerge: z.number().int().nonnegative(),
+      afterRerank: z.number().int().nonnegative().nullable(),
+      finalCount: z.number().int().nonnegative(),
+      timings: z.object({
+        embeddingMs: z.number().int().nonnegative(),
+        vectorMs: z.number().int().nonnegative(),
+        ftsMs: z.number().int().nonnegative(),
+        kiMs: z.number().int().nonnegative(),
+        rerankMs: z.number().int().nonnegative().nullable(),
+        totalMs: z.number().int().nonnegative(),
+      }),
+    }),
+  }),
 });
 
 export const batchImportResponseSchema = z.object({
@@ -419,9 +604,7 @@ export const managedAgentSchema = agentSchema.extend({
   updatedAt: z.iso.datetime(),
 });
 
-const recommendedQuestionsInputSchema = z
-  .array(z.string().trim().min(1).max(200))
-  .max(5);
+const recommendedQuestionsInputSchema = z.array(z.string().trim().min(1).max(200)).max(5);
 
 const agentModelConfigSchema = z.record(z.string(), z.unknown()).default({});
 
@@ -842,14 +1025,17 @@ export type KnowledgeBaseListResponse = z.infer<typeof knowledgeBaseListResponse
 export type CreateKnowledgeBaseRequest = z.infer<typeof createKnowledgeBaseRequestSchema>;
 export type UpdateKnowledgeBaseRequest = z.infer<typeof updateKnowledgeBaseRequestSchema>;
 export type KnowledgeBaseMember = z.infer<typeof knowledgeBaseMemberSchema>;
-export type KnowledgeBaseMembersResponse = z.infer<
-  typeof knowledgeBaseMembersResponseSchema
->;
+export type KnowledgeBaseMembersResponse = z.infer<typeof knowledgeBaseMembersResponseSchema>;
 export type KnowledgeBaseUserRequest = z.infer<typeof knowledgeBaseUserRequestSchema>;
 export type DepartmentOption = z.infer<typeof departmentOptionSchema>;
 export type DepartmentOptionsResponse = z.infer<typeof departmentOptionsResponseSchema>;
 export type UserOption = z.infer<typeof userOptionSchema>;
 export type UserOptionsResponse = z.infer<typeof userOptionsResponseSchema>;
+export type KnowledgeTag = z.infer<typeof tagSchema>;
+export type TagListResponse = z.infer<typeof tagListResponseSchema>;
+export type CreateTagRequest = z.infer<typeof createTagRequestSchema>;
+export type UpdateTagRequest = z.infer<typeof updateTagRequestSchema>;
+export type ReplaceTagsRequest = z.infer<typeof replaceTagsRequestSchema>;
 export type DocumentProcessStatus = z.infer<typeof documentProcessStatusSchema>;
 export type DocumentSourceType = z.infer<typeof documentSourceTypeSchema>;
 export type KnowledgeDocument = z.infer<typeof documentSchema>;
@@ -857,38 +1043,30 @@ export type DocumentListQuery = z.infer<typeof documentListQuerySchema>;
 export type DocumentListResponse = z.infer<typeof documentListResponseSchema>;
 export type DocumentProgressEvent = z.infer<typeof documentProgressEventSchema>;
 export type KnowledgeItemStatus = z.infer<typeof knowledgeItemStatusSchema>;
-export type KnowledgeItemFeedbackRating = z.infer<
-  typeof knowledgeItemFeedbackRatingSchema
->;
+export type KnowledgeItemFeedbackRating = z.infer<typeof knowledgeItemFeedbackRatingSchema>;
 export type KnowledgeItem = z.infer<typeof knowledgeItemSchema>;
 export type KnowledgeItemListQuery = z.infer<typeof knowledgeItemListQuerySchema>;
 export type KnowledgeItemListResponse = z.infer<typeof knowledgeItemListResponseSchema>;
 export type CreateKnowledgeItemRequest = z.infer<typeof createKnowledgeItemRequestSchema>;
 export type UpdateKnowledgeItemRequest = z.infer<typeof updateKnowledgeItemRequestSchema>;
-export type KnowledgeItemFeedbackRequest = z.infer<
-  typeof knowledgeItemFeedbackRequestSchema
->;
+export type KnowledgeItemFeedbackRequest = z.infer<typeof knowledgeItemFeedbackRequestSchema>;
+export type RetrievalMode = z.infer<typeof retrievalModeSchema>;
+export type RetrievalTestMode = z.infer<typeof retrievalTestModeSchema>;
+export type RetrievalSettings = z.infer<typeof retrievalSettingsSchema>;
+export type UpdateRetrievalSettingsRequest = z.infer<typeof updateRetrievalSettingsRequestSchema>;
+export type RetrievalTestRequest = z.infer<typeof retrievalTestRequestSchema>;
+export type RetrievalTestResponse = z.infer<typeof retrievalTestResponseSchema>;
 export type BatchImportResponse = z.infer<typeof batchImportResponseSchema>;
 export type ImprovementTriggerType = z.infer<typeof improvementTriggerTypeSchema>;
 export type ImprovementTaskStatus = z.infer<typeof improvementTaskStatusSchema>;
 export type VerificationStatus = z.infer<typeof verificationStatusSchema>;
 export type ImprovementTask = z.infer<typeof improvementTaskSchema>;
 export type ImprovementTaskListQuery = z.infer<typeof improvementTaskListQuerySchema>;
-export type ImprovementTaskListResponse = z.infer<
-  typeof improvementTaskListResponseSchema
->;
-export type GenerateImprovementTasksRequest = z.infer<
-  typeof generateImprovementTasksRequestSchema
->;
-export type CreateImprovementTasksResponse = z.infer<
-  typeof createImprovementTasksResponseSchema
->;
-export type ApproveImprovementTaskRequest = z.infer<
-  typeof approveImprovementTaskRequestSchema
->;
-export type RejectImprovementTaskRequest = z.infer<
-  typeof rejectImprovementTaskRequestSchema
->;
+export type ImprovementTaskListResponse = z.infer<typeof improvementTaskListResponseSchema>;
+export type GenerateImprovementTasksRequest = z.infer<typeof generateImprovementTasksRequestSchema>;
+export type CreateImprovementTasksResponse = z.infer<typeof createImprovementTasksResponseSchema>;
+export type ApproveImprovementTaskRequest = z.infer<typeof approveImprovementTaskRequestSchema>;
+export type RejectImprovementTaskRequest = z.infer<typeof rejectImprovementTaskRequestSchema>;
 export type ImprovementTaskStats = z.infer<typeof improvementTaskStatsSchema>;
 export type ModelUsageType = z.infer<typeof modelUsageTypeSchema>;
 export type ModelProviderType = z.infer<typeof modelProviderTypeSchema>;
@@ -896,16 +1074,10 @@ export type ModelType = z.infer<typeof modelTypeSchema>;
 export type Agent = z.infer<typeof agentSchema>;
 export type AgentListResponse = z.infer<typeof agentListResponseSchema>;
 export type ManagedAgent = z.infer<typeof managedAgentSchema>;
-export type CreateManagedAgentRequest = z.infer<
-  typeof createManagedAgentRequestSchema
->;
-export type UpdateManagedAgentRequest = z.infer<
-  typeof updateManagedAgentRequestSchema
->;
+export type CreateManagedAgentRequest = z.infer<typeof createManagedAgentRequestSchema>;
+export type UpdateManagedAgentRequest = z.infer<typeof updateManagedAgentRequestSchema>;
 export type ManagedAgentListResponse = z.infer<typeof managedAgentListResponseSchema>;
-export type GenerateManagedAgentResponse = z.infer<
-  typeof generateManagedAgentResponseSchema
->;
+export type GenerateManagedAgentResponse = z.infer<typeof generateManagedAgentResponseSchema>;
 export type Conversation = z.infer<typeof conversationSchema>;
 export type ConversationListResponse = z.infer<typeof conversationListResponseSchema>;
 export type CreateConversationRequest = z.infer<typeof createConversationRequestSchema>;
@@ -926,9 +1098,7 @@ export type AnalyticsEventRequest = z.infer<typeof analyticsEventRequestSchema>;
 export type AnalyticsEvent = z.infer<typeof analyticsEventSchema>;
 export type AnalyticsTopContent = z.infer<typeof analyticsTopContentSchema>;
 export type AnalyticsEntityTotals = z.infer<typeof analyticsEntityTotalsSchema>;
-export type KnowledgeBaseAnalyticsResponse = z.infer<
-  typeof knowledgeBaseAnalyticsResponseSchema
->;
+export type KnowledgeBaseAnalyticsResponse = z.infer<typeof knowledgeBaseAnalyticsResponseSchema>;
 export type AnalyticsOverviewResponse = z.infer<typeof analyticsOverviewResponseSchema>;
 export type ModelProvider = z.infer<typeof modelProviderSchema>;
 export type ModelProviderListResponse = z.infer<typeof modelProviderListResponseSchema>;
@@ -940,8 +1110,6 @@ export type CreateModelCatalogRequest = z.infer<typeof createModelCatalogRequest
 export type UpdateModelCatalogRequest = z.infer<typeof updateModelCatalogRequestSchema>;
 export type ModelUsagePolicy = z.infer<typeof modelUsagePolicySchema>;
 export type ModelUsagePolicyListResponse = z.infer<typeof modelUsagePolicyListResponseSchema>;
-export type UpdateModelUsagePolicyRequest = z.infer<
-  typeof updateModelUsagePolicyRequestSchema
->;
+export type UpdateModelUsagePolicyRequest = z.infer<typeof updateModelUsagePolicyRequestSchema>;
 export type TestModelProviderRequest = z.infer<typeof testModelProviderRequestSchema>;
 export type TestModelProviderResponse = z.infer<typeof testModelProviderResponseSchema>;

@@ -9,6 +9,7 @@ import { Dialog } from "../../../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Input } from "../../../../components/ui/input";
 import { Select } from "../../../../components/ui/select";
+import { Textarea } from "../../../../components/ui/textarea";
 import { useImprovementTasks } from "../_hooks/use-improvement-tasks";
 import { Pagination } from "./pagination";
 
@@ -34,9 +35,11 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
   const [rejectReason, setRejectReason] = useState("");
   const [isRejecting, setIsRejecting] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const handleApprove = async (task: ImprovementTask) => {
     setIsApproving(true);
+    setActionError(null);
     try {
       const data: { title?: string; content?: string; summary?: string | null } = { summary: task.candidateSummary };
       if (task.candidateTitle) data.title = task.candidateTitle;
@@ -44,7 +47,7 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
       await approveTask(task.id, data);
       setSelectedTask(null);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Approve failed");
+      setActionError(e instanceof Error ? e.message : "Approve failed");
     } finally {
       setIsApproving(false);
     }
@@ -52,16 +55,17 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
 
   const handleReject = async (task: ImprovementTask) => {
     if (!rejectReason.trim()) {
-      alert("请输入驳回原因");
+      setActionError("请输入驳回原因");
       return;
     }
     setIsRejecting(true);
+    setActionError(null);
     try {
       await rejectTask(task.id, rejectReason);
       setSelectedTask(null);
       setRejectReason("");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Reject failed");
+      setActionError(e instanceof Error ? e.message : "Reject failed");
     } finally {
       setIsRejecting(false);
     }
@@ -95,17 +99,16 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
         <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-40">
           <option value="">全部状态</option>
           <option value="pending">生成中</option>
-          <option value="candidateReady">待审核 (Candidate Ready)</option>
+          <option value="processing">处理中</option>
+          <option value="candidate_ready">待审核 (Candidate Ready)</option>
           <option value="approved">已通过</option>
           <option value="rejected">已驳回</option>
           <option value="published">已发布</option>
-          <option value="verified">已验证</option>
-          <option value="stillFailing">仍未解决</option>
+          <option value="failed">处理失败</option>
         </Select>
         <Select value={triggerType} onChange={(e) => { setTriggerType(e.target.value); setPage(1); }} className="w-40">
           <option value="">全部来源</option>
-          <option value="feedback">用户反馈 (Feedback)</option>
-          <option value="document">文档提炼 (Document)</option>
+          <option value="document_extraction">文档提炼 (Document)</option>
         </Select>
       </div>
 
@@ -164,6 +167,7 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
       >
         {selectedTask ? (
           <div className="flex flex-col gap-4 mt-2">
+            {actionError ? <p className="text-sm text-danger bg-danger-bg p-2 rounded-md">{actionError}</p> : null}
             <div className="rounded-md bg-neutral-50 p-3 flex flex-col gap-2">
               <p className="text-sm font-medium text-ink">来源问题/触发条件</p>
               <p className="text-sm text-ink-muted">{selectedTask.sourceQuestion}</p>
@@ -176,8 +180,8 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
 
             <div className="flex flex-col gap-2">
               <p className="text-sm font-medium text-ink">候选内容</p>
-              <textarea
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[150px]"
+              <Textarea
+                className="w-full min-h-[150px]"
                 value={selectedTask.candidateContent ?? ""}
                 readOnly
               />
@@ -234,11 +238,12 @@ function StatCard({ title, value, sub1, sub2 }: { title: string; value: number; 
 function getStatusTone(status: string): "neutral" | "info" | "success" | "warning" | "danger" {
   switch (status) {
     case "pending": return "neutral";
-    case "candidateReady": return "warning";
+    case "processing": return "info";
+    case "candidate_ready": return "warning";
     case "approved": return "success";
     case "published": return "success";
     case "rejected": return "danger";
-    case "stillFailing": return "danger";
+    case "failed": return "danger";
     default: return "neutral";
   }
 }
@@ -246,12 +251,12 @@ function getStatusTone(status: string): "neutral" | "info" | "success" | "warnin
 function getStatusLabel(status: string): string {
   const map: Record<string, string> = {
     pending: "生成中",
-    candidateReady: "待审核",
+    processing: "处理中",
+    candidate_ready: "待审核",
     approved: "已通过",
     rejected: "已驳回",
     published: "已发布",
-    verified: "已验证",
-    stillFailing: "仍未解决",
+    failed: "处理失败",
   };
   return map[status] ?? status;
 }

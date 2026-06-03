@@ -5,6 +5,7 @@ import {
   improvementTaskListResponseSchema,
   improvementTaskStatsSchema,
   improvementTaskSchema,
+  knowledgeItemSchema,
 } from "@knowflow/shared";
 import { apiRequest } from "../../../../lib/api";
 
@@ -54,10 +55,22 @@ export function useImprovementTasks(knowledgeBaseId: string) {
   }, [loadData]);
 
   async function approveTask(taskId: string, data: { title?: string; content?: string; summary?: string | null }) {
-    await apiRequest(`/improvement-tasks/${taskId}/approve`, improvementTaskSchema, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+    await apiRequest(
+      `/improvement-tasks/${taskId}/approve`,
+      {
+        parse: (input: unknown) => {
+          const payload = input as { task?: unknown; knowledgeItem?: unknown } | null | undefined;
+          return {
+            task: improvementTaskSchema.parse(payload?.task),
+            knowledgeItem: knowledgeItemSchema.parse(payload?.knowledgeItem),
+          };
+        },
+      },
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    );
     void loadData();
   }
 

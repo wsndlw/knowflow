@@ -7,6 +7,7 @@ import {
   documentSchema,
   type KnowledgeDocument,
   type DocumentProgressEvent,
+  createImprovementTasksResponseSchema,
 } from "@knowflow/shared";
 
 import { Badge } from "../../../../components/ui/badge";
@@ -69,6 +70,8 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [previewTarget, setPreviewTarget] = useState<KnowledgeDocument | null>(null);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
@@ -183,6 +186,31 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     }
   }
 
+  const handleExtract = async (documentId: string) => {
+    setActionError(null);
+    setActionSuccess(null);
+    setExtractingIds((prev) => new Set(prev).add(documentId));
+    try {
+      await apiRequest(
+        `/knowledge-bases/${knowledgeBaseId}/improvement-tasks/generate`,
+        createImprovementTasksResponseSchema,
+        {
+          method: "POST",
+          body: JSON.stringify({ documentId }),
+        },
+      );
+      setActionSuccess("已提交 AI 提炼，候选条目可在『知识改进/审核台』查看审批");
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "提炼失败");
+    } finally {
+      setExtractingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(documentId);
+        return next;
+      });
+    }
+  };
+
   // 打标签：全量替换，用返回的标签列表更新该行
   async function handleReplaceDocTags(docId: string, tagIds: string[]) {
     const updated = await replaceDocumentTags(docId, { tagIds });
@@ -239,6 +267,9 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
       {actionError ? (
         <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{actionError}</p>
       ) : null}
+      {actionSuccess ? (
+        <p className="rounded-md bg-success-bg px-3 py-2 text-sm text-success">{actionSuccess}</p>
+      ) : null}
       {error ? (
         <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{error}</p>
       ) : null}
@@ -268,6 +299,8 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               onDelete={() => setDeleteTarget(doc.id)}
               onReplaceTags={handleReplaceDocTags}
               onPreview={() => setPreviewTarget(doc)}
+              onExtract={(docId) => void handleExtract(docId)}
+              isExtracting={extractingIds.has(doc.id)}
             />
           ))}
         </div>
@@ -318,6 +351,8 @@ function DocumentRow({
   onDelete,
   onReplaceTags,
   onPreview,
+  onExtract,
+  isExtracting,
 }: {
   doc: KnowledgeDocument;
   progress: DocumentProgressEvent | undefined;
@@ -327,6 +362,8 @@ function DocumentRow({
   onDelete: () => void;
   onReplaceTags: (docId: string, tagIds: string[]) => Promise<void>;
   onPreview: () => void;
+  onExtract: (docId: string) => void;
+  isExtracting: boolean;
 }) {
   const percent = progress?.percent ?? statusPercent(doc.processStatus);
   const message = progress?.message ?? doc.errorMessage ?? statusLabels[doc.processStatus] ?? doc.processStatus;
@@ -409,6 +446,18 @@ function DocumentRow({
         {canManage && doc.processStatus === "failed" ? (
           <Button variant="secondary" size="sm" onClick={onReprocess}>
             重试
+          </Button>
+        ) : null}
+        {canManage ? (
+          <Button
+            variant="outline"
+            size="sm"
+            loading={isExtracting}
+            disabled={doc.processStatus !== "completed"}
+            title={doc.processStatus !== "completed" ? "仅对已解析完成的文档可提炼" : ""}
+            onClick={() => onExtract(doc.id)}
+          >
+            AI 提炼条目
           </Button>
         ) : null}
         {canManage ? (

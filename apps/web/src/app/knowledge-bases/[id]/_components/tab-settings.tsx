@@ -48,7 +48,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
     e.preventDefault();
     if (!settings) return;
 
-    if (settings.rerankEnabled && settings.rerankKeepN > settings.rerankTopN) {
+    if (settings.rerankKeepN > settings.rerankTopN) {
       setError("重排序后保留数量（rerankKeepN）不能大于重排序候选数量（rerankTopN）");
       setSuccess(null);
       return;

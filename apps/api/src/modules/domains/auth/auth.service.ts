@@ -1,14 +1,23 @@
 import {
   ACCESS_SESSION_COOKIE_NAME,
+  CSRF_COOKIE_NAME,
   REFRESH_SESSION_COOKIE_NAME,
+  SECURE_CSRF_COOKIE_NAME,
   type CurrentUser,
   type LoginRequest,
 } from "@knowflow/shared";
 import { db, sessions, users, verifyPassword } from "@knowflow/db";
 import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 
-import { clearCookie, parseCookieHeader, serializeCookie } from "./http-cookie.js";
+import {
+  clearCookie,
+  clearCsrfCookie,
+  parseCookieHeader,
+  serializeCookie,
+  serializeCsrfCookie,
+} from "./http-cookie.js";
 import { generateSessionToken, hashSessionToken } from "./session-token.js";
 import type { AuthenticatedUser, RequestLike, ResponseLike } from "./auth.types.js";
 
@@ -156,11 +165,12 @@ export class AuthService {
     response.setHeader("Set-Cookie", [
       this.buildAccessCookie(accessToken),
       this.buildRefreshCookie(refreshToken),
+      this.buildCsrfCookie(),
     ]);
   }
 
   private setAccessCookie(response: ResponseLike, accessToken: string): void {
-    response.setHeader("Set-Cookie", this.buildAccessCookie(accessToken));
+    response.setHeader("Set-Cookie", [this.buildAccessCookie(accessToken), this.buildCsrfCookie()]);
   }
 
   private clearSessionCookies(response: ResponseLike): void {
@@ -168,6 +178,7 @@ export class AuthService {
     response.setHeader("Set-Cookie", [
       clearCookie(ACCESS_SESSION_COOKIE_NAME, secure),
       clearCookie(REFRESH_SESSION_COOKIE_NAME, secure),
+      clearCsrfCookie(this.getCsrfCookieName(), secure),
     ]);
   }
 
@@ -189,6 +200,15 @@ export class AuthService {
       sameSite: "Lax",
       secure: this.useSecureCookies(),
     });
+  }
+
+  private buildCsrfCookie(): string {
+    const secure = this.useSecureCookies();
+    return serializeCsrfCookie(this.getCsrfCookieName(), randomBytes(32).toString("hex"), secure);
+  }
+
+  private getCsrfCookieName(): string {
+    return this.useSecureCookies() ? SECURE_CSRF_COOKIE_NAME : CSRF_COOKIE_NAME;
   }
 
   private readCookie(request: RequestLike, name: string): string | undefined {

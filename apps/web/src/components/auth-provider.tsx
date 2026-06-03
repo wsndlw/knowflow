@@ -3,6 +3,7 @@
 import {
   apiFailureSchema,
   apiSuccessSchema,
+  CSRF_HEADER_NAME,
   currentUserSchema,
   loginRequestSchema,
   loginResponseSchema,
@@ -20,7 +21,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { apiUrl } from "../lib/api";
+import { apiUrl, getCsrfToken } from "../lib/api";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
@@ -142,6 +143,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     await fetch(apiUrl("/auth/logout"), {
       method: "POST",
+      headers: {
+        [CSRF_HEADER_NAME]: getCsrfToken(),
+      },
       credentials: "include",
     });
     setUser(null);

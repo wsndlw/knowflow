@@ -1,6 +1,9 @@
 import {
   apiFailureSchema,
+  CSRF_COOKIE_NAME,
+  CSRF_HEADER_NAME,
   retrievalTestResponseSchema,
+  SECURE_CSRF_COOKIE_NAME,
   tagListResponseSchema,
   tagSchema,
   type CreateTagRequest,
@@ -31,6 +34,34 @@ export function apiUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }
 
+export function getCsrfToken(): string {
+  if (typeof document === "undefined") {
+    return "";
+  }
+
+  const cookies = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  for (const cookie of cookies) {
+    const separator = cookie.indexOf("=");
+    try {
+      const name = separator === -1 ? cookie : decodeURIComponent(cookie.slice(0, separator));
+      if (name === SECURE_CSRF_COOKIE_NAME || name === CSRF_COOKIE_NAME) {
+        return separator === -1 ? "" : decodeURIComponent(cookie.slice(separator + 1));
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return "";
+}
+
+function isStateChangingMethod(method: string | undefined): boolean {
+  return ["POST", "PUT", "PATCH", "DELETE"].includes((method ?? "GET").toUpperCase());
+}
+
 export async function parseApiError(response: Response): Promise<string> {
   try {
     const body: unknown = await response.json();
@@ -50,6 +81,9 @@ export async function apiRequest<TData>(
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   if (init?.body !== undefined && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
+  }
+  if (isStateChangingMethod(init?.method) && !headers.has(CSRF_HEADER_NAME)) {
+    headers.set(CSRF_HEADER_NAME, getCsrfToken());
   }
 
   const response = await fetch(apiUrl(path), {

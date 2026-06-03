@@ -8,6 +8,7 @@ import {
   conversationMessagesResponseSchema,
   conversationSchema,
   createConversationRequestSchema,
+  CSRF_HEADER_NAME,
   type Agent,
   type AskStreamEvent,
   type Citation,
@@ -22,7 +23,7 @@ import { Button } from "../../components/ui/button";
 import { CitationPopover } from "../../components/ui/citation-popover";
 import { Dialog } from "../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../components/ui/feedback";
-import { apiRequest, apiUrl, parseApiError } from "../../lib/api";
+import { apiRequest, apiUrl, getCsrfToken, parseApiError } from "../../lib/api";
 import { cn } from "../../lib/cn";
 
 type DraftAssistantMessage = {
@@ -216,7 +217,7 @@ export default function ChatPage() {
   async function streamAnswer(conversationId: string, content: string, draftId: string) {
     const response = await fetch(apiUrl(`/conversations/${conversationId}/messages`), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", [CSRF_HEADER_NAME]: getCsrfToken() },
       credentials: "include",
       body: JSON.stringify({ content }),
     });

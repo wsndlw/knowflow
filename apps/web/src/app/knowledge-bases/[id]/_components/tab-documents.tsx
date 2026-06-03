@@ -191,7 +191,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     setActionSuccess(null);
     setExtractingIds((prev) => new Set(prev).add(documentId));
     try {
-      await apiRequest(
+      const res = await apiRequest(
         `/knowledge-bases/${knowledgeBaseId}/improvement-tasks/generate`,
         createImprovementTasksResponseSchema,
         {
@@ -199,7 +199,12 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
           body: JSON.stringify({ documentId }),
         },
       );
-      setActionSuccess("已提交 AI 提炼，候选条目可在『知识改进/审核台』查看审批");
+      const msg =
+        res.created > 0
+          ? `已生成 ${String(res.created)} 条候选条目，可在『知识改进/审核台』查看审批`
+          : "未生成新候选条目（可能已提炼过），可在『知识改进/审核台』查看已有条目";
+      setActionSuccess(msg);
+      setTimeout(() => setActionSuccess((prev) => (prev === msg ? null : prev)), 5000);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "提炼失败");
     } finally {

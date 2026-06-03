@@ -14,7 +14,7 @@ import { Skeleton, EmptyState } from "../../../../components/ui/feedback";
 import { Badge } from "../../../../components/ui/badge";
 import { Select } from "../../../../components/ui/select";
 import { Pagination } from "./pagination";
-import { apiRequest, apiUrl } from "../../../../lib/api";
+import { apiRequest, apiUrl, ApiError } from "../../../../lib/api";
 
 type DocumentPreviewDialogProps = {
   doc: KnowledgeDocument | null;
@@ -98,8 +98,8 @@ function TextView({ doc }: { doc: KnowledgeDocument }) {
         );
         setData({ text: res.text, truncated: res.truncated });
       } catch (err) {
-        if (err instanceof Error && err.message.includes("404")) {
-          setError("暂无权限或内容不存在");
+        if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+          setError(err.status === 403 ? "暂无权限查看该文档内容" : "文档内容不存在");
         } else {
           setError(err instanceof Error ? err.message : "加载原文失败");
         }
@@ -165,8 +165,8 @@ function ChunksView({ doc }: { doc: KnowledgeDocument }) {
         setItems(res.items);
         setTotal(res.total);
       } catch (err) {
-        if (err instanceof Error && err.message.includes("404")) {
-          setError("暂无权限或内容不存在");
+        if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+          setError(err.status === 403 ? "暂无权限查看该文档分块" : "文档分块不存在");
         } else {
           setError(err instanceof Error ? err.message : "加载分块失败");
         }

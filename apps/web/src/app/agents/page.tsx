@@ -554,14 +554,64 @@ function AssistantBubble({
           {showSkeleton ? (
             <p className="text-sm text-ink-subtle">{statusText || "思考中"}…</p>
           ) : (
-            <div className="prose prose-sm max-w-none text-base leading-relaxed text-ink">
+            <div className="text-base leading-relaxed text-ink">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
+                  p: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <p className="mb-2 last:mb-0" {...rest} />;
+                  },
+                  ul: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <ul className="mb-2 ml-5 list-disc space-y-1" {...rest} />;
+                  },
+                  ol: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <ol className="mb-2 ml-5 list-decimal space-y-1" {...rest} />;
+                  },
+                  li: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <li {...rest} />;
+                  },
+                  h1: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <h1 className="mb-3 mt-5 text-xl font-bold text-ink" {...rest} />;
+                  },
+                  h2: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <h2 className="mb-3 mt-4 text-lg font-bold text-ink" {...rest} />;
+                  },
+                  h3: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <h3 className="mb-2 mt-4 text-base font-semibold text-ink" {...rest} />;
+                  },
+                  h4: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <h4 className="mb-2 mt-3 text-sm font-semibold text-ink" {...rest} />;
+                  },
+                  a: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <a className="text-brand-600 underline hover:text-brand-700" target="_blank" rel="noopener noreferrer" {...rest} />;
+                  },
+                  strong: (props) => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { node, ...rest } = props;
+                    return <strong className="font-bold text-ink" {...rest} />;
+                  },
                   pre: (props) => {
                     // eslint-disable-next-line @typescript-eslint/no-unused-vars
                     const { node, ...rest } = props;
-                    return <pre className="my-2 overflow-x-auto rounded-md bg-neutral-100 p-3 text-sm" {...rest} />;
+                    return <pre className="my-3 overflow-x-auto rounded-md bg-neutral-100 p-3 text-sm" {...rest} />;
                   },
                   code: (props) => {
                     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -592,18 +642,8 @@ function AssistantBubble({
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {(() => {
-                  const hasScores = message.citations.some((c) => "relevanceScore" in c || "score" in c);
-                  let topCitations = message.citations;
-                  if (hasScores) {
-                    topCitations = [...message.citations].sort((a, b) => {
-                      const aRec = a as Record<string, unknown>;
-                      const bRec = b as Record<string, unknown>;
-                      const scoreA = Number(aRec['relevanceScore'] ?? aRec['score'] ?? 0);
-                      const scoreB = Number(bRec['relevanceScore'] ?? bRec['score'] ?? 0);
-                      return scoreB - scoreA;
-                    });
-                  }
-                  return topCitations.slice(0, 3).map((citation, idx) => {
+                  // 后端 contexts 已按分数降序排列（retrieval.service.ts），直接取前 3 条
+                  return message.citations.slice(0, 3).map((citation, idx) => {
                     const content = (
                       <>
                         <span className="line-clamp-1 block text-sm font-medium text-ink transition-colors group-hover:text-brand-700">

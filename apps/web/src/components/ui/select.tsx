@@ -41,7 +41,11 @@ function Select({
 
   const rootProps = props as React.ComponentProps<typeof SelectPrimitive.Root>
 
-  return <SelectPrimitive.Root data-slot="select" {...rootProps} />
+  return (
+    <SelectPrimitive.Root data-slot="select" {...rootProps}>
+      {children}
+    </SelectPrimitive.Root>
+  )
 }
 
 function SelectGroup({

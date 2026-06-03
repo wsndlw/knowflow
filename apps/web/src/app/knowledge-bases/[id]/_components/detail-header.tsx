@@ -76,7 +76,7 @@ export function DetailHeader({ kb, canManage, onDeleted }: DetailHeaderProps) {
           </div>
         </div>
         {canManage ? (
-          <Button variant="danger" size="sm" onClick={() => setConfirmOpen(true)}>
+          <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
             删除知识库
           </Button>
         ) : null}
@@ -92,7 +92,7 @@ export function DetailHeader({ kb, canManage, onDeleted }: DetailHeaderProps) {
           <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
             取消
           </Button>
-          <Button variant="danger" loading={deleting} onClick={() => void handleDelete()}>
+          <Button variant="destructive" loading={deleting} onClick={() => void handleDelete()}>
             确认删除
           </Button>
         </div>

@@ -140,7 +140,7 @@ export function ModelCatalogList({ providerId, expanded }: ModelCatalogListProps
                     <Button size="sm" variant="secondary" onClick={() => { openEditDialog(model); }}>
                       编辑
                     </Button>
-                    <Button size="sm" variant="danger" onClick={() => { handleDelete(model.id).catch(console.error); }}>
+                    <Button size="sm" variant="destructive" onClick={() => { handleDelete(model.id).catch(console.error); }}>
                       删除
                     </Button>
                   </div>

@@ -22,6 +22,7 @@ import { TagFilterPopover } from "./tag-filter-popover";
 import { TagManagerDialog } from "./tag-manager-dialog";
 import { TagPickerPopover } from "./tag-picker-popover";
 import { KnowledgeItemDialog } from "./dialogs/knowledge-item-dialog";
+import { BatchImportDialog } from "./dialogs/batch-import-dialog";
 
 type TabKnowledgeItemsProps = {
   knowledgeBaseId: string;
@@ -63,6 +64,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [editing, setEditing] = useState<KnowledgeItem | null>(null);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -212,6 +214,11 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
             </Button>
           ) : null}
           {canManage ? (
+            <Button variant="outline" size="sm" onClick={() => setBatchImportOpen(true)}>
+              批量导入
+            </Button>
+          ) : null}
+          {canManage ? (
             <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
               新建条目
             </Button>
@@ -344,6 +351,13 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
         onClose={() => { setDialogOpen(false); setEditing(null); }}
         onSubmit={editing ? handleUpdate : handleCreate}
         editing={editing}
+      />
+
+      <BatchImportDialog
+        open={batchImportOpen}
+        onClose={() => setBatchImportOpen(false)}
+        knowledgeBaseId={knowledgeBaseId}
+        onSuccess={loadItems}
       />
 
       <TagManagerDialog

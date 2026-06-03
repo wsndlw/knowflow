@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { AuditTargetType } from "@knowflow/shared";
-import { catchError, tap, throwError, type Observable } from "rxjs";
+import { catchError, from, mergeMap, tap, throwError, type Observable } from "rxjs";
 
 import { AUDIT_LOG_METADATA_KEY, type AuditLogMetadata } from "./audit-log.decorator.js";
 import { AuditLogService } from "./audit-log.service.js";
@@ -48,20 +48,25 @@ export class AuditLogInterceptor implements NestInterceptor {
     }
 
     const request = context.switchToHttp().getRequest<RequestWithAuditContext>();
-    return next.handle().pipe(
-      tap((response: unknown) => {
-        this.writeAuditLog(request, metadata, "success", response);
-      }),
-      catchError((error: unknown) => {
-        this.writeAuditLog(request, metadata, "failure", undefined, error);
-        return throwError(() => error);
-      }),
+    return from(this.resolvePreActionKnowledgeBaseId(metadata, request)).pipe(
+      mergeMap((knowledgeBaseId) =>
+        next.handle().pipe(
+          tap((response: unknown) => {
+            this.writeAuditLog(request, metadata, knowledgeBaseId, "success", response);
+          }),
+          catchError((error: unknown) => {
+            this.writeAuditLog(request, metadata, knowledgeBaseId, "failure", undefined, error);
+            return throwError(() => error);
+          }),
+        ),
+      ),
     );
   }
 
   private writeAuditLog(
     request: RequestWithAuditContext,
     metadata: AuditLogMetadata,
+    knowledgeBaseId: string | null,
     result: "success" | "failure",
     response?: unknown,
     error?: unknown,
@@ -82,6 +87,7 @@ export class AuditLogInterceptor implements NestInterceptor {
     void this.auditLogService
       .record({
         userId: request.user?.id ?? this.extractResponseUserId(response),
+        knowledgeBaseId,
         action: metadata.action,
         targetType: metadata.targetType,
         targetId: this.extractTargetId(metadata.targetType, request, response),
@@ -93,6 +99,41 @@ export class AuditLogInterceptor implements NestInterceptor {
       .catch((auditError: unknown) => {
         this.logger.warn(`Failed to write audit log: ${this.errorMessage(auditError)}`);
       });
+  }
+
+  private async resolvePreActionKnowledgeBaseId(
+    metadata: AuditLogMetadata,
+    request: RequestWithAuditContext,
+  ): Promise<string | null> {
+    const routeKnowledgeBaseId = this.extractRouteKnowledgeBaseId(metadata, request);
+    if (routeKnowledgeBaseId !== null) {
+      return routeKnowledgeBaseId;
+    }
+    const routeTargetId = this.extractTargetId(metadata.targetType, request, undefined);
+    return this.auditLogService.resolveKnowledgeBaseId(metadata.targetType, routeTargetId);
+  }
+
+  private extractRouteKnowledgeBaseId(
+    metadata: AuditLogMetadata,
+    request: RequestWithAuditContext,
+  ): string | null {
+    const routeId = request.params?.["id"] ?? null;
+    if (routeId === null) {
+      return null;
+    }
+    if (
+      metadata.targetType === AuditTargetType.KNOWLEDGE_BASE ||
+      metadata.targetType === AuditTargetType.RETRIEVAL_SETTINGS ||
+      metadata.targetType === AuditTargetType.MIND_MAP ||
+      metadata.action === "document.upload" ||
+      metadata.action === "knowledge_item.create" ||
+      metadata.action === "agent.create" ||
+      metadata.action === "agent.generate" ||
+      metadata.action === "tag.create"
+    ) {
+      return routeId;
+    }
+    return null;
   }
 
   private extractTargetId(

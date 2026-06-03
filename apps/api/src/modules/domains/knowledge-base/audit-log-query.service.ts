@@ -17,7 +17,19 @@ import {
   type AuditLogListQuery,
   type AuditLogListResponse,
 } from "@knowflow/shared";
-import { and, count, desc, eq, exists, gte, inArray, lte, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  exists,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  or,
+  type SQL,
+} from "drizzle-orm";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
@@ -113,7 +125,7 @@ export class AuditLogQueryService {
   }
 
   private buildKnowledgeBaseTargetCondition(knowledgeBaseId: string): SQL {
-    const condition = or(
+    const legacyCondition = or(
       and(eq(auditLogs.targetType, "knowledge_base"), eq(auditLogs.targetId, knowledgeBaseId)),
       and(eq(auditLogs.targetType, "retrieval_settings"), eq(auditLogs.targetId, knowledgeBaseId)),
       and(eq(auditLogs.targetType, "mind_map"), eq(auditLogs.targetId, knowledgeBaseId)),
@@ -168,6 +180,10 @@ export class AuditLogQueryService {
             .where(and(eq(tags.id, auditLogs.targetId), eq(tags.knowledgeBaseId, knowledgeBaseId))),
         ),
       ),
+    );
+    const condition = or(
+      eq(auditLogs.knowledgeBaseId, knowledgeBaseId),
+      and(isNull(auditLogs.knowledgeBaseId), legacyCondition),
     );
     if (condition === undefined) {
       throw new Error("Failed to build audit target condition");

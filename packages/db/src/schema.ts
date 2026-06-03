@@ -969,6 +969,7 @@ export const auditLogs = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id").references(() => users.id),
+    knowledgeBaseId: uuid("knowledge_base_id"),
     action: varchar("action", { length: 160 }).notNull(),
     targetType: varchar("target_type", { length: 120 }).notNull(),
     targetId: uuid("target_id"),
@@ -978,5 +979,8 @@ export const auditLogs = pgTable(
     userAgent: text("user_agent"),
     ...createdOnly(),
   },
-  (table) => [index("audit_logs_target_idx").on(table.targetType, table.targetId)],
+  (table) => [
+    index("audit_logs_knowledge_base_idx").on(table.knowledgeBaseId, table.createdAt),
+    index("audit_logs_target_idx").on(table.targetType, table.targetId),
+  ],
 );

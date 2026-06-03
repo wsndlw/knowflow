@@ -31,6 +31,8 @@ export function useDocumentProgress(
   useEffect(() => {
     if (activeDocumentIds.length === 0) return;
 
+    let hasSseError = false;
+
     const eventSources = activeDocumentIds.map((docId) => {
       const es = new EventSource(apiUrl(`/documents/${docId}/progress`), {
         withCredentials: true,
@@ -52,14 +54,17 @@ export function useDocumentProgress(
         }
       };
       es.onerror = () => {
+        hasSseError = true;
         es.close();
       };
       return es;
     });
 
     const pollingId = window.setInterval(() => {
-      onCompletedRef.current();
-    }, 3000);
+      if (hasSseError) {
+        onCompletedRef.current();
+      }
+    }, 10000);
 
     return () => {
       window.clearInterval(pollingId);

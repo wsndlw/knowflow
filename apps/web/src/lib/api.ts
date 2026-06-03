@@ -1,4 +1,16 @@
-import { apiFailureSchema } from "@knowflow/shared";
+import {
+  apiFailureSchema,
+  retrievalTestResponseSchema,
+  tagListResponseSchema,
+  tagSchema,
+  type CreateTagRequest,
+  type KnowledgeTag,
+  type ReplaceTagsRequest,
+  type RetrievalTestRequest,
+  type RetrievalTestResponse,
+  type TagListResponse,
+  type UpdateTagRequest,
+} from "@knowflow/shared";
 
 export const API_BASE_URL = process.env["NEXT_PUBLIC_API_BASE_URL"] ?? "http://localhost:4000";
 
@@ -62,4 +74,70 @@ export async function apiRequest<TData>(
   }
 
   return dataSchema.parse(body.data);
+}
+
+// ──────────────────────────────────────────────────────────────
+// 检索测试
+// ──────────────────────────────────────────────────────────────
+
+export function retrievalTest(
+  knowledgeBaseId: string,
+  body: RetrievalTestRequest,
+): Promise<RetrievalTestResponse> {
+  return apiRequest(`/knowledge-bases/${knowledgeBaseId}/retrieval-test`, retrievalTestResponseSchema, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// ──────────────────────────────────────────────────────────────
+// 标签：CRUD + 打标签（全量替换）
+// ──────────────────────────────────────────────────────────────
+
+export function listKnowledgeBaseTags(knowledgeBaseId: string): Promise<TagListResponse> {
+  return apiRequest(`/knowledge-bases/${knowledgeBaseId}/tags`, tagListResponseSchema, {
+    cache: "no-store",
+  });
+}
+
+export function createKnowledgeBaseTag(
+  knowledgeBaseId: string,
+  body: CreateTagRequest,
+): Promise<KnowledgeTag> {
+  return apiRequest(`/knowledge-bases/${knowledgeBaseId}/tags`, tagSchema, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateTag(tagId: string, body: UpdateTagRequest): Promise<KnowledgeTag> {
+  return apiRequest(`/tags/${tagId}`, tagSchema, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteTag(tagId: string): Promise<Record<string, never>> {
+  return apiRequest(`/tags/${tagId}`, emptyObjectSchema, { method: "DELETE" });
+}
+
+// PUT 全量替换：提交当前全部勾选的 tagId 数组，后端整体覆盖，返回更新后的标签列表
+export function replaceDocumentTags(
+  documentId: string,
+  body: ReplaceTagsRequest,
+): Promise<TagListResponse> {
+  return apiRequest(`/documents/${documentId}/tags`, tagListResponseSchema, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function replaceKnowledgeItemTags(
+  knowledgeItemId: string,
+  body: ReplaceTagsRequest,
+): Promise<TagListResponse> {
+  return apiRequest(`/knowledge-items/${knowledgeItemId}/tags`, tagListResponseSchema, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
 }

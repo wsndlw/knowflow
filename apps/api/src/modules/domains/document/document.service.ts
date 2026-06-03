@@ -11,7 +11,10 @@ import {
   documentTags,
   documents,
   files,
+  knowledgeImprovementTasks,
   knowledgeItems,
+  knowledgeItemFeedback,
+  messageCitations,
   parentChunks,
   tags,
   users,
@@ -28,7 +31,20 @@ import type {
   KnowledgeTag,
   KnowledgeDocument,
 } from "@knowflow/shared";
-import { and, asc, count, desc, eq, exists, ilike, inArray, min, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  ilike,
+  inArray,
+  min,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, type ReadStream } from "node:fs";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
@@ -128,7 +144,8 @@ export class DocumentService {
     const kind = this.detectFileKind(file);
     const storagePath = await this.storeFile(knowledgeBaseId, file, kind.extension);
     const hash = createHash("sha256").update(file.buffer).digest("hex");
-    const title = this.normalizeTitle(file.originalname);
+    const originalFilename = this.decodeMultipartFilename(file.originalname);
+    const title = this.normalizeTitle(originalFilename);
 
     let createdDocumentId: string | undefined;
     let createdFileId: string | undefined;
@@ -138,7 +155,7 @@ export class DocumentService {
           .insert(files)
           .values({
             storagePath,
-            filename: file.originalname,
+            filename: originalFilename,
             fileType: file.mimetype,
             fileSize: file.size,
             hash,
@@ -354,13 +371,38 @@ export class DocumentService {
             .limit(1);
 
     await db.transaction(async (tx) => {
-      await tx
-        .update(knowledgeItems)
-        .set({
-          sourceDocumentId: null,
-          updatedAt: new Date(),
-        })
+      const sourceItems = await tx
+        .select({ id: knowledgeItems.id })
+        .from(knowledgeItems)
         .where(eq(knowledgeItems.sourceDocumentId, id));
+      const sourceItemIds = sourceItems.map((item) => item.id);
+
+      await tx
+        .update(messageCitations)
+        .set({ documentId: null })
+        .where(eq(messageCitations.documentId, id));
+      if (sourceItemIds.length > 0) {
+        await tx
+          .update(messageCitations)
+          .set({ knowledgeItemId: null })
+          .where(inArray(messageCitations.knowledgeItemId, sourceItemIds));
+        await tx
+          .delete(knowledgeImprovementTasks)
+          .where(
+            or(
+              inArray(knowledgeImprovementTasks.publishedItemId, sourceItemIds),
+              sql`${knowledgeImprovementTasks.sourceContext}->>'documentId' = ${id}`,
+            ),
+          );
+        await tx
+          .delete(knowledgeItemFeedback)
+          .where(inArray(knowledgeItemFeedback.knowledgeItemId, sourceItemIds));
+        await tx.delete(knowledgeItems).where(inArray(knowledgeItems.id, sourceItemIds));
+      } else {
+        await tx
+          .delete(knowledgeImprovementTasks)
+          .where(sql`${knowledgeImprovementTasks.sourceContext}->>'documentId' = ${id}`);
+      }
       await tx.delete(childChunks).where(eq(childChunks.documentId, id));
       await tx.delete(parentChunks).where(eq(parentChunks.documentId, id));
       await tx.delete(documents).where(eq(documents.id, id));
@@ -578,6 +620,11 @@ export class DocumentService {
     const parsed = path.parse(originalName);
     const title = (parsed.name || originalName).trim();
     return title.length > 0 ? title.slice(0, 255) : "Untitled document";
+  }
+
+  private decodeMultipartFilename(originalName: string): string {
+    const decoded = Buffer.from(originalName, "latin1").toString("utf8");
+    return decoded.includes("\uFFFD") ? originalName : decoded;
   }
 
   private async findRow(id: string): Promise<DocumentRow | undefined> {

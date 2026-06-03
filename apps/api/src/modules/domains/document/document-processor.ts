@@ -27,7 +27,7 @@ import { publishDocumentProgress } from "./document-progress.js";
 const PARENT_TARGET_CHARS = 4000;
 const CHILD_TARGET_CHARS = 900;
 const CHILD_OVERLAP_CHARS = 120;
-const EMBEDDING_BATCH_SIZE = 16;
+const EMBEDDING_BATCH_SIZE = 10;
 const MAX_SPREADSHEET_ROWS = 10000;
 
 type ProcessableDocument = {

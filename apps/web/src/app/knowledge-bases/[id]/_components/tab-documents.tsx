@@ -330,32 +330,43 @@ function DocumentRow({
         <p className="text-xs text-ink-muted mt-0.5">
           {doc.sourceType} · {formatBytes(doc.fileSize)} · {doc.uploaderName}
         </p>
-        {/* 标签区：点击弹出打标签 Popover */}
+        {/* 标签区：canManage 可打标签（写）；member 仅只读展示已有标签 */}
         <div className="mt-1.5">
-          <TagPickerPopover
-            allTags={allTags}
-            selectedTagIds={doc.tags.map((tag) => tag.id)}
-            onChange={(tagIds) => onReplaceTags(doc.id, tagIds)}
-          >
-            <button
-              type="button"
-              className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-dashed border-transparent px-1 py-0.5 text-left transition-colors hover:border-border hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-              aria-label="编辑标签"
+          {canManage ? (
+            <TagPickerPopover
+              allTags={allTags}
+              selectedTagIds={doc.tags.map((tag) => tag.id)}
+              onChange={(tagIds) => onReplaceTags(doc.id, tagIds)}
             >
-              {doc.tags.length > 0 ? (
-                <>
-                  {doc.tags.slice(0, 3).map((tag) => (
-                    <TagBadge key={tag.id} tag={tag} />
-                  ))}
-                  {doc.tags.length > 3 ? (
-                    <span className="text-xs text-ink-subtle">+{doc.tags.length - 3}</span>
-                  ) : null}
-                </>
-              ) : (
-                <span className="text-xs text-ink-subtle">+ 添加标签</span>
-              )}
-            </button>
-          </TagPickerPopover>
+              <button
+                type="button"
+                className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-dashed border-transparent px-1 py-0.5 text-left transition-colors hover:border-border hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                aria-label="编辑标签"
+              >
+                {doc.tags.length > 0 ? (
+                  <>
+                    {doc.tags.slice(0, 3).map((tag) => (
+                      <TagBadge key={tag.id} tag={tag} />
+                    ))}
+                    {doc.tags.length > 3 ? (
+                      <span className="text-xs text-ink-subtle">+{doc.tags.length - 3}</span>
+                    ) : null}
+                  </>
+                ) : (
+                  <span className="text-xs text-ink-subtle">+ 添加标签</span>
+                )}
+              </button>
+            </TagPickerPopover>
+          ) : doc.tags.length > 0 ? (
+            <div className="inline-flex max-w-full flex-wrap items-center gap-1 px-1 py-0.5">
+              {doc.tags.slice(0, 3).map((tag) => (
+                <TagBadge key={tag.id} tag={tag} />
+              ))}
+              {doc.tags.length > 3 ? (
+                <span className="text-xs text-ink-subtle">+{doc.tags.length - 3}</span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         {isActive ? (
           <div className="mt-2 flex items-center gap-2">

@@ -105,6 +105,15 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
       .map((doc) => ({ name: truncate(doc.title, 14), 浏览: doc.views, 引用: doc.citations }));
   }, [data]);
 
+  // 热门搜索关键词柱状（取前 10，按搜索次数倒序，关键词截断）。
+  const topKeywordsChartData = useMemo(() => {
+    if (data === null) return [];
+    return [...data.topKeywords]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+      .map((kw) => ({ name: truncate(kw.keyword, 14), 搜索次数: kw.count }));
+  }, [data]);
+
   if (loading) {
     return (
       <div className="flex flex-col gap-4">
@@ -125,7 +134,7 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
 
   if (!data) return null;
 
-  const { metrics, trends, popularDocuments, popularKnowledgeItems, feedback, feedbackReasons, noAnswerQuestions, lowConfidenceQuestions } = data;
+  const { metrics, trends, popularDocuments, popularKnowledgeItems, topKeywords, feedback, feedbackReasons, noAnswerQuestions, lowConfidenceQuestions } = data;
 
   return (
     <div className="flex flex-col gap-6">
@@ -317,6 +326,62 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
           </Table>
         </section>
       ) : null}
+
+      {/* 热门搜索关键词 */}
+      <section>
+        <h3 className="text-md font-medium text-ink mb-3">热门搜索关键词</h3>
+        {topKeywords.length === 0 ? (
+          <EmptyState title="暂无搜索记录" description="该时间范围内还没有知识搜索记录。" />
+        ) : (
+          <>
+            {topKeywordsChartData.length > 0 ? (
+              <ChartFrame title="搜索关键词 Top 10" height={280}>
+                <ResponsiveContainer>
+                  <BarChart
+                    data={topKeywordsChartData}
+                    layout="vertical"
+                    margin={{ top: 4, right: 16, bottom: 4, left: 8 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" {...GRID_STYLE} horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} tick={AXIS_TICK_STYLE} axisLine={AXIS_LINE_STYLE} tickLine={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={AXIS_TICK_STYLE}
+                      axisLine={false}
+                      tickLine={false}
+                      width={104}
+                    />
+                    <Tooltip
+                      contentStyle={TOOLTIP_CONTENT_STYLE}
+                      labelStyle={TOOLTIP_LABEL_STYLE}
+                      itemStyle={TOOLTIP_ITEM_STYLE}
+                      cursor={{ fill: "var(--color-neutral-100)" }}
+                    />
+                    <Bar dataKey="搜索次数" fill={chartColor(1)} radius={[0, 4, 4, 0]} maxBarSize={18} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartFrame>
+            ) : null}
+            <Table className="mt-3">
+              <TableHead>
+                <tr>
+                  <TableHeaderCell>关键词</TableHeaderCell>
+                  <TableHeaderCell>搜索次数</TableHeaderCell>
+                </tr>
+              </TableHead>
+              <TableBody>
+                {topKeywords.slice(0, 10).map((kw) => (
+                  <TableRow key={kw.keyword}>
+                    <TableCell className="font-medium truncate max-w-xs">{kw.keyword}</TableCell>
+                    <TableCell className="text-ink-muted">{kw.count}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </>
+        )}
+      </section>
 
       {/* 反馈原因 */}
       {feedbackReasons.length > 0 ? (

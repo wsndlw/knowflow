@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
 
 /* ──────────────────────────────────────────────────────────────
    knowflow 设计系统 — 现代亲和(专业有温度,对标 Vercel/飞书后台)
@@ -56,6 +59,23 @@
   --color-ink: var(--color-neutral-900);
   --color-ink-muted: var(--color-neutral-600);
   --color-ink-subtle: var(--color-neutral-500);
+  --color-foreground: var(--color-ink);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-ink);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-ink);
+  --color-primary: var(--color-brand-600);
+  --color-primary-foreground: var(--color-neutral-0);
+  --color-secondary: var(--color-neutral-100);
+  --color-secondary-foreground: var(--color-neutral-900);
+  --color-muted: var(--color-neutral-100);
+  --color-muted-foreground: var(--color-ink-muted);
+  --color-accent: var(--color-brand-50);
+  --color-accent-foreground: var(--color-brand-800);
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: var(--color-neutral-0);
+  --color-input: var(--color-neutral-200);
+  --color-ring: var(--color-brand-500);
 
   /* 字体:单族 sans(中文友好),mono 备用 */
   --font-sans:

@@ -1,4 +1,11 @@
-import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from "@nestjs/common";
+import {
+  CallHandler,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  Logger,
+  NestInterceptor,
+} from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { AuditTargetType } from "@knowflow/shared";
 import { catchError, tap, throwError, type Observable } from "rxjs";
@@ -25,7 +32,9 @@ export class AuditLogInterceptor implements NestInterceptor {
   private readonly logger = new Logger(AuditLogInterceptor.name);
 
   constructor(
+    @Inject(Reflector)
     private readonly reflector: Reflector,
+    @Inject(AuditLogService)
     private readonly auditLogService: AuditLogService,
   ) {}
 

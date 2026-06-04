@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { NotFoundException } from "@nestjs/common";
+import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { db } from "@knowflow/db";
 
 import type { AnalyticsEventService } from "../analytics/analytics-event.service.js";
@@ -29,7 +29,7 @@ type UpdateChain = {
   };
 };
 
-type ArchiveUpdateValues = {
+type StatusUpdateValues = {
   status?: unknown;
   updatedAt?: unknown;
 };
@@ -68,35 +68,71 @@ const user: AuthenticatedUser = {
   departmentId: "00000000-0000-0000-0000-000000000010",
 };
 
-void describe("KnowledgeBaseService archive semantics", () => {
-  void it("archives a knowledge base instead of physically deleting related records", async () => {
+void describe("KnowledgeBaseService disable/enable semantics", () => {
+  void it("disables a knowledge base instead of archiving or physically deleting related records", async () => {
     const access = makeAccessStub({ canManage: true });
     const service = makeService(access);
-    const mutableDb = db as unknown as MutableDb;
-    const originalUpdate = mutableDb.update;
-    let updateValues: ArchiveUpdateValues = {};
-
-    mutableDb.update = () => ({
-      set(values: Record<string, unknown>) {
-        updateValues = values;
-        return {
-          where() {
-            return Promise.resolve([]);
-          },
-        };
-      },
-    });
-
-    try {
+    await withCapturedStatusUpdate(async (updateValues) => {
       await service.delete("00000000-0000-0000-0000-000000000100", user);
 
       assert.equal(access.canManageCalls, 1);
-      assert.equal(updateValues.status, "archived");
+      assert.equal(updateValues.status, "disabled");
       const updatedAt = updateValues.updatedAt;
       assert.equal(Object.prototype.toString.call(updatedAt), "[object Date]");
-    } finally {
-      mutableDb.update = originalUpdate;
-    }
+    });
+  });
+
+  void it("enables a disabled knowledge base and returns the refreshed resource", async () => {
+    const access = makeAccessStub({ canManage: true });
+    const analytics = makeAnalyticsStub();
+    const service = makeService(access, analytics);
+    Object.assign(service as object, {
+      findRowById: () => Promise.resolve(makeKnowledgeBaseRow({ status: "active" })),
+    } satisfies ServiceInternals);
+
+    await withCapturedStatusUpdate(async (updateValues) => {
+      const result = await service.enable("00000000-0000-0000-0000-000000000100", user);
+
+      assert.equal(updateValues.status, "active");
+      const updatedAt = updateValues.updatedAt;
+      assert.equal(Object.prototype.toString.call(updatedAt), "[object Date]");
+      assert.equal(result.status, "active");
+      assert.equal(result.canManage, true);
+      assert.equal(access.canManageCalls, 2);
+      assert.equal(analytics.recorded.length, 1);
+    });
+  });
+
+  void it("requires manage permission to disable or enable knowledge bases", async () => {
+    const access = makeAccessStub({ canManage: false });
+    const service = makeService(access);
+
+    await assert.rejects(
+      () => service.disable("00000000-0000-0000-0000-000000000100", user),
+      ForbiddenException,
+    );
+    await assert.rejects(
+      () => service.enable("00000000-0000-0000-0000-000000000100", user),
+      ForbiddenException,
+    );
+    assert.equal(access.canManageCalls, 2);
+  });
+
+  void it("allows readers with access to view disabled knowledge bases without manage permission", async () => {
+    const access = makeAccessStub({ canAccess: true, canManage: false });
+    const analytics = makeAnalyticsStub();
+    const service = makeService(access, analytics);
+    Object.assign(service as object, {
+      findRowById: () => Promise.resolve(makeKnowledgeBaseRow({ status: "disabled" })),
+    } satisfies ServiceInternals);
+
+    const result = await service.get("00000000-0000-0000-0000-000000000100", user);
+
+    assert.equal(result.status, "disabled");
+    assert.equal(result.canManage, false);
+    assert.equal(access.canAccessCalls, 1);
+    assert.equal(access.canManageCalls, 1);
+    assert.equal(analytics.recorded.length, 1);
   });
 
   void it("hides archived knowledge bases from readers even when they otherwise have access", async () => {
@@ -116,7 +152,7 @@ void describe("KnowledgeBaseService archive semantics", () => {
     assert.equal(analytics.recorded.length, 0);
   });
 
-  void it("allows managers to view archived knowledge bases", async () => {
+  void it("keeps archived knowledge bases visible only to managers for historical compatibility", async () => {
     const access = makeAccessStub({ canAccess: false, canManage: true });
     const analytics = makeAnalyticsStub();
     const service = makeService(access, analytics);
@@ -133,7 +169,7 @@ void describe("KnowledgeBaseService archive semantics", () => {
     assert.equal(analytics.recorded.length, 1);
   });
 
-  void it("excludes archived knowledge bases from list results by default", async () => {
+  void it("keeps disabled knowledge bases in default list visibility while excluding archived", async () => {
     const access = makeAccessStub();
     const captured = await captureListCondition(access, {});
     const fragments = collectStringFragments(captured);
@@ -284,5 +320,31 @@ function collectStrings(value: unknown, fragments: string[], seen: WeakSet<objec
   }
   for (const symbol of Object.getOwnPropertySymbols(value)) {
     collectStrings((value as Record<symbol, unknown>)[symbol], fragments, seen);
+  }
+}
+
+async function withCapturedStatusUpdate(
+  assertion: (updateValues: StatusUpdateValues) => Promise<void>,
+): Promise<void> {
+  const mutableDb = db as unknown as MutableDb;
+  const originalUpdate = mutableDb.update;
+  const updateValues: StatusUpdateValues = {};
+
+  mutableDb.update = () => ({
+    set(values: Record<string, unknown>) {
+      updateValues.status = values["status"];
+      updateValues.updatedAt = values["updatedAt"];
+      return {
+        where() {
+          return Promise.resolve([]);
+        },
+      };
+    },
+  });
+
+  try {
+    await assertion(updateValues);
+  } finally {
+    mutableDb.update = originalUpdate;
   }
 }

@@ -266,11 +266,25 @@ export class KnowledgeBaseService {
   }
 
   async delete(id: string, user: AuthenticatedUser): Promise<void> {
+    await this.disable(id, user);
+  }
+
+  async disable(id: string, user: AuthenticatedUser): Promise<void> {
     await this.ensureCanManage(id, user);
     await db
       .update(knowledgeBases)
-      .set({ status: "archived", updatedAt: new Date() })
+      .set({ status: "disabled", updatedAt: new Date() })
       .where(eq(knowledgeBases.id, id));
+  }
+
+  async enable(id: string, user: AuthenticatedUser): Promise<KnowledgeBase> {
+    await this.ensureCanManage(id, user);
+    await db
+      .update(knowledgeBases)
+      .set({ status: "active", updatedAt: new Date() })
+      .where(eq(knowledgeBases.id, id));
+
+    return this.get(id, user);
   }
 
   async listDepartmentOptions(user: AuthenticatedUser): Promise<DepartmentOptionsResponse> {

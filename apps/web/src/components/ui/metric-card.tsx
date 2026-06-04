@@ -37,13 +37,13 @@ export function MetricCard({ label, value, trend, className }: MetricCardProps) 
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-surface px-4 py-4 shadow-xs",
+        "rounded-lg border border-border bg-surface px-4 py-3.5 shadow-xs transition-colors hover:border-brand-200",
         className,
       )}
     >
-      <p className="text-sm text-ink-muted">{label}</p>
-      <div className="mt-1 flex items-baseline gap-2">
-        <span className="text-2xl font-semibold text-ink">{value}</span>
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <div className="mt-1.5 flex items-baseline gap-2">
+        <span className="text-2xl font-semibold tracking-tight tabular-nums text-ink">{value}</span>
         {trend !== undefined ? <TrendArrow current={trend.current} previous={trend.previous} /> : null}
       </div>
     </div>

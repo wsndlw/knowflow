@@ -155,6 +155,28 @@ export class KnowledgeItemController {
     return { ok: true, data: knowledgeItemSchema.parse(data) };
   }
 
+  @Post("knowledge-items/:id/archive")
+  @AuditLog("knowledge_item.archive", AuditTargetType.KNOWLEDGE_ITEM)
+  async archive(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ApiSuccess<KnowledgeItem>> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.knowledgeItemService.archive(id, this.requireUser(request));
+    return { ok: true, data: knowledgeItemSchema.parse(data) };
+  }
+
+  @Post("knowledge-items/:id/restore")
+  @AuditLog("knowledge_item.restore", AuditTargetType.KNOWLEDGE_ITEM)
+  async restore(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ApiSuccess<KnowledgeItem>> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.knowledgeItemService.restore(id, this.requireUser(request));
+    return { ok: true, data: knowledgeItemSchema.parse(data) };
+  }
+
   @Delete("knowledge-items/:id")
   @AuditLog("knowledge_item.delete", AuditTargetType.KNOWLEDGE_ITEM)
   async delete(

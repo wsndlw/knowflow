@@ -99,6 +99,7 @@ export const knowledgeItemStatusEnum = pgEnum("knowledge_item_status", [
   "published",
   "unpublished",
   "expired",
+  "archived",
 ]);
 export const agentTypeEnum = pgEnum("agent_type", ["global", "official", "personal"]);
 export const agentVisibilityEnum = pgEnum("agent_visibility", [

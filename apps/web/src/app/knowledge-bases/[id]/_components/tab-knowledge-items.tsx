@@ -9,6 +9,7 @@ import {
 
 import { Badge } from "../../../../components/ui/badge";
 import { Button } from "../../../../components/ui/button";
+import { Dialog } from "../../../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Input } from "../../../../components/ui/input";
 import { Select } from "../../../../components/ui/select";
@@ -67,6 +68,9 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
   const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [editing, setEditing] = useState<KnowledgeItem | null>(null);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<{ ids: string[] } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pageSize = 20;
 
@@ -166,14 +170,36 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     setActionError(null);
     try {
-      await apiRequest(`/knowledge-items/${id}`, emptyObjectSchema, { method: "DELETE" });
+      for (const id of deleteTarget.ids) {
+        await apiRequest(`/knowledge-items/${id}`, emptyObjectSchema, { method: "DELETE" });
+      }
+      setDeleteTarget(null);
+      setSelected(new Set());
       await loadItems();
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "删除失败");
+    } finally {
+      setDeleting(false);
     }
+  }
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const allSelected = items.length > 0 && selected.size === items.length;
+  function toggleAll() {
+    setSelected((prev) => (prev.size === items.length ? new Set() : new Set(items.map((i) => i.id))));
   }
 
   // 打标签：全量替换，用返回的标签列表更新该行
@@ -226,6 +252,21 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
         </div>
       </div>
 
+      {canManage && selected.size > 0 ? (
+        <div className="flex items-center justify-between rounded-md border border-brand-200 bg-brand-50 px-3 py-2">
+          <span className="text-sm text-ink">
+            已选 <span className="font-medium tabular-nums">{selected.size}</span> 项
+          </span>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+              取消选择
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => setDeleteTarget({ ids: [...selected] })}>
+              批量删除
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {actionError ? (
         <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{actionError}</p>
       ) : null}
@@ -248,6 +289,17 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
         <Table>
           <TableHead>
             <TableRow>
+              {canManage ? (
+                <TableHeaderCell className="w-10">
+                  <input
+                    type="checkbox"
+                    className="size-4 shrink-0 cursor-pointer accent-brand-600"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    aria-label="全选"
+                  />
+                </TableHeaderCell>
+              ) : null}
               <TableHeaderCell>标题</TableHeaderCell>
               <TableHeaderCell>标签</TableHeaderCell>
               <TableHeaderCell>状态</TableHeaderCell>
@@ -260,6 +312,17 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
           <TableBody>
             {items.map((item) => (
               <TableRow key={item.id}>
+                {canManage ? (
+                  <TableCell className="w-10">
+                    <input
+                      type="checkbox"
+                      className="size-4 shrink-0 cursor-pointer accent-brand-600"
+                      checked={selected.has(item.id)}
+                      onChange={() => toggleRow(item.id)}
+                      aria-label={`选择 ${item.title}`}
+                    />
+                  </TableCell>
+                ) : null}
                 <TableCell className="font-medium max-w-xs truncate">{item.title}</TableCell>
                 <TableCell>
                   {canManage ? (
@@ -332,7 +395,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
                       <Button variant="ghost" size="sm" onClick={() => void handleToggleStatus(item)}>
                         {item.status === "published" ? "下架" : "发布"}
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => void handleDelete(item.id)}>
+                      <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ ids: [item.id] })}>
                         删除
                       </Button>
                     </div>
@@ -369,6 +432,26 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
         onUpdate={updateTagFn}
         onDelete={removeTag}
       />
+
+      <Dialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="确认删除"
+        description={
+          deleteTarget
+            ? `确定删除选中的 ${String(deleteTarget.ids.length)} 条知识条目吗？删除后无法恢复。`
+            : ""
+        }
+      >
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
+            取消
+          </Button>
+          <Button variant="destructive" loading={deleting} onClick={() => void handleConfirmDelete()}>
+            确认删除
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

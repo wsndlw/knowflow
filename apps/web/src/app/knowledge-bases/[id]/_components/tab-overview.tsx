@@ -3,18 +3,14 @@
 import type { KnowledgeBase, KnowledgeBaseOverview } from "@knowflow/shared";
 
 import { Badge } from "../../../../components/ui/badge";
-import { Button } from "../../../../components/ui/button";
 import { Card } from "../../../../components/ui/card";
-import type { TabValue } from "../_hooks/use-tab-state";
 
 type TabOverviewProps = {
   kb: KnowledgeBase;
   overview: KnowledgeBaseOverview;
-  canManage: boolean;
-  onJumpTab: (tab: TabValue) => void;
 };
 
-export function TabOverview({ kb, overview, canManage, onJumpTab }: TabOverviewProps) {
+export function TabOverview({ kb, overview }: TabOverviewProps) {
   return (
     <div className="flex flex-col gap-6">
       {/* 计数卡片 */}
@@ -58,29 +54,6 @@ export function TabOverview({ kb, overview, canManage, onJumpTab }: TabOverviewP
           </div>
         </dl>
       </Card>
-
-      {/* 快捷入口 */}
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" size="sm" onClick={() => onJumpTab("documents")}>
-          查看文档
-        </Button>
-        <Button variant="secondary" size="sm" onClick={() => onJumpTab("knowledge-items")}>
-          查看知识条目
-        </Button>
-        {canManage ? (
-          <>
-            <Button variant="secondary" size="sm" onClick={() => onJumpTab("agents")}>
-              管理专家 Agent
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => onJumpTab("members")}>
-              管理成员
-            </Button>
-          </>
-        ) : null}
-        <Button variant="secondary" size="sm" onClick={() => onJumpTab("analytics")}>
-          查看统计
-        </Button>
-      </div>
     </div>
   );
 }

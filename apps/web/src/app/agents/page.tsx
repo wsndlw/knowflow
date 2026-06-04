@@ -420,7 +420,7 @@ export default function ChatPage() {
               <EmptyState
                 title="开始一段对话"
                 description="向全局助手提问,它会在你有权访问的全部知识库中查找依据并给出带来源的回答。"
-                className="mt-16"
+                className="mt-[18vh]"
               />
             ) : null}
 

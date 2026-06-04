@@ -150,9 +150,9 @@ function ShellContent({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex h-dvh overflow-hidden">
       <Sidebar />
-      <main className="min-w-0 flex-1 overflow-x-hidden">{children}</main>
+      <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
     </div>
   );
 }

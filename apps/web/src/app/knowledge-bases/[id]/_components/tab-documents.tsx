@@ -72,9 +72,12 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
   const [isUploading, setIsUploading] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ ids: string[] } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const [previewTarget, setPreviewTarget] = useState<KnowledgeDocument | null>(null);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -153,6 +156,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
       }
       documentSchema.parse(body.data);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      setUploadOpen(false);
       await loadDocuments();
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "上传失败");
@@ -175,15 +179,38 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     }
   }
 
-  async function handleDelete(docId: string) {
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     setActionError(null);
-    setDeleteTarget(null);
     try {
-      await apiRequest(`/documents/${docId}`, emptyObjectSchema, { method: "DELETE" });
+      for (const docId of deleteTarget.ids) {
+        await apiRequest(`/documents/${docId}`, emptyObjectSchema, { method: "DELETE" });
+      }
+      setDeleteTarget(null);
+      setSelectedIds(new Set());
       await loadDocuments();
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "删除失败");
+    } finally {
+      setDeleting(false);
     }
+  }
+
+  function toggleSelect(docId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(docId)) next.delete(docId);
+      else next.add(docId);
+      return next;
+    });
+  }
+
+  const allSelected = documents.length > 0 && selectedIds.size === documents.length;
+  function toggleAll() {
+    setSelectedIds((prev) =>
+      prev.size === documents.length ? new Set() : new Set(documents.map((d) => d.id)),
+    );
   }
 
   const handleExtract = async (documentId: string) => {
@@ -256,19 +283,40 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
             <Button variant="outline" size="sm" onClick={() => setTagManagerOpen(true)}>
               管理标签
             </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.md,.markdown,.txt,.docx,.csv,.xls,.xlsx,.png,.jpg,.jpeg,.webp,application/pdf,text/markdown,text/plain,image/png,image/jpeg,image/webp"
-              className="text-sm file:mr-2 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
-            />
-            <Button size="sm" loading={isUploading} onClick={() => void handleUpload()}>
-              上传
+            <Button size="sm" onClick={() => { setActionError(null); setUploadOpen(true); }}>
+              上传文档
             </Button>
           </div>
         ) : null}
       </div>
 
+      {canManage && documents.length > 0 ? (
+        <div className="flex items-center gap-3 px-0.5">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-muted">
+            <input
+              type="checkbox"
+              className="size-4 shrink-0 cursor-pointer accent-brand-600"
+              checked={allSelected}
+              onChange={toggleAll}
+            />
+            全选
+          </label>
+          {selectedIds.size > 0 ? (
+            <>
+              <span className="text-sm text-ink-muted">
+                已选 <span className="font-medium text-ink tabular-nums">{selectedIds.size}</span>
+              </span>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setDeleteTarget({ ids: [...selectedIds] })}
+              >
+                批量删除
+              </Button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       {actionError ? (
         <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{actionError}</p>
       ) : null}
@@ -300,8 +348,10 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               progress={progressMap[doc.id]}
               canManage={canManage}
               allTags={allTags}
+              selected={selectedIds.has(doc.id)}
+              onToggleSelect={() => toggleSelect(doc.id)}
               onReprocess={() => void handleReprocess(doc.id)}
-              onDelete={() => setDeleteTarget(doc.id)}
+              onDelete={() => setDeleteTarget({ ids: [doc.id] })}
               onReplaceTags={handleReplaceDocTags}
               onPreview={() => setPreviewTarget(doc)}
               onExtract={(docId) => void handleExtract(docId)}
@@ -317,15 +367,46 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         title="确认删除"
-        description="删除后文档数据无法恢复，确定要删除吗？"
+        description={
+          deleteTarget
+            ? `删除后文档数据无法恢复，确定删除选中的 ${String(deleteTarget.ids.length)} 个文档吗？`
+            : ""
+        }
       >
         <div className="flex justify-end gap-2 pt-4">
           <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
             取消
           </Button>
-          <Button variant="destructive" onClick={() => { if (deleteTarget) void handleDelete(deleteTarget); }}>
+          <Button variant="destructive" loading={deleting} onClick={() => void handleConfirmDelete()}>
             确认删除
           </Button>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        title="上传文档"
+        description="支持 PDF、Markdown、TXT、DOCX、CSV、Excel、PNG/JPG/WebP 图片。"
+      >
+        <div className="flex flex-col gap-4 pt-1">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.md,.markdown,.txt,.docx,.csv,.xls,.xlsx,.png,.jpg,.jpeg,.webp,application/pdf,text/markdown,text/plain,image/png,image/jpeg,image/webp"
+            className="text-sm file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
+          />
+          {actionError ? (
+            <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{actionError}</p>
+          ) : null}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={() => setUploadOpen(false)}>
+              取消
+            </Button>
+            <Button loading={isUploading} onClick={() => void handleUpload()}>
+              确定上传
+            </Button>
+          </div>
         </div>
       </Dialog>
 
@@ -352,6 +433,8 @@ function DocumentRow({
   progress,
   canManage,
   allTags,
+  selected,
+  onToggleSelect,
   onReprocess,
   onDelete,
   onReplaceTags,
@@ -363,6 +446,8 @@ function DocumentRow({
   progress: DocumentProgressEvent | undefined;
   canManage: boolean;
   allTags: KnowledgeDocument["tags"];
+  selected: boolean;
+  onToggleSelect: () => void;
   onReprocess: () => void;
   onDelete: () => void;
   onReplaceTags: (docId: string, tagIds: string[]) => Promise<void>;
@@ -377,6 +462,15 @@ function DocumentRow({
 
   return (
     <div className="flex items-center gap-4 rounded-lg border border-border bg-surface px-4 py-3 transition-colors hover:border-brand-200">
+      {canManage ? (
+        <input
+          type="checkbox"
+          className="size-4 shrink-0 cursor-pointer accent-brand-600"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label="选择文档"
+        />
+      ) : null}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-ink truncate">{doc.title}</p>
         <p className="text-xs text-ink-muted mt-0.5 tabular-nums">

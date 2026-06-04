@@ -381,7 +381,7 @@ async function runSeed(): Promise<void> {
   const admin = await ensureUser({
     username: getRequiredEnv("SEED_ADMIN_USER", "admin"),
     password: getRequiredEnv("SEED_ADMIN_PASSWORD", DEFAULT_PASSWORD),
-    name: getRequiredEnv("SEED_ADMIN_NAME", "System Administrator"),
+    name: getRequiredEnv("SEED_ADMIN_NAME", "系统管理员"),
     departmentId: defaultDepartment.id,
     platformRole: "super_admin",
   });

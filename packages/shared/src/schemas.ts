@@ -262,6 +262,10 @@ export const assignUserDepartmentRequestSchema = z.object({
   departmentId: z.uuid(),
 });
 
+export const transferDepartmentMemberRequestSchema = z.object({
+  targetDepartmentId: z.uuid(),
+});
+
 export const adminUserListResponseSchema = z.object({
   items: z.array(userOptionSchema),
 });
@@ -1264,6 +1268,9 @@ export type UpdateDepartmentRequest = z.infer<typeof updateDepartmentRequestSche
 export type DepartmentMembersResponse = z.infer<typeof departmentMembersResponseSchema>;
 export type AddDepartmentMemberRequest = z.infer<typeof addDepartmentMemberRequestSchema>;
 export type AssignUserDepartmentRequest = z.infer<typeof assignUserDepartmentRequestSchema>;
+export type TransferDepartmentMemberRequest = z.infer<
+  typeof transferDepartmentMemberRequestSchema
+>;
 export type AdminUserListResponse = z.infer<typeof adminUserListResponseSchema>;
 export type KnowledgeTag = z.infer<typeof tagSchema>;
 export type TagListResponse = z.infer<typeof tagListResponseSchema>;

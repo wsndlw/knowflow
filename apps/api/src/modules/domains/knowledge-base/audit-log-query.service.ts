@@ -4,6 +4,7 @@ import {
   agents,
   auditLogs,
   db,
+  departments,
   documents,
   knowledgeItems,
   tags,
@@ -203,6 +204,10 @@ export class AuditLogQueryService {
     }
 
     const labels = new Map<string, string>();
+    await Promise.all([
+      this.addDepartmentLabels(labels, idsByType.get(AuditTargetType.DEPARTMENT)),
+      this.addUserLabels(labels, idsByType.get(AuditTargetType.USER)),
+    ]);
     this.addLabels(
       labels,
       AuditTargetType.KNOWLEDGE_BASE,
@@ -253,6 +258,30 @@ export class AuditLogQueryService {
       .from(documents)
       .where(inArray(documents.id, [...ids]));
     rows.forEach((row) => labels.set(this.labelKey(AuditTargetType.DOCUMENT, row.id), row.title));
+  }
+
+  private async addDepartmentLabels(labels: Map<string, string>, ids: Set<string> | undefined) {
+    if (ids === undefined || ids.size === 0) {
+      return;
+    }
+    const rows = await db
+      .select({ id: departments.id, name: departments.name })
+      .from(departments)
+      .where(inArray(departments.id, [...ids]));
+    rows.forEach((row) =>
+      labels.set(this.labelKey(AuditTargetType.DEPARTMENT, row.id), row.name),
+    );
+  }
+
+  private async addUserLabels(labels: Map<string, string>, ids: Set<string> | undefined) {
+    if (ids === undefined || ids.size === 0) {
+      return;
+    }
+    const rows = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(inArray(users.id, [...ids]));
+    rows.forEach((row) => labels.set(this.labelKey(AuditTargetType.USER, row.id), row.name));
   }
 
   private async addKnowledgeItemLabels(labels: Map<string, string>, ids: Set<string> | undefined) {

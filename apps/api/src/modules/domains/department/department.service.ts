@@ -151,14 +151,11 @@ export class DepartmentService {
     memberUserId: string,
     user: AuthenticatedUser,
   ): Promise<void> {
-    await this.ensureCanAssignUserToDepartment(memberUserId, departmentId, user);
-    await db
-      .update(users)
-      .set({ departmentId, updatedAt: new Date() })
-      .where(eq(users.id, memberUserId));
+    const targetUser = await this.ensureCanAssignUserToDepartment(memberUserId, departmentId, user);
+    await this.moveUserToDepartment(targetUser, departmentId);
   }
 
-  async removeMember(
+  async transferMember(
     sourceDepartmentId: string,
     memberUserId: string,
     targetDepartmentId: string,
@@ -168,7 +165,10 @@ export class DepartmentService {
     if (sourceDepartmentId === targetDepartmentId) {
       throw new BadRequestException("Target department must be different");
     }
-    await this.ensureDepartmentExists(targetDepartmentId);
+    if (user.platformRole === "department_admin") {
+      throw new ForbiddenException("Department admins cannot transfer members between departments");
+    }
+    await this.ensureCanManageDepartment(targetDepartmentId, user);
 
     const member = await this.findUser(memberUserId);
     if (member === undefined) {
@@ -177,14 +177,8 @@ export class DepartmentService {
     if (member.departmentId !== sourceDepartmentId) {
       throw new BadRequestException("User is not a member of this department");
     }
-    if (user.platformRole === "department_admin") {
-      throw new ForbiddenException("Department admins cannot move members out of their department");
-    }
 
-    await db
-      .update(users)
-      .set({ departmentId: targetDepartmentId, updatedAt: new Date() })
-      .where(eq(users.id, memberUserId));
+    await this.moveUserToDepartment(member, targetDepartmentId);
   }
 
   async listUsers(user: AuthenticatedUser): Promise<AdminUserListResponse> {
@@ -212,11 +206,8 @@ export class DepartmentService {
     input: AssignUserDepartmentRequest,
     user: AuthenticatedUser,
   ): Promise<UserOption> {
-    await this.ensureCanAssignUserToDepartment(userId, input.departmentId, user);
-    await db
-      .update(users)
-      .set({ departmentId: input.departmentId, updatedAt: new Date() })
-      .where(eq(users.id, userId));
+    const targetUser = await this.ensureCanAssignUserToDepartment(userId, input.departmentId, user);
+    await this.moveUserToDepartment(targetUser, input.departmentId);
 
     const updated = await this.findUser(userId);
     if (updated === undefined) {
@@ -271,6 +262,24 @@ export class DepartmentService {
     }
 
     return targetUser;
+  }
+
+  private async moveUserToDepartment(user: AdminUserRow, departmentId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ departmentId, updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+      await tx.delete(departmentAdmins).where(eq(departmentAdmins.userId, user.id));
+      if (user.platformRole === "department_admin") {
+        await tx
+          .insert(departmentAdmins)
+          .values({ departmentId, userId: user.id })
+          .onConflictDoNothing({
+            target: [departmentAdmins.departmentId, departmentAdmins.userId],
+          });
+      }
+    });
   }
 
   private async getDepartment(id: string): Promise<Department> {

@@ -254,7 +254,7 @@ export class KnowledgeBaseService {
       updateValues.visibility = input.visibility;
     }
     if (input.status !== undefined) {
-      updateValues.status = input.status;
+      throw new BadRequestException("Use enable or disable endpoint to change status");
     }
 
     await db

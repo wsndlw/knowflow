@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { db } from "@knowflow/db";
 
 import type { AnalyticsEventService } from "../analytics/analytics-event.service.js";
@@ -69,6 +69,31 @@ const user: AuthenticatedUser = {
 };
 
 void describe("KnowledgeBaseService disable/enable semantics", () => {
+  void it("rejects status changes through generic update so audit uses enable/disable actions", async () => {
+    const access = makeAccessStub({ canManage: true });
+    const service = makeService(access);
+
+    await assert.rejects(
+      () =>
+        service.update(
+          "00000000-0000-0000-0000-000000000100",
+          { status: "archived" },
+          user,
+        ),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        service.update(
+          "00000000-0000-0000-0000-000000000100",
+          { status: "active" },
+          user,
+        ),
+      BadRequestException,
+    );
+    assert.equal(access.canManageCalls, 2);
+  });
+
   void it("disables a knowledge base instead of archiving or physically deleting related records", async () => {
     const access = makeAccessStub({ canManage: true });
     const service = makeService(access);

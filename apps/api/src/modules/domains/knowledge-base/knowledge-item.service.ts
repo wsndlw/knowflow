@@ -355,6 +355,46 @@ export class KnowledgeItemService {
     return this.get(id, user, { incrementView: false });
   }
 
+  async archive(id: string, user: AuthenticatedUser): Promise<KnowledgeItem> {
+    const row = await this.findRow(id, user.id);
+    if (row === undefined) {
+      throw new NotFoundException("Knowledge item not found");
+    }
+    await this.ensureCanManage(row.knowledgeBaseId, user);
+
+    await db
+      .update(knowledgeItems)
+      .set({
+        status: "archived",
+        enabled: false,
+        updatedBy: user.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(knowledgeItems.id, id));
+
+    return this.get(id, user, { incrementView: false });
+  }
+
+  async restore(id: string, user: AuthenticatedUser): Promise<KnowledgeItem> {
+    const row = await this.findRow(id, user.id);
+    if (row === undefined) {
+      throw new NotFoundException("Knowledge item not found");
+    }
+    await this.ensureCanManage(row.knowledgeBaseId, user);
+
+    await db
+      .update(knowledgeItems)
+      .set({
+        status: "unpublished",
+        enabled: false,
+        updatedBy: user.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(knowledgeItems.id, id));
+
+    return this.get(id, user, { incrementView: false });
+  }
+
   async delete(id: string, user: AuthenticatedUser): Promise<void> {
     const row = await this.findRow(id, user.id);
     if (row === undefined) {

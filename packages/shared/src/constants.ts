@@ -77,6 +77,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "knowledge_item.update": "更新知识条目",
   "knowledge_item.publish": "发布知识条目",
   "knowledge_item.unpublish": "下架知识条目",
+  "knowledge_item.archive": "归档知识条目",
+  "knowledge_item.restore": "恢复知识条目",
   "knowledge_item.delete": "删除知识条目",
   "agent.create": "创建Agent",
   "agent.update": "更新Agent",
@@ -139,6 +141,7 @@ export const KNOWLEDGE_ITEM_STATUSES = [
   "published",
   "unpublished",
   "expired",
+  "archived",
 ] as const;
 
 export const KNOWLEDGE_ITEM_FEEDBACK_RATINGS = ["like", "dislike"] as const;

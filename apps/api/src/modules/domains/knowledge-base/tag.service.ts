@@ -245,7 +245,7 @@ export class TagService {
   private async ensureCanReadKnowledgeItem(
     item: {
       knowledgeBaseId: string;
-      status: "draft" | "pending_review" | "published" | "unpublished" | "expired";
+      status: "draft" | "pending_review" | "published" | "unpublished" | "expired" | "archived";
       enabled: boolean;
     },
     user: AuthenticatedUser,

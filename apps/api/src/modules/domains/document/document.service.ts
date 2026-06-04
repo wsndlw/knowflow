@@ -433,6 +433,9 @@ export class DocumentService {
       throw new NotFoundException("Document not found");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
+    if (!row.enabled) {
+      throw new BadRequestException("Archived documents must be restored before reprocessing");
+    }
     if (
       row.processStatus === "pending" ||
       row.processStatus === "parsing" ||

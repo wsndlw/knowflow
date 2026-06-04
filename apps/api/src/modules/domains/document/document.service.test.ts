@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { db, documents } from "@knowflow/db";
 import type { DocumentListQuery } from "@knowflow/shared";
 import { documentListQuerySchema } from "@knowflow/shared";
@@ -125,9 +125,20 @@ void describe("DocumentService archive semantics", () => {
     assert.equal(access.canManageCalls, 1);
   });
 
-  void it("excludes archived documents from list results by default", () => {
-    const { params } = buildListSql({});
+  void it("requires archived documents to be restored before reprocessing", async () => {
+    const access = makeAccessStub({ canManage: true });
+    const service = makeService(access);
+    const internals = service as unknown as DocumentServiceInternals;
+    internals.findRow = () => Promise.resolve(makeDocumentRow({ enabled: false }));
 
+    await assert.rejects(() => service.reprocess(documentId, user), BadRequestException);
+    assert.equal(access.canManageCalls, 1);
+  });
+
+  void it("excludes archived documents from list results by default", () => {
+    const { params, sql } = buildListSql({});
+
+    assert.match(sql, /"documents"\."enabled" =/);
     assert.equal(params.includes(knowledgeBaseId), true);
     assert.equal(params.includes(true), true);
   });

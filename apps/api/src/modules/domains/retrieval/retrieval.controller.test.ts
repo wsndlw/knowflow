@@ -86,11 +86,14 @@ const emptyRetrievalResponse: RetrievalTestResponse = {
 };
 
 function installDbPatch(input: {
+  canAccessKnowledgeBase: boolean;
   canManageKnowledgeBase: boolean;
-}): { knowledgeBasePermissionChecks: number } {
+}): { accessPermissionChecks: number; managePermissionChecks: number } {
   const calls = {
-    knowledgeBasePermissionChecks: 0,
+    accessPermissionChecks: 0,
+    managePermissionChecks: 0,
   };
+  let nextKnowledgeBasePermissionQuery: "access" | undefined;
 
   mutableDb.select = () => {
     let selectedTable: unknown;
@@ -99,14 +102,25 @@ function installDbPatch(input: {
         selectedTable = table;
         return chain;
       },
-      where: () => chain,
+      where: () => {
+        if (selectedTable === knowledgeBaseMembers) {
+          nextKnowledgeBasePermissionQuery = "access";
+        }
+        return chain;
+      },
       limit: () => {
         if (selectedTable === knowledgeBases) {
-          calls.knowledgeBasePermissionChecks += 1;
+          const queryKind = nextKnowledgeBasePermissionQuery ?? "manage";
+          nextKnowledgeBasePermissionQuery = undefined;
+          if (queryKind === "access") {
+            calls.accessPermissionChecks += 1;
+            return Promise.resolve(input.canAccessKnowledgeBase ? [{ id: KNOWLEDGE_BASE_ID }] : []);
+          }
+          calls.managePermissionChecks += 1;
           return Promise.resolve(input.canManageKnowledgeBase ? [{ id: KNOWLEDGE_BASE_ID }] : []);
         }
         if (selectedTable === knowledgeBaseAdmins || selectedTable === knowledgeBaseMembers) {
-          return Promise.resolve(input.canManageKnowledgeBase ? [{ id: "membership" }] : []);
+          return Promise.resolve([{ id: "membership" }]);
         }
         return Promise.resolve([]);
       },
@@ -122,8 +136,11 @@ function restoreDb(): void {
   mutableDb.select = originalSelect;
 }
 
-function buildController(retrievalService: RetrievalService): RetrievalController {
-  return new RetrievalController(retrievalService, new KnowledgeBaseAccessService());
+function buildController(
+  retrievalService: RetrievalService,
+  accessService = new KnowledgeBaseAccessService(),
+): RetrievalController {
+  return new RetrievalController(retrievalService, accessService);
 }
 
 void describe("retrieval test permissions", () => {
@@ -136,7 +153,10 @@ void describe("retrieval test permissions", () => {
   });
 
   void it("rejects non-managers through POST /knowledge-bases/:id/retrieval-test", async () => {
-    const calls = installDbPatch({ canManageKnowledgeBase: false });
+    const calls = installDbPatch({
+      canAccessKnowledgeBase: true,
+      canManageKnowledgeBase: false,
+    });
     let retrievalCalled = false;
     const retrievalService = {
       testRetrieve: () => {
@@ -144,7 +164,11 @@ void describe("retrieval test permissions", () => {
         return Promise.resolve(emptyRetrievalResponse);
       },
     } as unknown as RetrievalService;
-    const controller = buildController(retrievalService);
+    const accessService = new KnowledgeBaseAccessService();
+    const controller = buildController(retrievalService, accessService);
+
+    assert.equal(await accessService.canAccess(KNOWLEDGE_BASE_ID, readonlyUser), true);
+    assert.equal(await accessService.canManage(KNOWLEDGE_BASE_ID, readonlyUser), false);
 
     await assert.rejects(
       () =>
@@ -155,12 +179,16 @@ void describe("retrieval test permissions", () => {
         ),
       NotFoundException,
     );
-    assert.equal(calls.knowledgeBasePermissionChecks, 1);
+    assert.equal(calls.accessPermissionChecks, 1);
+    assert.equal(calls.managePermissionChecks, 2);
     assert.equal(retrievalCalled, false);
   });
 
   void it("allows managers through POST /knowledge-bases/:id/retrieval-test", async () => {
-    const calls = installDbPatch({ canManageKnowledgeBase: true });
+    const calls = installDbPatch({
+      canAccessKnowledgeBase: true,
+      canManageKnowledgeBase: true,
+    });
     let receivedInput: RetrievalTestInput | undefined;
     const retrievalService = {
       testRetrieve: (input: RetrievalTestInput) => {
@@ -168,7 +196,11 @@ void describe("retrieval test permissions", () => {
         return Promise.resolve(emptyRetrievalResponse);
       },
     } as unknown as RetrievalService;
-    const controller = buildController(retrievalService);
+    const accessService = new KnowledgeBaseAccessService();
+    const controller = buildController(retrievalService, accessService);
+
+    assert.equal(await accessService.canAccess(KNOWLEDGE_BASE_ID, adminUser), true);
+    assert.equal(await accessService.canManage(KNOWLEDGE_BASE_ID, adminUser), true);
 
     const response = await controller.testRetrieve(
       { id: KNOWLEDGE_BASE_ID },
@@ -177,7 +209,8 @@ void describe("retrieval test permissions", () => {
     );
 
     assert.deepEqual(response, { ok: true, data: emptyRetrievalResponse });
-    assert.equal(calls.knowledgeBasePermissionChecks, 1);
+    assert.equal(calls.accessPermissionChecks, 1);
+    assert.equal(calls.managePermissionChecks, 2);
     assert.ok(receivedInput);
     assert.equal(receivedInput.knowledgeBaseId, KNOWLEDGE_BASE_ID);
     assert.equal(receivedInput.canManage, true);

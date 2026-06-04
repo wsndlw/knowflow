@@ -77,13 +77,21 @@ const adminUser: AuthenticatedUser = {
 };
 
 function installDbPatch(input: {
+  canAccessKnowledgeBase: boolean;
   canManageKnowledgeBase: boolean;
-}): { transactions: number; deletes: number; knowledgeBasePermissionChecks: number } {
+}): {
+  transactions: number;
+  deletes: number;
+  accessPermissionChecks: number;
+  managePermissionChecks: number;
+} {
   const calls = {
     transactions: 0,
     deletes: 0,
-    knowledgeBasePermissionChecks: 0,
+    accessPermissionChecks: 0,
+    managePermissionChecks: 0,
   };
+  let nextKnowledgeBasePermissionQuery: "access" | undefined;
 
   mutableDb.select = () => {
     let selectedTable: unknown;
@@ -92,7 +100,12 @@ function installDbPatch(input: {
         selectedTable = table;
         return chain;
       },
-      where: () => chain,
+      where: () => {
+        if (selectedTable === knowledgeBaseMembers) {
+          nextKnowledgeBasePermissionQuery = "access";
+        }
+        return chain;
+      },
       innerJoin: () => chain,
       limit: () => {
         if (selectedTable === documents) {
@@ -102,11 +115,17 @@ function installDbPatch(input: {
           return Promise.resolve([{ knowledgeBaseId: KNOWLEDGE_BASE_ID }]);
         }
         if (selectedTable === knowledgeBases) {
-          calls.knowledgeBasePermissionChecks += 1;
+          const queryKind = nextKnowledgeBasePermissionQuery ?? "manage";
+          nextKnowledgeBasePermissionQuery = undefined;
+          if (queryKind === "access") {
+            calls.accessPermissionChecks += 1;
+            return Promise.resolve(input.canAccessKnowledgeBase ? [{ id: KNOWLEDGE_BASE_ID }] : []);
+          }
+          calls.managePermissionChecks += 1;
           return Promise.resolve(input.canManageKnowledgeBase ? [{ id: KNOWLEDGE_BASE_ID }] : []);
         }
         if (selectedTable === knowledgeBaseAdmins || selectedTable === knowledgeBaseMembers) {
-          return Promise.resolve(input.canManageKnowledgeBase ? [{ id: "membership" }] : []);
+          return Promise.resolve([{ id: "membership" }]);
         }
         return Promise.resolve([]);
       },
@@ -144,8 +163,7 @@ function restoreDb(): void {
   mutableDb.transaction = originalDb.transaction;
 }
 
-function buildController(): TagController {
-  const accessService = new KnowledgeBaseAccessService();
+function buildController(accessService = new KnowledgeBaseAccessService()): TagController {
   return new TagController(new TagService(accessService));
 }
 
@@ -166,8 +184,15 @@ void describe("tag replacement permissions", () => {
   });
 
   void it("rejects read-only members through PUT /documents/:id/tags", async () => {
-    const calls = installDbPatch({ canManageKnowledgeBase: false });
-    const controller = buildController();
+    const calls = installDbPatch({
+      canAccessKnowledgeBase: true,
+      canManageKnowledgeBase: false,
+    });
+    const accessService = new KnowledgeBaseAccessService();
+    const controller = buildController(accessService);
+
+    assert.equal(await accessService.canAccess(KNOWLEDGE_BASE_ID, readonlyUser), true);
+    assert.equal(await accessService.canManage(KNOWLEDGE_BASE_ID, readonlyUser), false);
 
     await assert.rejects(
       () =>
@@ -178,13 +203,21 @@ void describe("tag replacement permissions", () => {
         ),
       ForbiddenException,
     );
-    assert.equal(calls.knowledgeBasePermissionChecks, 1);
+    assert.equal(calls.accessPermissionChecks, 1);
+    assert.equal(calls.managePermissionChecks, 2);
     assert.equal(calls.transactions, 0);
   });
 
   void it("allows knowledge base admins through PUT /documents/:id/tags", async () => {
-    const calls = installDbPatch({ canManageKnowledgeBase: true });
-    const controller = buildController();
+    const calls = installDbPatch({
+      canAccessKnowledgeBase: true,
+      canManageKnowledgeBase: true,
+    });
+    const accessService = new KnowledgeBaseAccessService();
+    const controller = buildController(accessService);
+
+    assert.equal(await accessService.canAccess(KNOWLEDGE_BASE_ID, adminUser), true);
+    assert.equal(await accessService.canManage(KNOWLEDGE_BASE_ID, adminUser), true);
 
     const response = await controller.replaceDocumentTags(
       { id: DOCUMENT_ID },
@@ -193,14 +226,22 @@ void describe("tag replacement permissions", () => {
     );
 
     assert.deepEqual(response, { ok: true, data: { items: [] } });
-    assert.equal(calls.knowledgeBasePermissionChecks, 1);
+    assert.equal(calls.accessPermissionChecks, 1);
+    assert.equal(calls.managePermissionChecks, 2);
     assert.equal(calls.transactions, 1);
     assert.equal(calls.deletes, 1);
   });
 
   void it("rejects read-only members through PUT /knowledge-items/:id/tags", async () => {
-    const calls = installDbPatch({ canManageKnowledgeBase: false });
-    const controller = buildController();
+    const calls = installDbPatch({
+      canAccessKnowledgeBase: true,
+      canManageKnowledgeBase: false,
+    });
+    const accessService = new KnowledgeBaseAccessService();
+    const controller = buildController(accessService);
+
+    assert.equal(await accessService.canAccess(KNOWLEDGE_BASE_ID, readonlyUser), true);
+    assert.equal(await accessService.canManage(KNOWLEDGE_BASE_ID, readonlyUser), false);
 
     await assert.rejects(
       () =>
@@ -211,13 +252,21 @@ void describe("tag replacement permissions", () => {
         ),
       ForbiddenException,
     );
-    assert.equal(calls.knowledgeBasePermissionChecks, 1);
+    assert.equal(calls.accessPermissionChecks, 1);
+    assert.equal(calls.managePermissionChecks, 2);
     assert.equal(calls.transactions, 0);
   });
 
   void it("allows knowledge base admins through PUT /knowledge-items/:id/tags", async () => {
-    const calls = installDbPatch({ canManageKnowledgeBase: true });
-    const controller = buildController();
+    const calls = installDbPatch({
+      canAccessKnowledgeBase: true,
+      canManageKnowledgeBase: true,
+    });
+    const accessService = new KnowledgeBaseAccessService();
+    const controller = buildController(accessService);
+
+    assert.equal(await accessService.canAccess(KNOWLEDGE_BASE_ID, adminUser), true);
+    assert.equal(await accessService.canManage(KNOWLEDGE_BASE_ID, adminUser), true);
 
     const response = await controller.replaceKnowledgeItemTags(
       { id: KNOWLEDGE_ITEM_ID },
@@ -226,7 +275,8 @@ void describe("tag replacement permissions", () => {
     );
 
     assert.deepEqual(response, { ok: true, data: { items: [] } });
-    assert.equal(calls.knowledgeBasePermissionChecks, 1);
+    assert.equal(calls.accessPermissionChecks, 1);
+    assert.equal(calls.managePermissionChecks, 2);
     assert.equal(calls.transactions, 1);
     assert.equal(calls.deletes, 1);
   });

@@ -292,9 +292,6 @@ export class KnowledgeItemService {
       values.metadata = input.metadata;
     }
     if (input.status !== undefined) {
-      if (input.status === "archived") {
-        throw new BadRequestException("Use archive endpoint to archive knowledge items");
-      }
       values.status = input.status;
     }
     if (input.enabled !== undefined) {

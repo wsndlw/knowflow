@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { ForbiddenException } from "@nestjs/common";
 import { db } from "@knowflow/db";
 import type { KnowledgeItem } from "@knowflow/shared";
 
@@ -130,17 +130,6 @@ void describe("KnowledgeItemService archive semantics", () => {
     assert.equal(access.canManageCalls, 2);
   });
 
-  void it("rejects direct PATCH to archived so the archive endpoint owns enabled semantics", async () => {
-    const access = makeAccessStub({ canManage: true });
-    const service = makeServiceHarness(access, makeKnowledgeItemRow({ status: "published" }));
-    const updateCalls = await captureUpdateCalls(() =>
-      service.update("00000000-0000-0000-0000-000000000100", { status: "archived" }, user),
-    );
-
-    assert.equal(access.canManageCalls, 1);
-    assert.equal(updateCalls, 0);
-  });
-
   void it("keeps reader-visible and RAG-eligible list conditions pinned to published enabled items", () => {
     const service = makeService(makeAccessStub());
     const condition = (service as unknown as KnowledgeItemListConditionInternals).buildListCondition(
@@ -178,33 +167,6 @@ async function captureUpdateValues(action: () => Promise<KnowledgeItem>): Promis
   }
 
   return updateValues;
-}
-
-async function captureUpdateCalls(action: () => Promise<KnowledgeItem>): Promise<number> {
-  const mutableDb = db as unknown as MutableDb;
-  const originalUpdate = mutableDb.update;
-  let updateCalls = 0;
-
-  mutableDb.update = () => {
-    updateCalls += 1;
-    return {
-      set() {
-        return {
-          where() {
-            return Promise.resolve([]);
-          },
-        };
-      },
-    };
-  };
-
-  try {
-    await assert.rejects(action, BadRequestException);
-  } finally {
-    mutableDb.update = originalUpdate;
-  }
-
-  return updateCalls;
 }
 
 function makeServiceHarness(

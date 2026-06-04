@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import { RetrievalService } from "./retrieval.service.js";
 import type { RetrievalSettingsService } from "./retrieval-settings.service.js";
-import type { RetrievalResult } from "./retrieval.types.js";
 
 type RecallDocumentRow = {
   id: string;
@@ -44,12 +43,6 @@ type RecallKnowledgeItemRow = {
   likeCount: number;
   createdAt: Date;
   score: number;
-};
-
-type RetrievalResultWithRerankFailureTrace = RetrievalResult & {
-  trace: RetrievalResult["trace"] & {
-    rerankFailed: boolean;
-  };
 };
 
 class FailingRerankLlmService extends AliyunLlmService {
@@ -96,12 +89,11 @@ void describe("RetrievalService.retrieve", () => {
         ]),
     });
 
-    const result = (await service.retrieve({
+    const result = await service.retrieve({
       query: "How does rerank fallback work?",
       allowedKnowledgeBaseIds: ["kb-1"],
-    })) as RetrievalResultWithRerankFailureTrace;
+    });
 
-    assert.equal(result.trace.rerankFailed, true);
     assert.deepEqual(
       result.candidates.map((candidate) => candidate.id),
       ["parent-high", "ki-middle", "parent-low"],
@@ -114,6 +106,8 @@ void describe("RetrievalService.retrieve", () => {
     assert.equal(result.candidates[0]?.rerankScore, null);
     assert.equal(result.trace.recalled.vector, 2);
     assert.equal(result.trace.recalled.knowledgeItem, 1);
+    assert.equal(result.trace.reranked, 3);
+    assert.equal(result.trace.final, 3);
   });
 });
 

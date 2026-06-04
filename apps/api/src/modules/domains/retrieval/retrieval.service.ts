@@ -91,10 +91,6 @@ type TimedResult<T> = {
   elapsedMs: number;
 };
 
-type RetrievalTraceWithRerankFailure = RetrievalResult["trace"] & {
-  rerankFailed: boolean;
-};
-
 @Injectable()
 export class RetrievalService {
   private readonly logger = new Logger(RetrievalService.name);
@@ -141,35 +137,31 @@ export class RetrievalService {
       ...this.toDocumentCandidates(ftsRows, "fts"),
       ...this.toKnowledgeItemCandidates(knowledgeRows),
     ]);
-    let rerankFailed = false;
     let reranked: RetrievalCandidate[];
     try {
       reranked = await this.rerank(input.query, merged);
     } catch (error) {
-      rerankFailed = true;
       this.logger.warn(`Rerank failed, falling back to initial sort: ${this.errorMessage(error)}`);
       reranked = this.fallbackToInitialSort(merged);
     }
     const contexts = this.applyTokenBudget(reranked);
-    const trace: RetrievalTraceWithRerankFailure = {
-      allowedKnowledgeBaseIds: input.allowedKnowledgeBaseIds,
-      recalled: {
-        vector: vectorRows.length,
-        fts: ftsRows.length,
-        knowledgeItem: knowledgeRows.length,
-      },
-      merged: merged.length,
-      reranked: reranked.length,
-      final: contexts.length,
-      rerankFailed,
-    };
 
     return {
       query: input.query,
       rewrittenQueries: input.rewrittenQueries ?? [],
       candidates: reranked,
       contexts,
-      trace,
+      trace: {
+        allowedKnowledgeBaseIds: input.allowedKnowledgeBaseIds,
+        recalled: {
+          vector: vectorRows.length,
+          fts: ftsRows.length,
+          knowledgeItem: knowledgeRows.length,
+        },
+        merged: merged.length,
+        reranked: reranked.length,
+        final: contexts.length,
+      },
     };
   }
 
@@ -1006,25 +998,22 @@ export class RetrievalService {
     rewrittenQueries: string[],
     allowedKnowledgeBaseIds: string[],
   ): RetrievalResult {
-    const trace: RetrievalTraceWithRerankFailure = {
-      allowedKnowledgeBaseIds,
-      recalled: {
-        vector: 0,
-        fts: 0,
-        knowledgeItem: 0,
-      },
-      merged: 0,
-      reranked: 0,
-      final: 0,
-      rerankFailed: false,
-    };
-
     return {
       query,
       rewrittenQueries,
       candidates: [],
       contexts: [],
-      trace,
+      trace: {
+        allowedKnowledgeBaseIds,
+        recalled: {
+          vector: 0,
+          fts: 0,
+          knowledgeItem: 0,
+        },
+        merged: 0,
+        reranked: 0,
+        final: 0,
+      },
     };
   }
 }

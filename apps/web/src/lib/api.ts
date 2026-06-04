@@ -86,7 +86,7 @@ async function doRefreshAccess(): Promise<boolean> {
   }
 }
 
-async function refreshAccess(): Promise<boolean> {
+export async function refreshAccess(): Promise<boolean> {
   if (refreshPromise) {
     return refreshPromise;
   }

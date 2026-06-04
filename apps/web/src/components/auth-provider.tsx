@@ -21,7 +21,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { apiUrl, getCsrfToken } from "../lib/api";
+import { apiUrl, getCsrfToken, refreshAccess } from "../lib/api";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
@@ -66,13 +66,7 @@ async function fetchMe(): Promise<CurrentUser | null> {
   return meResponseSchema.parse(body).data;
 }
 
-async function refreshAccess(): Promise<boolean> {
-  const response = await fetch(apiUrl("/auth/refresh"), {
-    method: "POST",
-    credentials: "include",
-  });
-  return response.ok;
-}
+
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");

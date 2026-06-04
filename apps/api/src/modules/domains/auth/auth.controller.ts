@@ -59,6 +59,7 @@ export class AuthController {
 
   @Post("refresh")
   @Public()
+  @AuditLog("user.refresh", AuditTargetType.USER)
   async refresh(
     @Req() request: RequestLike,
     @Res({ passthrough: true }) response: ResponseLike,

@@ -113,6 +113,13 @@ type TagRow = {
   updatedAt: Date;
 };
 
+type ChunkCounts = {
+  parentChunkCount: number;
+  childChunkCount: number;
+};
+
+const DOCUMENT_PROCESS_VERSION_KEY = "__processVersion";
+
 @Injectable()
 export class DocumentService {
   private static readonly CONTENT_PREVIEW_MAX_CHARS = 100_000;
@@ -182,6 +189,7 @@ export class DocumentService {
             parseStatus: "pending",
             chunkStatus: "pending",
             embeddingStatus: "pending",
+            metadata: { processVersion: 1 },
           })
           .returning({ id: documents.id });
         if (document === undefined) {
@@ -192,16 +200,7 @@ export class DocumentService {
         return [document];
       });
 
-      const queue = createDocumentQueue();
-      try {
-        await queue.add(
-          "process",
-          { documentId: created.id },
-          { attempts: 2, backoff: { type: "exponential", delay: 5000 } },
-        );
-      } finally {
-        await queue.close();
-      }
+      await this.enqueueProcessJob(created.id, 1);
 
       return await this.get(created.id, user);
     } catch (error) {
@@ -241,10 +240,14 @@ export class DocumentService {
         .offset(offset),
     ]);
 
-    const tagsByDocumentId = await this.fetchTagsByDocumentIds(rows.map((row) => row.id));
+    const documentIds = rows.map((row) => row.id);
+    const [tagsByDocumentId, countsByDocumentId] = await Promise.all([
+      this.fetchTagsByDocumentIds(documentIds),
+      this.fetchChunkCountsByDocumentIds(documentIds),
+    ]);
 
     return {
-      items: await this.toDocuments(rows, tagsByDocumentId),
+      items: this.toDocuments(rows, tagsByDocumentId, countsByDocumentId),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -436,6 +439,13 @@ export class DocumentService {
       db.select().from(childChunks).where(eq(childChunks.documentId, id)),
     ]);
 
+    const nextProcessVersion = this.readProcessVersion(row.metadata) + 1;
+    const nextMetadata = {
+      ...this.readMetadataObject(row.metadata),
+      processVersion: nextProcessVersion,
+      reprocessRequestedAt: new Date().toISOString(),
+    };
+
     await db.transaction(async (tx) => {
       await tx.delete(childChunks).where(eq(childChunks.documentId, id));
       await tx.delete(parentChunks).where(eq(parentChunks.documentId, id));
@@ -446,19 +456,15 @@ export class DocumentService {
           parseStatus: "pending",
           chunkStatus: "pending",
           embeddingStatus: "pending",
+          metadata: nextMetadata,
           errorMessage: null,
           updatedAt: new Date(),
         })
         .where(eq(documents.id, id));
     });
 
-    const queue = createDocumentQueue();
     try {
-      await queue.add(
-        "process",
-        { documentId: id },
-        { attempts: 2, backoff: { type: "exponential", delay: 5000 } },
-      );
+      await this.enqueueProcessJob(id, nextProcessVersion);
     } catch (error) {
       await db.transaction(async (tx) => {
         if (previousParentChunks.length > 0) {
@@ -474,14 +480,13 @@ export class DocumentService {
             parseStatus: row.parseStatus,
             chunkStatus: row.chunkStatus,
             embeddingStatus: row.embeddingStatus,
+            metadata: row.metadata,
             errorMessage: row.errorMessage,
             updatedAt: new Date(),
           })
           .where(eq(documents.id, id));
       });
       throw error;
-    } finally {
-      await queue.close();
     }
 
     const updated = await this.findRow(id);
@@ -693,21 +698,21 @@ export class DocumentService {
     return byDocumentId;
   }
 
-  private async toDocuments(
+  private toDocuments(
     rows: DocumentRow[],
     tagsByDocumentId: Map<string, KnowledgeTag[]>,
-  ): Promise<KnowledgeDocument[]> {
-    return Promise.all(
-      rows.map(async (row) =>
-        this.toDocument(row, await this.countChunks(row.id), tagsByDocumentId.get(row.id) ?? []),
+    countsByDocumentId: Map<string, ChunkCounts>,
+  ): KnowledgeDocument[] {
+    return rows.map((row) =>
+      this.toDocument(
+        row,
+        countsByDocumentId.get(row.id) ?? { parentChunkCount: 0, childChunkCount: 0 },
+        tagsByDocumentId.get(row.id) ?? [],
       ),
     );
   }
 
-  private async countChunks(documentId: string): Promise<{
-    parentChunkCount: number;
-    childChunkCount: number;
-  }> {
+  private async countChunks(documentId: string): Promise<ChunkCounts> {
     const [
       [{ value: parentChunkCount } = { value: 0 }],
       [{ value: childChunkCount } = { value: 0 }],
@@ -719,6 +724,56 @@ export class DocumentService {
       db.select({ value: count() }).from(childChunks).where(eq(childChunks.documentId, documentId)),
     ]);
     return { parentChunkCount, childChunkCount };
+  }
+
+  private async fetchChunkCountsByDocumentIds(
+    documentIds: string[],
+  ): Promise<Map<string, ChunkCounts>> {
+    const byDocumentId = new Map<string, ChunkCounts>();
+    if (documentIds.length === 0) {
+      return byDocumentId;
+    }
+
+    const [parentRows, childRows] = await Promise.all([
+      db
+        .select({
+          documentId: parentChunks.documentId,
+          value: count(),
+        })
+        .from(parentChunks)
+        .where(inArray(parentChunks.documentId, documentIds))
+        .groupBy(parentChunks.documentId),
+      db
+        .select({
+          documentId: childChunks.documentId,
+          value: count(),
+        })
+        .from(childChunks)
+        .where(inArray(childChunks.documentId, documentIds))
+        .groupBy(childChunks.documentId),
+    ]);
+
+    for (const documentId of documentIds) {
+      byDocumentId.set(documentId, { parentChunkCount: 0, childChunkCount: 0 });
+    }
+    for (const row of parentRows) {
+      const current = byDocumentId.get(row.documentId) ?? {
+        parentChunkCount: 0,
+        childChunkCount: 0,
+      };
+      current.parentChunkCount = row.value;
+      byDocumentId.set(row.documentId, current);
+    }
+    for (const row of childRows) {
+      const current = byDocumentId.get(row.documentId) ?? {
+        parentChunkCount: 0,
+        childChunkCount: 0,
+      };
+      current.childChunkCount = row.value;
+      byDocumentId.set(row.documentId, current);
+    }
+
+    return byDocumentId;
   }
 
   private async listParentChunks(
@@ -869,6 +924,40 @@ export class DocumentService {
       return metadata.textLength;
     }
     return undefined;
+  }
+
+  private readProcessVersion(metadata: unknown): number {
+    const value = this.readMetadataObject(metadata)["processVersion"];
+    return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0;
+  }
+
+  private readMetadataObject(metadata: unknown): Record<string, unknown> {
+    return metadata !== null && typeof metadata === "object" && !Array.isArray(metadata)
+      ? { ...metadata }
+      : {};
+  }
+
+  private async enqueueProcessJob(documentId: string, processVersion: number): Promise<void> {
+    const queue = createDocumentQueue();
+    try {
+      await queue.add(
+        "process",
+        { documentId: this.encodeProcessJobDocumentId(documentId, processVersion) },
+        {
+          jobId: `document-process-${documentId}-${String(processVersion)}`,
+          attempts: 2,
+          backoff: { type: "exponential", delay: 5000 },
+          removeOnComplete: { count: 1000 },
+          removeOnFail: { count: 1000 },
+        },
+      );
+    } finally {
+      await queue.close();
+    }
+  }
+
+  private encodeProcessJobDocumentId(documentId: string, processVersion: number): string {
+    return `${documentId}${DOCUMENT_PROCESS_VERSION_KEY}${String(processVersion)}`;
   }
 
   private resolveStoredFilePath(storagePath: string): string {

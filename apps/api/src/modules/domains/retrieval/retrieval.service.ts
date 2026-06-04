@@ -137,7 +137,13 @@ export class RetrievalService {
       ...this.toDocumentCandidates(ftsRows, "fts"),
       ...this.toKnowledgeItemCandidates(knowledgeRows),
     ]);
-    const reranked = await this.rerank(input.query, merged);
+    let reranked: RetrievalCandidate[];
+    try {
+      reranked = await this.rerank(input.query, merged);
+    } catch (error) {
+      this.logger.warn(`Rerank failed, falling back to initial sort: ${this.errorMessage(error)}`);
+      reranked = this.fallbackToInitialSort(merged);
+    }
     const contexts = this.applyTokenBudget(reranked);
 
     return {
@@ -804,6 +810,16 @@ export class RetrievalService {
       }))
       .filter((candidate) => candidate.rerankScore !== null)
       .sort((left, right) => (right.rerankScore ?? 0) - (left.rerankScore ?? 0))
+      .slice(0, RERANK_KEEP_N);
+  }
+
+  private fallbackToInitialSort(candidates: RetrievalCandidate[]): RetrievalCandidate[] {
+    return candidates
+      .map((candidate) => ({
+        ...candidate,
+        rerankScore: null,
+      }))
+      .sort((left, right) => right.initialScore - left.initialScore)
       .slice(0, RERANK_KEEP_N);
   }
 

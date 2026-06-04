@@ -13,8 +13,6 @@ import {
   knowledgeBaseMembers,
   knowledgeBases,
   knowledgeItems,
-  metadataFields,
-  tags,
   users,
 } from "@knowflow/db";
 import type {
@@ -30,7 +28,7 @@ import type {
   UpdateKnowledgeBaseRequest,
   UserOptionsResponse,
 } from "@knowflow/shared";
-import { and, asc, count, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, ne, or, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -163,11 +161,11 @@ export class KnowledgeBaseService {
   }
 
   async get(id: string, user: AuthenticatedUser): Promise<KnowledgeBase> {
-    await this.ensureCanAccess(id, user);
     const row = await this.findRowById(id);
     if (row === undefined) {
       throw new NotFoundException("Knowledge base not found");
     }
+    const canManage = await this.ensureCanReadRow(row, user);
 
     await this.analytics.recordSafe({
       user,
@@ -177,7 +175,7 @@ export class KnowledgeBaseService {
       knowledgeBaseId: id,
     });
 
-    return this.toKnowledgeBase(row, await this.accessService.canManage(id, user));
+    return this.toKnowledgeBase(row, canManage);
   }
 
   async getOverview(id: string, user: AuthenticatedUser): Promise<KnowledgeBaseOverview> {
@@ -269,22 +267,10 @@ export class KnowledgeBaseService {
 
   async delete(id: string, user: AuthenticatedUser): Promise<void> {
     await this.ensureCanManage(id, user);
-
-    const [{ value: documentCount } = { value: 0 }] = await db
-      .select({ value: count() })
-      .from(documents)
-      .where(eq(documents.knowledgeBaseId, id));
-    if (documentCount > 0) {
-      throw new BadRequestException("Cannot delete a knowledge base that has documents");
-    }
-
-    await db.transaction(async (tx) => {
-      await tx.delete(knowledgeBaseMembers).where(eq(knowledgeBaseMembers.knowledgeBaseId, id));
-      await tx.delete(knowledgeBaseAdmins).where(eq(knowledgeBaseAdmins.knowledgeBaseId, id));
-      await tx.delete(metadataFields).where(eq(metadataFields.knowledgeBaseId, id));
-      await tx.delete(tags).where(eq(tags.knowledgeBaseId, id));
-      await tx.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
-    });
+    await db
+      .update(knowledgeBases)
+      .set({ status: "archived", updatedAt: new Date() })
+      .where(eq(knowledgeBases.id, id));
   }
 
   async listDepartmentOptions(user: AuthenticatedUser): Promise<DepartmentOptionsResponse> {
@@ -453,12 +439,17 @@ export class KnowledgeBaseService {
     user: AuthenticatedUser,
   ): SQL | undefined {
     const conditions: SQL[] = [];
-    const accessCondition = this.accessService.buildAccessCondition(user);
+    const accessCondition =
+      query.status === "archived"
+        ? this.accessService.buildManageCondition(user)
+        : this.accessService.buildAccessCondition(user);
     if (accessCondition !== undefined) {
       conditions.push(accessCondition);
     }
     if (query.status !== undefined) {
       conditions.push(eq(knowledgeBases.status, query.status));
+    } else {
+      conditions.push(ne(knowledgeBases.status, "archived"));
     }
     if (query.visibility !== undefined) {
       conditions.push(eq(knowledgeBases.visibility, query.visibility));
@@ -529,10 +520,29 @@ export class KnowledgeBaseService {
   }
 
   private async ensureCanAccess(id: string, user: AuthenticatedUser): Promise<void> {
-    if (await this.accessService.canAccess(id, user)) {
-      return;
+    const row = await this.findRowById(id);
+    if (row === undefined) {
+      throw new NotFoundException("Knowledge base not found");
     }
 
+    await this.ensureCanReadRow(row, user);
+  }
+
+  private async ensureCanReadRow(
+    row: KnowledgeBaseRow,
+    user: AuthenticatedUser,
+  ): Promise<boolean> {
+    const canManage = await this.accessService.canManage(row.id, user);
+    if (row.status === "archived") {
+      if (canManage) {
+        return true;
+      }
+      throw new NotFoundException("Knowledge base not found");
+    }
+
+    if (canManage || (await this.accessService.canAccess(row.id, user))) {
+      return canManage;
+    }
     throw new NotFoundException("Knowledge base not found");
   }
 

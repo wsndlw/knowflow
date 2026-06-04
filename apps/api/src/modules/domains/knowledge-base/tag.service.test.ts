@@ -2,36 +2,42 @@ import assert from "node:assert/strict";
 import { after, afterEach, describe, it } from "node:test";
 
 import { ForbiddenException } from "@nestjs/common";
-import { closeDb, db } from "@knowflow/db";
+import {
+  closeDb,
+  db,
+  documentTags,
+  documents,
+  knowledgeBaseAdmins,
+  knowledgeBaseMembers,
+  knowledgeBases,
+  knowledgeItemTags,
+  knowledgeItems,
+} from "@knowflow/db";
+import { sql } from "drizzle-orm";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
-import type { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
+import type { AuthenticatedRequest } from "../../../shared/guards/auth.guard.js";
+import { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
+import { TagController } from "./tag.controller.js";
 import { TagService } from "./tag.service.js";
 
 const KNOWLEDGE_BASE_ID = "00000000-0000-4000-8000-000000000001";
 const DOCUMENT_ID = "00000000-0000-4000-8000-000000000002";
 const KNOWLEDGE_ITEM_ID = "00000000-0000-4000-8000-000000000003";
-const USER_ID = "00000000-0000-4000-8000-000000000004";
-const DEPARTMENT_ID = "00000000-0000-4000-8000-000000000005";
+const READONLY_USER_ID = "00000000-0000-4000-8000-000000000004";
+const ADMIN_USER_ID = "00000000-0000-4000-8000-000000000005";
+const DEPARTMENT_ID = "00000000-0000-4000-8000-000000000006";
 
-type SelectLimitChain = {
+type QueryChain = {
+  from: (table: unknown) => QueryChain;
+  where: (condition: unknown) => QueryChain;
+  innerJoin: (table: unknown, condition: unknown) => QueryChain;
   limit: (limit: number) => Promise<unknown[]>;
+  orderBy: (...columns: unknown[]) => Promise<unknown[]>;
+  getSQL: () => ReturnType<typeof sql>;
 };
 
-type SelectJoinChain = {
-  where: (condition: unknown) => {
-    orderBy: (...columns: unknown[]) => Promise<unknown[]>;
-  };
-};
-
-type SelectFromChain = {
-  where: (condition: unknown) => SelectLimitChain;
-  innerJoin: (table: unknown, condition: unknown) => SelectJoinChain;
-};
-
-type SelectFn = (selection?: unknown) => {
-  from: (table: unknown) => SelectFromChain;
-};
+type SelectFn = (selection?: unknown) => QueryChain;
 
 type TransactionClient = {
   delete: (table: unknown) => {
@@ -56,7 +62,7 @@ const originalDb = {
 };
 
 const readonlyUser: AuthenticatedUser = {
-  id: USER_ID,
+  id: READONLY_USER_ID,
   username: "readonly",
   name: "Read Only",
   platformRole: "user",
@@ -65,29 +71,55 @@ const readonlyUser: AuthenticatedUser = {
 
 const adminUser: AuthenticatedUser = {
   ...readonlyUser,
-  username: "admin",
+  id: ADMIN_USER_ID,
+  username: "kb-admin",
   name: "Knowledge Base Admin",
 };
 
-function installDbPatch(): { transactions: number; deletes: number; inserts: number } {
+function installDbPatch(input: {
+  canManageKnowledgeBase: boolean;
+}): { transactions: number; deletes: number; knowledgeBasePermissionChecks: number } {
   const calls = {
     transactions: 0,
     deletes: 0,
-    inserts: 0,
+    knowledgeBasePermissionChecks: 0,
   };
 
-  mutableDb.select = () => ({
-    from: () => ({
-      where: () => ({
-        limit: () => Promise.resolve([{ knowledgeBaseId: KNOWLEDGE_BASE_ID }]),
-      }),
-      innerJoin: () => ({
-        where: () => ({
-          orderBy: () => Promise.resolve([]),
-        }),
-      }),
-    }),
-  });
+  mutableDb.select = () => {
+    let selectedTable: unknown;
+    const chain: QueryChain = {
+      from: (table) => {
+        selectedTable = table;
+        return chain;
+      },
+      where: () => chain,
+      innerJoin: () => chain,
+      limit: () => {
+        if (selectedTable === documents) {
+          return Promise.resolve([{ knowledgeBaseId: KNOWLEDGE_BASE_ID }]);
+        }
+        if (selectedTable === knowledgeItems) {
+          return Promise.resolve([{ knowledgeBaseId: KNOWLEDGE_BASE_ID }]);
+        }
+        if (selectedTable === knowledgeBases) {
+          calls.knowledgeBasePermissionChecks += 1;
+          return Promise.resolve(input.canManageKnowledgeBase ? [{ id: KNOWLEDGE_BASE_ID }] : []);
+        }
+        if (selectedTable === knowledgeBaseAdmins || selectedTable === knowledgeBaseMembers) {
+          return Promise.resolve(input.canManageKnowledgeBase ? [{ id: "membership" }] : []);
+        }
+        return Promise.resolve([]);
+      },
+      orderBy: () => {
+        if (selectedTable === documentTags || selectedTable === knowledgeItemTags) {
+          return Promise.resolve([]);
+        }
+        return Promise.resolve([]);
+      },
+      getSQL: () => sql`select 1`,
+    };
+    return chain;
+  };
 
   mutableDb.transaction = async (operation) => {
     calls.transactions += 1;
@@ -99,10 +131,7 @@ function installDbPatch(): { transactions: number; deletes: number; inserts: num
         },
       }),
       insert: () => ({
-        values: () => {
-          calls.inserts += 1;
-          return Promise.resolve();
-        },
+        values: () => Promise.resolve(),
       }),
     });
   };
@@ -115,12 +144,15 @@ function restoreDb(): void {
   mutableDb.transaction = originalDb.transaction;
 }
 
-function buildAccessService(canManage: boolean): KnowledgeBaseAccessService {
+function buildController(): TagController {
+  const accessService = new KnowledgeBaseAccessService();
+  return new TagController(new TagService(accessService));
+}
+
+function requestFor(user: AuthenticatedUser): AuthenticatedRequest {
   return {
-    buildAccessCondition: () => undefined,
-    buildManageCondition: () => undefined,
-    canAccess: () => Promise.resolve(true),
-    canManage: () => Promise.resolve(canManage),
+    headers: {},
+    user,
   };
 }
 
@@ -133,51 +165,68 @@ void describe("tag replacement permissions", () => {
     await closeDb();
   });
 
-  void it("rejects read-only members replacing document tags", async () => {
-    const calls = installDbPatch();
-    const service = new TagService(buildAccessService(false));
+  void it("rejects read-only members through PUT /documents/:id/tags", async () => {
+    const calls = installDbPatch({ canManageKnowledgeBase: false });
+    const controller = buildController();
 
     await assert.rejects(
-      () => service.replaceDocumentTags(DOCUMENT_ID, { tagIds: [] }, readonlyUser),
+      () =>
+        controller.replaceDocumentTags(
+          { id: DOCUMENT_ID },
+          { tagIds: [] },
+          requestFor(readonlyUser),
+        ),
       ForbiddenException,
     );
+    assert.equal(calls.knowledgeBasePermissionChecks, 1);
     assert.equal(calls.transactions, 0);
   });
 
-  void it("allows knowledge base admins replacing document tags", async () => {
-    const calls = installDbPatch();
-    const service = new TagService(buildAccessService(true));
+  void it("allows knowledge base admins through PUT /documents/:id/tags", async () => {
+    const calls = installDbPatch({ canManageKnowledgeBase: true });
+    const controller = buildController();
 
-    const response = await service.replaceDocumentTags(DOCUMENT_ID, { tagIds: [] }, adminUser);
+    const response = await controller.replaceDocumentTags(
+      { id: DOCUMENT_ID },
+      { tagIds: [] },
+      requestFor(adminUser),
+    );
 
-    assert.deepEqual(response, { items: [] });
+    assert.deepEqual(response, { ok: true, data: { items: [] } });
+    assert.equal(calls.knowledgeBasePermissionChecks, 1);
     assert.equal(calls.transactions, 1);
     assert.equal(calls.deletes, 1);
   });
 
-  void it("rejects read-only members replacing knowledge item tags", async () => {
-    const calls = installDbPatch();
-    const service = new TagService(buildAccessService(false));
+  void it("rejects read-only members through PUT /knowledge-items/:id/tags", async () => {
+    const calls = installDbPatch({ canManageKnowledgeBase: false });
+    const controller = buildController();
 
     await assert.rejects(
       () =>
-        service.replaceKnowledgeItemTags(KNOWLEDGE_ITEM_ID, { tagIds: [] }, readonlyUser),
+        controller.replaceKnowledgeItemTags(
+          { id: KNOWLEDGE_ITEM_ID },
+          { tagIds: [] },
+          requestFor(readonlyUser),
+        ),
       ForbiddenException,
     );
+    assert.equal(calls.knowledgeBasePermissionChecks, 1);
     assert.equal(calls.transactions, 0);
   });
 
-  void it("allows knowledge base admins replacing knowledge item tags", async () => {
-    const calls = installDbPatch();
-    const service = new TagService(buildAccessService(true));
+  void it("allows knowledge base admins through PUT /knowledge-items/:id/tags", async () => {
+    const calls = installDbPatch({ canManageKnowledgeBase: true });
+    const controller = buildController();
 
-    const response = await service.replaceKnowledgeItemTags(
-      KNOWLEDGE_ITEM_ID,
+    const response = await controller.replaceKnowledgeItemTags(
+      { id: KNOWLEDGE_ITEM_ID },
       { tagIds: [] },
-      adminUser,
+      requestFor(adminUser),
     );
 
-    assert.deepEqual(response, { items: [] });
+    assert.deepEqual(response, { ok: true, data: { items: [] } });
+    assert.equal(calls.knowledgeBasePermissionChecks, 1);
     assert.equal(calls.transactions, 1);
     assert.equal(calls.deletes, 1);
   });

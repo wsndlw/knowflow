@@ -1,26 +1,52 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { after, afterEach, describe, it } from "node:test";
 
 import { NotFoundException } from "@nestjs/common";
+import { closeDb, db, knowledgeBaseAdmins, knowledgeBaseMembers, knowledgeBases } from "@knowflow/db";
 import type { RetrievalTestResponse } from "@knowflow/shared";
+import { sql } from "drizzle-orm";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
-import type { KnowledgeBaseAccessService } from "../knowledge-base/knowledge-base-access.service.js";
+import { KnowledgeBaseAccessService } from "../knowledge-base/knowledge-base-access.service.js";
 import { RetrievalController } from "./retrieval.controller.js";
 import type { RetrievalService } from "./retrieval.service.js";
 
 const KNOWLEDGE_BASE_ID = "00000000-0000-4000-8000-000000000001";
-const USER_ID = "00000000-0000-4000-8000-000000000004";
-const DEPARTMENT_ID = "00000000-0000-4000-8000-000000000005";
+const READONLY_USER_ID = "00000000-0000-4000-8000-000000000004";
+const ADMIN_USER_ID = "00000000-0000-4000-8000-000000000005";
+const DEPARTMENT_ID = "00000000-0000-4000-8000-000000000006";
 
 type RetrievalTestInput = Parameters<RetrievalService["testRetrieve"]>[0];
 
-const user: AuthenticatedUser = {
-  id: USER_ID,
-  username: "member",
-  name: "Member",
+type QueryChain = {
+  from: (table: unknown) => QueryChain;
+  where: (condition: unknown) => QueryChain;
+  limit: (limit: number) => Promise<unknown[]>;
+  getSQL: () => ReturnType<typeof sql>;
+};
+
+type SelectFn = (selection?: unknown) => QueryChain;
+
+type MutableDb = {
+  select: SelectFn;
+};
+
+const mutableDb = db as unknown as MutableDb;
+const originalSelect = mutableDb.select;
+
+const readonlyUser: AuthenticatedUser = {
+  id: READONLY_USER_ID,
+  username: "readonly",
+  name: "Read Only",
   platformRole: "user",
   departmentId: DEPARTMENT_ID,
+};
+
+const adminUser: AuthenticatedUser = {
+  ...readonlyUser,
+  id: ADMIN_USER_ID,
+  username: "kb-admin",
+  name: "Knowledge Base Admin",
 };
 
 const emptyRetrievalResponse: RetrievalTestResponse = {
@@ -59,17 +85,58 @@ const emptyRetrievalResponse: RetrievalTestResponse = {
   },
 };
 
-function buildAccessService(canManage: boolean): KnowledgeBaseAccessService {
-  return {
-    buildAccessCondition: () => undefined,
-    buildManageCondition: () => undefined,
-    canAccess: () => Promise.resolve(true),
-    canManage: () => Promise.resolve(canManage),
+function installDbPatch(input: {
+  canManageKnowledgeBase: boolean;
+}): { knowledgeBasePermissionChecks: number } {
+  const calls = {
+    knowledgeBasePermissionChecks: 0,
   };
+
+  mutableDb.select = () => {
+    let selectedTable: unknown;
+    const chain: QueryChain = {
+      from: (table) => {
+        selectedTable = table;
+        return chain;
+      },
+      where: () => chain,
+      limit: () => {
+        if (selectedTable === knowledgeBases) {
+          calls.knowledgeBasePermissionChecks += 1;
+          return Promise.resolve(input.canManageKnowledgeBase ? [{ id: KNOWLEDGE_BASE_ID }] : []);
+        }
+        if (selectedTable === knowledgeBaseAdmins || selectedTable === knowledgeBaseMembers) {
+          return Promise.resolve(input.canManageKnowledgeBase ? [{ id: "membership" }] : []);
+        }
+        return Promise.resolve([]);
+      },
+      getSQL: () => sql`select 1`,
+    };
+    return chain;
+  };
+
+  return calls;
+}
+
+function restoreDb(): void {
+  mutableDb.select = originalSelect;
+}
+
+function buildController(retrievalService: RetrievalService): RetrievalController {
+  return new RetrievalController(retrievalService, new KnowledgeBaseAccessService());
 }
 
 void describe("retrieval test permissions", () => {
-  void it("rejects non-managers before retrieval runs", async () => {
+  afterEach(() => {
+    restoreDb();
+  });
+
+  after(async () => {
+    await closeDb();
+  });
+
+  void it("rejects non-managers through POST /knowledge-bases/:id/retrieval-test", async () => {
+    const calls = installDbPatch({ canManageKnowledgeBase: false });
     let retrievalCalled = false;
     const retrievalService = {
       testRetrieve: () => {
@@ -77,21 +144,23 @@ void describe("retrieval test permissions", () => {
         return Promise.resolve(emptyRetrievalResponse);
       },
     } as unknown as RetrievalService;
-    const controller = new RetrievalController(retrievalService, buildAccessService(false));
+    const controller = buildController(retrievalService);
 
     await assert.rejects(
       () =>
         controller.testRetrieve(
           { id: KNOWLEDGE_BASE_ID },
           { query: "policy" },
-          { headers: {}, user },
+          { headers: {}, user: readonlyUser },
         ),
       NotFoundException,
     );
+    assert.equal(calls.knowledgeBasePermissionChecks, 1);
     assert.equal(retrievalCalled, false);
   });
 
-  void it("allows managers and passes canManage into retrieval", async () => {
+  void it("allows managers through POST /knowledge-bases/:id/retrieval-test", async () => {
+    const calls = installDbPatch({ canManageKnowledgeBase: true });
     let receivedInput: RetrievalTestInput | undefined;
     const retrievalService = {
       testRetrieve: (input: RetrievalTestInput) => {
@@ -99,15 +168,16 @@ void describe("retrieval test permissions", () => {
         return Promise.resolve(emptyRetrievalResponse);
       },
     } as unknown as RetrievalService;
-    const controller = new RetrievalController(retrievalService, buildAccessService(true));
+    const controller = buildController(retrievalService);
 
     const response = await controller.testRetrieve(
       { id: KNOWLEDGE_BASE_ID },
       { query: "policy" },
-      { headers: {}, user },
+      { headers: {}, user: adminUser },
     );
 
     assert.deepEqual(response, { ok: true, data: emptyRetrievalResponse });
+    assert.equal(calls.knowledgeBasePermissionChecks, 1);
     assert.ok(receivedInput);
     assert.equal(receivedInput.knowledgeBaseId, KNOWLEDGE_BASE_ID);
     assert.equal(receivedInput.canManage, true);

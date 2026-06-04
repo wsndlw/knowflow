@@ -132,15 +132,13 @@ void describe("DocumentService archive semantics", () => {
     assert.equal(params.includes(true), true);
   });
 
-  void it("supports archived and enabled list filters", () => {
+  void it("supports archived list filters without coerce-boolean false positives", () => {
     const archived = buildListSql({ archived: "true" });
-    const enabled = buildListSql({ enabled: "false" });
-    const archivedWins = buildListSql({ archived: "false", enabled: "false" });
+    const active = buildListSql({ archived: "false" });
 
     assert.equal(archived.params.includes(false), true);
-    assert.equal(enabled.params.includes(false), true);
-    assert.equal(archivedWins.params.includes(true), true);
-    assert.equal(archivedWins.params.includes(false), false);
+    assert.equal(active.params.includes(true), true);
+    assert.equal(active.params.includes(false), false);
   });
 });
 

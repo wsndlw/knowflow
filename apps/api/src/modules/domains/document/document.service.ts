@@ -551,8 +551,7 @@ export class DocumentService {
 
   private buildListCondition(knowledgeBaseId: string, query: DocumentListQuery): SQL | undefined {
     const conditions: SQL[] = [eq(documents.knowledgeBaseId, knowledgeBaseId)];
-    const enabled = query.archived !== undefined ? !query.archived : (query.enabled ?? true);
-    conditions.push(eq(documents.enabled, enabled));
+    conditions.push(eq(documents.enabled, !(query.archived ?? false)));
     if (query.keyword !== undefined) {
       conditions.push(ilike(documents.title, `%${query.keyword}%`));
     }

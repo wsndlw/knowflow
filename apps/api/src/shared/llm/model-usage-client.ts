@@ -16,7 +16,7 @@ type ModelUsageOptions = {
   maxOutputTokens?: number;
 };
 
-type ResolvedModelConfig = {
+export type ResolvedModelConfig = {
   model: string;
   temperature: number;
   maxOutputTokens: number | null;
@@ -33,6 +33,18 @@ type UsagePolicy = {
   maxOutputTokens: number | null;
   timeoutMs: number;
   retryCount: number;
+};
+
+type CatalogModelConfig = {
+  model: string;
+  baseUrl: string;
+  encryptedApiKey: string | null;
+};
+
+export type ModelConfigResolverSources = {
+  resolveUsagePolicy: (usageType: ModelUsageType) => Promise<UsagePolicy | undefined>;
+  resolveCatalogModel: (modelId: string) => Promise<CatalogModelConfig | undefined>;
+  decryptApiKey: (encryptedApiKey: string) => string;
 };
 
 export type ModelUsageMessage = ChatCompletionMessageParam;
@@ -59,9 +71,60 @@ export async function callModelByUsage(
   return response.choices[0]?.message.content ?? "";
 }
 
-async function resolveModelConfig(
+export async function resolveModelConfig(
   usageType: ModelUsageType,
 ): Promise<ResolvedModelConfig> {
+  return resolveModelConfigFromSources(usageType, {
+    resolveUsagePolicy,
+    resolveCatalogModel,
+    decryptApiKey,
+  });
+}
+
+export async function resolveModelConfigFromSources(
+  usageType: ModelUsageType,
+  sources: ModelConfigResolverSources,
+): Promise<ResolvedModelConfig> {
+  const policy = await sources.resolveUsagePolicy(usageType);
+
+  if (policy === undefined) {
+    throwMissingPolicyError(usageType);
+  }
+
+  const modelIds = orderedModelIds(policy);
+  if (modelIds.length === 0) {
+    throwMissingPolicyError(usageType);
+  }
+
+  for (const modelId of modelIds) {
+    const catalogModel = await sources.resolveCatalogModel(modelId);
+    if (catalogModel === undefined) {
+      continue;
+    }
+    if (catalogModel.encryptedApiKey === null) {
+      continue;
+    }
+    const apiKey = sources.decryptApiKey(catalogModel.encryptedApiKey);
+    if (apiKey.length === 0) {
+      continue;
+    }
+    return {
+      model: catalogModel.model,
+      temperature: policy.temperature,
+      maxOutputTokens: policy.maxOutputTokens,
+      timeoutMs: policy.timeoutMs,
+      retryCount: policy.retryCount,
+      baseUrl: catalogModel.baseUrl,
+      apiKey,
+    };
+  }
+
+  throwMissingPolicyError(usageType);
+}
+
+async function resolveUsagePolicy(
+  usageType: ModelUsageType,
+): Promise<UsagePolicy | undefined> {
   const [policy] = await db
     .select({
       defaultModelId: modelUsagePolicies.defaultModelId,
@@ -75,30 +138,7 @@ async function resolveModelConfig(
     .where(and(eq(modelUsagePolicies.usageType, usageType), eq(modelUsagePolicies.enabled, true)))
     .limit(1);
 
-  if (policy === undefined) {
-    throwMissingPolicyError(usageType);
-  }
-
-  const modelIds = orderedModelIds(policy);
-  if (modelIds.length === 0) {
-    throwMissingPolicyError(usageType);
-  }
-
-  let lastError: Error | undefined;
-  for (const modelId of modelIds) {
-    const config = await resolveCatalogModel(modelId, policy);
-    if (config === undefined) {
-      lastError = new Error(`Configured model is unavailable for ${usageType}`);
-      continue;
-    }
-    if (config.apiKey.length === 0) {
-      lastError = new Error(`Model provider API key is not configured for ${usageType}`);
-      continue;
-    }
-    return config;
-  }
-
-  throw lastError ?? new Error(`Model configuration is unavailable for ${usageType}`);
+  return policy;
 }
 
 function orderedModelIds(policy: UsagePolicy): string[] {
@@ -112,10 +152,7 @@ function orderedModelIds(policy: UsagePolicy): string[] {
   return ids;
 }
 
-async function resolveCatalogModel(
-  modelId: string,
-  policy: UsagePolicy,
-): Promise<ResolvedModelConfig | undefined> {
+async function resolveCatalogModel(modelId: string): Promise<CatalogModelConfig | undefined> {
   const [row] = await db
     .select({
       model: modelCatalog.modelName,
@@ -139,12 +176,8 @@ async function resolveCatalogModel(
 
   return {
     model: row.model,
-    temperature: policy.temperature,
-    maxOutputTokens: policy.maxOutputTokens,
-    timeoutMs: policy.timeoutMs,
-    retryCount: policy.retryCount,
     baseUrl: row.baseUrl,
-    apiKey: row.encryptedApiKey === null ? "" : decryptApiKey(row.encryptedApiKey),
+    encryptedApiKey: row.encryptedApiKey,
   };
 }
 

@@ -4,6 +4,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from "@nestjs/common";
 import { ZodError } from "@knowflow/shared";
 
@@ -15,9 +16,12 @@ type JsonResponse = {
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(GlobalExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<JsonResponse>();
     const status = this.resolveStatus(exception);
+    this.logInternalError(exception);
 
     response.status(status).json({
       ok: false,
@@ -60,7 +64,20 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return this.formatExceptionResponse(response as Record<string, unknown>, exception.message);
     }
 
-    return exception instanceof Error ? exception.message : "Unexpected server error";
+    return "Unexpected server error";
+  }
+
+  private logInternalError(exception: unknown): void {
+    if (exception instanceof ZodError || exception instanceof HttpException) {
+      return;
+    }
+
+    if (exception instanceof Error) {
+      this.logger.error(exception.message, exception.stack);
+      return;
+    }
+
+    this.logger.error(`Unexpected non-error exception: ${String(exception)}`);
   }
 
   private formatZodError(error: ZodError): string {

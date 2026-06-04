@@ -1,4 +1,10 @@
-import { BadRequestException, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { ZodError } from "@knowflow/shared";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
@@ -85,6 +91,47 @@ void describe("GlobalExceptionFilter", () => {
       error: {
         code: "BadRequestException",
         message: "业务参数错误",
+      },
+    });
+  });
+
+  void it("preserves auth and permission business messages", () => {
+    const unauthorized = runProbe(new UnauthorizedException("请先登录"));
+    const forbidden = runProbe(new ForbiddenException("无权访问该知识库"));
+
+    assert.deepEqual(unauthorized.body, {
+      ok: false,
+      error: {
+        code: "UnauthorizedException",
+        message: "请先登录",
+      },
+    });
+    assert.deepEqual(forbidden.body, {
+      ok: false,
+      error: {
+        code: "ForbiddenException",
+        message: "无权访问该知识库",
+      },
+    });
+  });
+
+  void it("preserves Zod validation messages", () => {
+    const result = runProbe(
+      new ZodError([
+        {
+          code: "custom",
+          path: ["name"],
+          message: "名称不能为空",
+        },
+      ]),
+    );
+
+    assert.equal(result.statusCode, 400);
+    assert.deepEqual(result.body, {
+      ok: false,
+      error: {
+        code: "BadRequestException",
+        message: "name: 名称不能为空",
       },
     });
   });

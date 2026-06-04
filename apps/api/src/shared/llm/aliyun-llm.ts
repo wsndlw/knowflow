@@ -1,4 +1,4 @@
-import { BadGatewayException, Injectable } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import type { ModelUsageType } from "@knowflow/shared";
 import OpenAI from "openai";
 
@@ -137,7 +137,7 @@ export class AliyunLlmClient {
     });
 
     if (!response.ok) {
-      throw new BadGatewayException("Model provider request failed");
+      throw new Error("Model provider request failed");
     }
 
     const body = (await response.json()) as DashScopeRerankResponse;

@@ -133,38 +133,4 @@ void describe("AuditLogInterceptor", () => {
     assert.match(JSON.stringify(record.detail["error"]), /Error/);
     assert.equal(JSON.stringify(record.detail).includes("private body"), false);
   });
-
-  void it("records department transfer target id and body summary", async () => {
-    const auditLogService = new FakeAuditLogService();
-    const interceptor = new AuditLogInterceptor(
-      reflector({
-        action: "department.member.transfer",
-        targetType: AuditTargetType.DEPARTMENT,
-      }),
-      auditLogService,
-    );
-
-    await firstValueFrom(
-      interceptor.intercept(
-        context({
-          user: { id: "admin-1" },
-          params: { id: "dept-source", userId: "member-1" },
-          body: {
-            targetDepartmentId: "dept-target",
-            content: "must not be logged",
-          },
-          headers: {},
-          ip: "127.0.0.1",
-        }),
-        handler({ ok: true, data: {} }),
-      ),
-    );
-
-    const record = auditLogService.records[0];
-    assert.ok(record);
-    assert.equal(record.targetType, AuditTargetType.DEPARTMENT);
-    assert.equal(record.targetId, "dept-source");
-    assert.deepEqual(record.detail["body"], { targetDepartmentId: "dept-target" });
-    assert.equal(JSON.stringify(record.detail).includes("must not be logged"), false);
-  });
 });

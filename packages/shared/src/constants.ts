@@ -70,7 +70,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "department.update": "更新部门",
   "department.delete": "删除部门",
   "department.member.add": "添加部门成员",
-  "department.member.transfer": "转移部门成员",
+  "department.member.remove": "移除部门成员",
   "kb.create": "创建知识库",
   "kb.update": "更新知识库",
   "kb.delete": "删除知识库",

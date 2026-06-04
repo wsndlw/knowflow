@@ -44,11 +44,6 @@ const ACTION_BODY_SUMMARY_KEYS: Record<string, readonly string[]> = {
   "agent.create": ["name", "description", "knowledgeBaseIds"],
   "agent.update": ["name", "description", "status", "knowledgeBaseIds"],
   "document.reprocess": ["reason"],
-  "department.create": ["name"],
-  "department.update": ["name"],
-  "department.member.add": ["userId"],
-  "department.member.transfer": ["targetDepartmentId"],
-  "user.department.assign": ["departmentId"],
   "kb.admin.set": ["userId"],
   "kb.admin.unset": ["userId"],
   "kb.create": ["name", "departmentId", "visibility"],
@@ -130,7 +125,7 @@ export class AuditLogInterceptor implements NestInterceptor {
         knowledgeBaseId,
         action: metadata.action,
         targetType: metadata.targetType,
-        targetId: this.extractTargetId(request, response),
+        targetId: this.extractTargetId(metadata.targetType, request, response),
         result,
         detail,
         ip: getClientIp(request),
@@ -149,7 +144,7 @@ export class AuditLogInterceptor implements NestInterceptor {
     if (routeKnowledgeBaseId !== null) {
       return routeKnowledgeBaseId;
     }
-    const routeTargetId = this.extractTargetId(request, undefined);
+    const routeTargetId = this.extractTargetId(metadata.targetType, request, undefined);
     return this.auditLogService.resolveKnowledgeBaseId(metadata.targetType, routeTargetId);
   }
 
@@ -176,7 +171,11 @@ export class AuditLogInterceptor implements NestInterceptor {
     return null;
   }
 
-  private extractTargetId(request: RequestWithAuditContext, response: unknown): string | null {
+  private extractTargetId(
+    targetType: AuditTargetType,
+    request: RequestWithAuditContext,
+    response: unknown,
+  ): string | null {
     const responseId = this.extractResponseId(response);
     if (responseId !== null) {
       return responseId;
@@ -186,7 +185,18 @@ export class AuditLogInterceptor implements NestInterceptor {
     if (routeId === null) {
       return null;
     }
-    return routeId;
+    if (
+      targetType === AuditTargetType.KNOWLEDGE_BASE ||
+      targetType === AuditTargetType.RETRIEVAL_SETTINGS ||
+      targetType === AuditTargetType.MIND_MAP ||
+      targetType === AuditTargetType.DOCUMENT ||
+      targetType === AuditTargetType.KNOWLEDGE_ITEM ||
+      targetType === AuditTargetType.AGENT ||
+      targetType === AuditTargetType.TAG
+    ) {
+      return routeId;
+    }
+    return null;
   }
 
   private extractResponseId(response: unknown): string | null {

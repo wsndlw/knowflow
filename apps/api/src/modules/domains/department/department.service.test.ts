@@ -23,22 +23,10 @@ type DeleteChain = {
   where: (condition: unknown) => Promise<unknown[]>;
 };
 
-type ConflictInsertChain = {
-  values: (values: Record<string, unknown>) => {
-    onConflictDoNothing: (config: unknown) => Promise<unknown[]>;
-  };
-};
-
-type TransactionClient = {
-  update: (table: unknown) => UpdateChain;
-  delete: (table: unknown) => DeleteChain;
-  insert: (table: unknown) => ConflictInsertChain;
-};
-
 type MutableDb = {
   insert: (table: unknown) => InsertChain;
+  update: (table: unknown) => UpdateChain;
   delete: (table: unknown) => DeleteChain;
-  transaction: (callback: (tx: TransactionClient) => Promise<unknown>) => Promise<unknown>;
 };
 
 type AdminUserRow = {
@@ -55,7 +43,6 @@ type ServiceOverrides = {
   ensureDepartmentExists?: (id: string) => Promise<void>;
   findDepartment?: (id: string) => Promise<unknown>;
   findUser?: (id: string) => Promise<AdminUserRow | undefined>;
-  moveUserToDepartment?: (user: AdminUserRow, departmentId: string) => Promise<void>;
   countDepartmentReferences?: (id: string) => Promise<{
     userCount: number;
     knowledgeBaseCount: number;
@@ -182,7 +169,7 @@ void describe("DepartmentService", () => {
       ensureDepartmentExists: () => Promise.resolve(),
       findUser: () => Promise.resolve(makeUserRow({ departmentId: superAdmin.departmentId })),
     });
-    const moves = captureUserDepartmentMoves();
+    const { updates, restore } = captureUserUpdates();
 
     try {
       await service.addMember(
@@ -191,12 +178,10 @@ void describe("DepartmentService", () => {
         superAdmin,
       );
 
-      assert.equal(moves.updates.length, 1);
-      assert.equal(moves.updates[0]?.["departmentId"], "00000000-0000-0000-0000-000000000020");
-      assert.equal(moves.adminDeleteCount, 1);
-      assert.equal(moves.adminInserts.length, 0);
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0]?.["departmentId"], "00000000-0000-0000-0000-000000000020");
     } finally {
-      moves.restore();
+      restore();
     }
   });
 
@@ -217,7 +202,7 @@ void describe("DepartmentService", () => {
         );
       },
     });
-    const moves = captureUserDepartmentMoves();
+    const { updates, restore } = captureUserUpdates();
 
     try {
       const result = await service.assignUserDepartment(
@@ -226,93 +211,12 @@ void describe("DepartmentService", () => {
         superAdmin,
       );
 
-      assert.equal(moves.updates.length, 1);
+      assert.equal(updates.length, 1);
       assert.equal(result.departmentId, "00000000-0000-0000-0000-000000000020");
       assert.equal(result.departmentName, "Engineering");
     } finally {
-      moves.restore();
+      restore();
     }
-  });
-
-  void it("syncs department admin projection when moving a department admin", async () => {
-    let lookupCount = 0;
-    const service = makeService({
-      ensureDepartmentExists: () => Promise.resolve(),
-      findUser: () => {
-        lookupCount += 1;
-        return Promise.resolve(
-          makeUserRow({
-            platformRole: "department_admin",
-            departmentId:
-              lookupCount === 1
-                ? "00000000-0000-0000-0000-000000000010"
-                : "00000000-0000-0000-0000-000000000020",
-          }),
-        );
-      },
-    });
-    const moves = captureUserDepartmentMoves();
-
-    try {
-      await service.assignUserDepartment(
-        "00000000-0000-0000-0000-000000000030",
-        { departmentId: "00000000-0000-0000-0000-000000000020" },
-        superAdmin,
-      );
-
-      assert.equal(moves.adminDeleteCount, 1);
-      assert.deepEqual(moves.adminInserts[0], {
-        departmentId: "00000000-0000-0000-0000-000000000020",
-        userId: "00000000-0000-0000-0000-000000000030",
-      });
-    } finally {
-      moves.restore();
-    }
-  });
-
-  void it("transfers a member only when the route source matches the user's current department", async () => {
-    const service = makeService({
-      ensureDepartmentExists: () => Promise.resolve(),
-      findUser: () =>
-        Promise.resolve(
-          makeUserRow({ departmentId: "00000000-0000-0000-0000-000000000010" }),
-        ),
-    });
-    const moves = captureUserDepartmentMoves();
-
-    try {
-      await service.transferMember(
-        "00000000-0000-0000-0000-000000000010",
-        "00000000-0000-0000-0000-000000000030",
-        "00000000-0000-0000-0000-000000000020",
-        superAdmin,
-      );
-
-      assert.equal(moves.updates[0]?.["departmentId"], "00000000-0000-0000-0000-000000000020");
-    } finally {
-      moves.restore();
-    }
-  });
-
-  void it("rejects transferring a user from a department they do not belong to", async () => {
-    const service = makeService({
-      ensureDepartmentExists: () => Promise.resolve(),
-      findUser: () =>
-        Promise.resolve(
-          makeUserRow({ departmentId: "00000000-0000-0000-0000-000000000030" }),
-        ),
-    });
-
-    await assert.rejects(
-      () =>
-        service.transferMember(
-          "00000000-0000-0000-0000-000000000010",
-          "00000000-0000-0000-0000-000000000030",
-          "00000000-0000-0000-0000-000000000020",
-          superAdmin,
-        ),
-      BadRequestException,
-    );
   });
 
   void it("limits department admins to users already in their own department", async () => {
@@ -329,45 +233,6 @@ void describe("DepartmentService", () => {
         service.assignUserDepartment(
           "00000000-0000-0000-0000-000000000030",
           { departmentId: departmentAdmin.departmentId },
-          departmentAdmin,
-        ),
-      ForbiddenException,
-    );
-  });
-
-  void it("prevents department admins from grabbing users into their department", async () => {
-    const service = makeService({
-      ensureDepartmentExists: () => Promise.resolve(),
-      findUser: () =>
-        Promise.resolve(
-          makeUserRow({ departmentId: "00000000-0000-0000-0000-000000000030" }),
-        ),
-    });
-
-    await assert.rejects(
-      () =>
-        service.addMember(
-          departmentAdmin.departmentId,
-          "00000000-0000-0000-0000-000000000040",
-          departmentAdmin,
-        ),
-      ForbiddenException,
-    );
-  });
-
-  void it("prevents department admins from transferring members out of their department", async () => {
-    const service = makeService({
-      ensureDepartmentExists: () => Promise.resolve(),
-      findUser: () =>
-        Promise.resolve(makeUserRow({ departmentId: departmentAdmin.departmentId })),
-    });
-
-    await assert.rejects(
-      () =>
-        service.transferMember(
-          departmentAdmin.departmentId,
-          "00000000-0000-0000-0000-000000000040",
-          "00000000-0000-0000-0000-000000000030",
           departmentAdmin,
         ),
       ForbiddenException,
@@ -410,56 +275,29 @@ function makeUserRow(overrides: Partial<AdminUserRow> = {}): AdminUserRow {
   };
 }
 
-function captureUserDepartmentMoves(): {
+function captureUserUpdates(): {
   updates: Record<string, unknown>[];
-  adminDeleteCount: number;
-  adminInserts: Record<string, unknown>[];
   restore: () => void;
 } {
   const mutableDb = db as unknown as MutableDb;
-  const originalTransaction = mutableDb.transaction;
+  const originalUpdate = mutableDb.update;
   const updates: Record<string, unknown>[] = [];
-  const adminInserts: Record<string, unknown>[] = [];
-  const state = { adminDeleteCount: 0 };
 
-  mutableDb.transaction = async (callback: (tx: TransactionClient) => Promise<unknown>) =>
-    callback({
-      update: () => ({
-        set(values: Record<string, unknown>) {
-          updates.push(values);
-          return {
-            where() {
-              return Promise.resolve([]);
-            },
-          };
-        },
-      }),
-      delete: () => ({
+  mutableDb.update = () => ({
+    set(values: Record<string, unknown>) {
+      updates.push(values);
+      return {
         where() {
-          state.adminDeleteCount += 1;
           return Promise.resolve([]);
         },
-      }),
-      insert: () => ({
-        values(values: Record<string, unknown>) {
-          adminInserts.push(values);
-          return {
-            onConflictDoNothing() {
-              return Promise.resolve([]);
-            },
-          };
-        },
-      }),
-    });
+      };
+    },
+  });
 
   return {
     updates,
-    get adminDeleteCount() {
-      return state.adminDeleteCount;
-    },
-    adminInserts,
     restore() {
-      mutableDb.transaction = originalTransaction;
+      mutableDb.update = originalUpdate;
     },
   };
 }

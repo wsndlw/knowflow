@@ -19,7 +19,6 @@ import {
   departmentListResponseSchema,
   departmentMembersResponseSchema,
   departmentSchema,
-  transferDepartmentMemberRequestSchema,
   updateDepartmentRequestSchema,
   userOptionSchema,
   uuidParamSchema,
@@ -122,10 +121,10 @@ export class DepartmentController {
     return { ok: true, data: {} };
   }
 
-  @Patch("admin/departments/:id/members/:userId/department")
+  @Delete("admin/departments/:id/members/:userId")
   @Roles("super_admin", "department_admin")
-  @AuditLog("department.member.transfer", AuditTargetType.DEPARTMENT)
-  async transferMember(
+  @AuditLog("department.member.remove", AuditTargetType.DEPARTMENT)
+  async removeMember(
     @Param() params: unknown,
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
@@ -133,11 +132,11 @@ export class DepartmentController {
     const parsed = uuidParamSchema
       .extend({ userId: addDepartmentMemberRequestSchema.shape.userId })
       .parse(params);
-    const { targetDepartmentId } = transferDepartmentMemberRequestSchema.parse(body);
-    await this.departmentService.transferMember(
+    const { departmentId } = assignUserDepartmentRequestSchema.parse(body);
+    await this.departmentService.removeMember(
       parsed.id,
       parsed.userId,
-      targetDepartmentId,
+      departmentId,
       this.requireUser(request),
     );
     return { ok: true, data: {} };

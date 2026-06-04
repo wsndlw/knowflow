@@ -229,6 +229,43 @@ export const userOptionsResponseSchema = z.object({
   items: z.array(userOptionSchema),
 });
 
+export const departmentSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  memberCount: z.number().int().nonnegative().optional(),
+  createdAt: z.iso.datetime(),
+});
+
+export const departmentListResponseSchema = z.object({
+  items: z.array(departmentSchema),
+});
+
+export const createDepartmentRequestSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+});
+
+export const updateDepartmentRequestSchema = createDepartmentRequestSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required",
+  });
+
+export const departmentMembersResponseSchema = z.object({
+  items: z.array(userOptionSchema),
+});
+
+export const addDepartmentMemberRequestSchema = z.object({
+  userId: z.uuid(),
+});
+
+export const assignUserDepartmentRequestSchema = z.object({
+  departmentId: z.uuid(),
+});
+
+export const adminUserListResponseSchema = z.object({
+  items: z.array(userOptionSchema),
+});
+
 export const tagColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "颜色必须是hex格式，如#FF5733");
 
 export const tagSchema = z.object({
@@ -1220,6 +1257,14 @@ export type DepartmentOption = z.infer<typeof departmentOptionSchema>;
 export type DepartmentOptionsResponse = z.infer<typeof departmentOptionsResponseSchema>;
 export type UserOption = z.infer<typeof userOptionSchema>;
 export type UserOptionsResponse = z.infer<typeof userOptionsResponseSchema>;
+export type Department = z.infer<typeof departmentSchema>;
+export type DepartmentListResponse = z.infer<typeof departmentListResponseSchema>;
+export type CreateDepartmentRequest = z.infer<typeof createDepartmentRequestSchema>;
+export type UpdateDepartmentRequest = z.infer<typeof updateDepartmentRequestSchema>;
+export type DepartmentMembersResponse = z.infer<typeof departmentMembersResponseSchema>;
+export type AddDepartmentMemberRequest = z.infer<typeof addDepartmentMemberRequestSchema>;
+export type AssignUserDepartmentRequest = z.infer<typeof assignUserDepartmentRequestSchema>;
+export type AdminUserListResponse = z.infer<typeof adminUserListResponseSchema>;
 export type KnowledgeTag = z.infer<typeof tagSchema>;
 export type TagListResponse = z.infer<typeof tagListResponseSchema>;
 export type CreateTagRequest = z.infer<typeof createTagRequestSchema>;

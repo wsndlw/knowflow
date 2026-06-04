@@ -5,21 +5,21 @@
 
 /* ──────────────────────────────────────────────────────────────
    knowflow 设计系统 — 现代亲和(专业有温度,对标 Vercel/飞书后台)
-   OKLCH tokens。主色青绿仅用于主操作/选中/状态,不装饰。
-   内容区干净白底 + 侧边栏稍冷第二中性层(避开奶油色 AI 通病)。
+   OKLCH tokens。主色飞书宝蓝 #3370FF 仅用于主操作/选中/状态,不装饰。
+   内容区干净白底 + 浅色侧边栏(淡蓝灰第二中性层,避开奶油色 AI 通病)。
    ────────────────────────────────────────────────────────────── */
 @theme {
-  /* 主色:青绿(brand) */
-  --color-brand-50: oklch(0.97 0.02 175);
-  --color-brand-100: oklch(0.93 0.04 175);
-  --color-brand-200: oklch(0.87 0.07 175);
-  --color-brand-300: oklch(0.78 0.1 175);
-  --color-brand-400: oklch(0.7 0.12 175);
-  --color-brand-500: oklch(0.62 0.13 175);
-  --color-brand-600: oklch(0.54 0.12 177);
-  --color-brand-700: oklch(0.46 0.1 178);
-  --color-brand-800: oklch(0.39 0.08 179);
-  --color-brand-900: oklch(0.32 0.06 180);
+  /* 主色:飞书宝蓝(brand) — #3370FF = brand-600 */
+  --color-brand-50: oklch(0.97 0.018 264);
+  --color-brand-100: oklch(0.93 0.045 264);
+  --color-brand-200: oklch(0.88 0.08 264);
+  --color-brand-300: oklch(0.8 0.13 264);
+  --color-brand-400: oklch(0.71 0.185 264);
+  --color-brand-500: oklch(0.65 0.215 264);
+  --color-brand-600: oklch(0.591 0.222 263.6);
+  --color-brand-700: oklch(0.52 0.195 264);
+  --color-brand-800: oklch(0.44 0.16 264);
+  --color-brand-900: oklch(0.37 0.12 264);
 
   /* 中性灰阶(内容区) — 冷调极轻,非暖非奶油 */
   --color-neutral-0: oklch(1 0 0);
@@ -35,12 +35,12 @@
   --color-neutral-900: oklch(0.21 0.006 265);
   --color-neutral-950: oklch(0.16 0.006 265);
 
-  /* 侧边栏:稍冷的第二中性层(比内容区深、偏冷) */
-  --color-sidebar: oklch(0.23 0.012 260);
-  --color-sidebar-hover: oklch(0.29 0.014 260);
-  --color-sidebar-active: oklch(0.34 0.03 200);
-  --color-sidebar-ink: oklch(0.88 0.005 250);
-  --color-sidebar-muted: oklch(0.62 0.008 255);
+  /* 侧边栏:浅色第二中性层(淡蓝灰,比内容区略深以区分) */
+  --color-sidebar: oklch(0.97 0.006 264);
+  --color-sidebar-hover: oklch(0.94 0.012 264);
+  --color-sidebar-active: oklch(0.93 0.045 264);
+  --color-sidebar-ink: oklch(0.3 0.02 264);
+  --color-sidebar-muted: oklch(0.52 0.015 264);
 
   /* 语义色 */
   --color-success: oklch(0.6 0.13 155);

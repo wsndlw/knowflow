@@ -34,6 +34,12 @@ out/
 # 日志
 *.log
 logs/
+# 本地生成/临时工作区
+.history/
+planning/
+test-results/
+output/
+.playwright-cli/
 # 操作系统
 .DS_Store
 Thumbs.db

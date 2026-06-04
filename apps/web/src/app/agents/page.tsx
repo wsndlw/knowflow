@@ -66,7 +66,7 @@ const confidenceMeta: Record<ConfidenceLevel, { label: string; cls: string }> = 
   strong: { label: "依据充分", cls: "bg-success-bg text-success" },
   medium: { label: "依据一般", cls: "bg-info-bg text-info" },
   weak: { label: "依据不足", cls: "bg-warning-bg text-warning" },
-  not_found: { label: "未找到依据", cls: "bg-neutral-100 text-neutral-600" },
+  not_found: { label: "未找到依据", cls: "bg-neutral-100 text-ink-muted" },
 };
 
 const noAnswerMeta: Record<
@@ -82,8 +82,8 @@ const noAnswerMeta: Record<
   no_answer: {
     label: "无匹配答案",
     description: "未在知识库中找到相关内容。",
-    bgCls: "bg-neutral-100/80 border border-neutral-200",
-    textCls: "text-neutral-700",
+    bgCls: "bg-neutral-50 border border-border",
+    textCls: "text-ink-muted",
     icon: HelpCircle,
   },
   low_confidence: {
@@ -420,7 +420,7 @@ export default function ChatPage() {
               <EmptyState
                 title="开始一段对话"
                 description="向全局助手提问,它会在你有权访问的全部知识库中查找依据并给出带来源的回答。"
-                className="mt-16"
+                className="mt-[18vh]"
               />
             ) : null}
 
@@ -552,7 +552,14 @@ function AssistantBubble({
           ) : null}
 
           {showSkeleton ? (
-            <p className="text-sm text-ink-subtle">{statusText || "思考中"}…</p>
+            <p className="flex items-center gap-2 text-sm text-ink-muted">
+              <span className="inline-flex gap-1" aria-hidden>
+                <span className="size-1.5 animate-bounce rounded-full bg-brand-400 [animation-delay:-0.3s]" />
+                <span className="size-1.5 animate-bounce rounded-full bg-brand-400 [animation-delay:-0.15s]" />
+                <span className="size-1.5 animate-bounce rounded-full bg-brand-400" />
+              </span>
+              {statusText || "思考中"}
+            </p>
           ) : (
             <div className="text-base leading-relaxed text-ink">
               <ReactMarkdown
@@ -662,7 +669,7 @@ function AssistantBubble({
                         <a
                           key={citation.id ?? idx}
                           href={`/knowledge-bases/${citation.knowledgeBaseId}`}
-                          className="group flex flex-col justify-center gap-0.5 rounded-lg border border-border bg-neutral-0 p-2.5 shadow-xs transition-all hover:border-brand-300 hover:bg-brand-50/10"
+                          className="group flex flex-col gap-0.5 rounded-lg border border-border bg-surface p-2.5 shadow-xs transition-all hover:border-brand-300 hover:bg-brand-50"
                         >
                           {content}
                         </a>
@@ -671,7 +678,7 @@ function AssistantBubble({
                     return (
                       <div
                         key={citation.id ?? idx}
-                        className="flex flex-col justify-center gap-0.5 rounded-lg border border-border bg-neutral-50 p-2.5 shadow-xs"
+                        className="flex flex-col gap-0.5 rounded-lg border border-border bg-neutral-50 p-2.5 shadow-xs"
                       >
                         {content}
                         <span className="mt-0.5 text-xs text-ink-subtle">(该文档已被删除)</span>
@@ -684,18 +691,16 @@ function AssistantBubble({
           ) : null}
 
           {/* 可信度 + 元信息 */}
-          {!message.id.startsWith("draft-") ? (
+          {!message.id.startsWith("draft-") && message.confidenceLevel !== null ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {message.confidenceLevel !== null ? (
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
-                    confidenceMeta[message.confidenceLevel].cls,
-                  )}
-                >
-                  {confidenceMeta[message.confidenceLevel].label}
-                </span>
-              ) : null}
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
+                  confidenceMeta[message.confidenceLevel].cls,
+                )}
+              >
+                {confidenceMeta[message.confidenceLevel].label}
+              </span>
             </div>
           ) : null}
 
@@ -711,7 +716,7 @@ function AssistantBubble({
                   <a
                     key={doc.id}
                     href={`/knowledge-bases/${doc.knowledgeBaseId}`}
-                    className="flex items-start justify-between gap-3 rounded-lg border border-border bg-neutral-0 p-2.5 shadow-xs hover:border-brand-300 hover:bg-brand-50/10 transition-all group"
+                    className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface p-2.5 shadow-xs hover:border-brand-300 hover:bg-brand-50 transition-all group"
                   >
                     <div className="min-w-0 flex-1">
                       <span className="block text-sm font-medium text-ink group-hover:text-brand-700 transition-colors line-clamp-1">

@@ -46,8 +46,8 @@ export function TagFilterPopover({
           ) : null}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-0 bg-surface">
-        <Command className="bg-surface">
+      <PopoverContent align="start" sideOffset={10} className="w-64 p-0 bg-surface">
+        <Command className="bg-surface mt-0.5">
           <CommandInput placeholder="搜索标签…" />
           <CommandList>
             <CommandEmpty>{allTags.length === 0 ? "暂无标签" : "未找到匹配标签"}</CommandEmpty>

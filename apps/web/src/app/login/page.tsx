@@ -37,9 +37,9 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-dvh bg-background md:grid-cols-[1.1fr_1fr]">
       {/* 左侧品牌区(桌面) */}
-      <section className="relative hidden flex-col justify-between overflow-hidden bg-sidebar p-12 text-sidebar-ink md:flex">
+      <section className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-brand-800 to-brand-900 p-12 text-white md:flex">
         <div
-          className="pointer-events-none absolute -top-24 -right-24 size-96 rounded-full bg-brand-500/15 blur-3xl"
+          className="pointer-events-none absolute -top-24 -right-24 size-96 rounded-full bg-brand-400/20 blur-3xl"
           aria-hidden
         />
         <div className="flex items-center gap-2.5">
@@ -52,12 +52,12 @@ export default function LoginPage() {
           <h2 className="text-2xl leading-snug font-semibold text-white">
             企业 AI 知识库管理平台
           </h2>
-          <p className="mt-3 text-base leading-relaxed text-sidebar-muted">
+          <p className="mt-3 text-base leading-relaxed text-white/70">
             让知识的生产、管理与消费形成闭环。上传文档、智能检索、基于知识库的专家
             Agent 问答，答案可追溯来源。
           </p>
         </div>
-        <p className="relative text-xs text-sidebar-muted">
+        <p className="relative text-xs text-white/55">
           内部系统 · 账号由管理员创建
         </p>
       </section>

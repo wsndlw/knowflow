@@ -11,8 +11,9 @@ import { Label } from "../../../../components/ui/label";
 import { Slider } from "../../../../components/ui/slider";
 import { Switch } from "../../../../components/ui/switch";
 import { Select } from "../../../../components/ui/select";
+import { Dialog } from "../../../../components/ui/dialog";
 import { Skeleton } from "../../../../components/ui/feedback";
-import { apiRequest } from "../../../../lib/api";
+import { apiRequest, emptyObjectSchema } from "../../../../lib/api";
 
 const RETRIEVAL_MODE_LABELS: Record<string, string> = {
   vector: "向量检索",
@@ -20,12 +21,22 @@ const RETRIEVAL_MODE_LABELS: Record<string, string> = {
   hybrid: "混合检索",
 };
 
-export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
+export function TabSettings({
+  knowledgeBaseId,
+  kbName,
+  onDeleted,
+}: {
+  knowledgeBaseId: string;
+  kbName: string;
+  onDeleted: () => void;
+}) {
   const [settings, setSettings] = useState<RetrievalSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -75,6 +86,18 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
     }
   }
 
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await apiRequest(`/knowledge-bases/${knowledgeBaseId}`, emptyObjectSchema, {
+        method: "DELETE",
+      });
+      onDeleted();
+    } catch {
+      setDeleting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col gap-6">
@@ -94,7 +117,8 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
   }
 
   return (
-    <form onSubmit={(e) => void handleSave(e)} className="flex flex-col gap-8 max-w-2xl">
+    <div className="flex flex-col gap-10">
+      <form onSubmit={(e) => void handleSave(e)} className="flex flex-col gap-8 max-w-2xl">
       {error ? (
         <p className="rounded-md bg-danger-bg px-4 py-3 text-sm text-danger">{error}</p>
       ) : null}
@@ -123,7 +147,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex justify-between">
             <Label>Top K (最大召回数)</Label>
-            <span className="text-sm text-ink-subtle">{settings.topK}</span>
+            <span className="text-sm font-medium text-ink tabular-nums">{settings.topK}</span>
           </div>
           <Slider
             min={1}
@@ -137,7 +161,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex justify-between">
             <Label>相似度阈值 (Similarity Threshold)</Label>
-            <span className="text-sm text-ink-subtle">{settings.similarityThreshold.toFixed(2)}</span>
+            <span className="text-sm font-medium text-ink tabular-nums">{settings.similarityThreshold.toFixed(2)}</span>
           </div>
           <Slider
             min={0}
@@ -166,7 +190,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
             <div className="flex flex-col gap-3">
               <div className="flex justify-between">
                 <Label>候选数量 (Rerank Top N)</Label>
-                <span className="text-sm text-ink-subtle">{settings.rerankTopN}</span>
+                <span className="text-sm font-medium text-ink tabular-nums">{settings.rerankTopN}</span>
               </div>
               <Slider
                 min={1}
@@ -181,7 +205,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
             <div className="flex flex-col gap-3">
               <div className="flex justify-between">
                 <Label>保留数量 (Rerank Keep N)</Label>
-                <span className="text-sm text-ink-subtle">{settings.rerankKeepN}</span>
+                <span className="text-sm font-medium text-ink tabular-nums">{settings.rerankKeepN}</span>
               </div>
               <Slider
                 min={1}
@@ -203,7 +227,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex justify-between">
             <Label>向量权重 (Vector Weight)</Label>
-            <span className="text-sm text-ink-subtle">{settings.vectorWeight.toFixed(2)}</span>
+            <span className="text-sm font-medium text-ink tabular-nums">{settings.vectorWeight.toFixed(2)}</span>
           </div>
           <Slider
             min={0}
@@ -217,7 +241,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex justify-between">
             <Label>全文权重 (FTS Weight)</Label>
-            <span className="text-sm text-ink-subtle">{settings.ftsWeight.toFixed(2)}</span>
+            <span className="text-sm font-medium text-ink tabular-nums">{settings.ftsWeight.toFixed(2)}</span>
           </div>
           <Slider
             min={0}
@@ -231,7 +255,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex justify-between">
             <Label>知识条目权重 (KI Weight)</Label>
-            <span className="text-sm text-ink-subtle">{settings.kiWeight.toFixed(2)}</span>
+            <span className="text-sm font-medium text-ink tabular-nums">{settings.kiWeight.toFixed(2)}</span>
           </div>
           <Slider
             min={0}
@@ -249,5 +273,37 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         </Button>
       </div>
     </form>
+
+      {/* 危险区域 */}
+      <section className="flex max-w-2xl flex-col gap-3 rounded-lg border border-danger/40 bg-danger-bg/30 p-5">
+        <div>
+          <h3 className="text-base font-medium text-danger">危险区域</h3>
+          <p className="mt-1 text-sm text-ink-muted">
+            删除知识库后，其文档、知识条目、成员配置等数据将无法恢复。
+          </p>
+        </div>
+        <div>
+          <Button type="button" variant="destructive" onClick={() => setConfirmOpen(true)}>
+            删除知识库
+          </Button>
+        </div>
+      </section>
+
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="确认删除知识库"
+        description={`删除「${kbName}」后数据无法恢复，确定要删除吗？`}
+      >
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
+            取消
+          </Button>
+          <Button variant="destructive" loading={deleting} onClick={() => void handleDelete()}>
+            确认删除
+          </Button>
+        </div>
+      </Dialog>
+    </div>
   );
 }

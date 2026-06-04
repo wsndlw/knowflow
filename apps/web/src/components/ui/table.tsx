@@ -31,9 +31,10 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
 
 function TableHeaderCell({ className, ...props }: React.ComponentProps<"th">) {
   return (
-    <TableHead
+    <th
+      data-slot="table-head"
       className={cn(
-        "px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide",
+        "h-10 px-4 py-2.5 text-left align-middle text-xs font-medium uppercase tracking-wide whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className
       )}
       {...props}
@@ -77,44 +78,13 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   )
 }
 
-function hasTableRowChildren(children: React.ReactNode): boolean {
-  return React.Children.toArray(children).some(
-    (child) => React.isValidElement(child) && child.type === TableRow
-  )
-}
-
-function TableHead({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"th"> | React.ComponentProps<"thead">) {
-  if (hasTableRowChildren(children)) {
-    const headerProps = props as React.ComponentProps<"thead">
-
-    return (
-      <thead
-        data-slot="table-header"
-        className={cn("[&_tr]:border-b", className)}
-        {...headerProps}
-      >
-        {children}
-      </thead>
-    )
-  }
-
-  const headProps = props as React.ComponentProps<"th">
-
+function TableHead({ className, ...props }: React.ComponentProps<"thead">) {
   return (
-    <th
-      data-slot="table-head"
-      className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
-        className
-      )}
-      {...headProps}
-    >
-      {children}
-    </th>
+    <thead
+      data-slot="table-header"
+      className={cn("[&_tr]:border-b", className)}
+      {...props}
+    />
   )
 }
 

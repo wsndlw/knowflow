@@ -28,7 +28,7 @@ export function MindMapSearch({ value, onChange, matchCount }: MindMapSearchProp
             type="button"
             aria-label="清空搜索"
             onClick={() => onChange("")}
-            className="rounded p-0.5 text-ink-subtle hover:bg-muted"
+            className="rounded p-0.5 text-ink-subtle hover:bg-neutral-100 hover:text-ink"
           >
             <XIcon className="size-3.5" />
           </button>

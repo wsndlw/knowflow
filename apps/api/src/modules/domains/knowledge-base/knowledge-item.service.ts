@@ -26,20 +26,7 @@ import type {
   KnowledgeItemListResponse,
   UpdateKnowledgeItemRequest,
 } from "@knowflow/shared";
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  exists,
-  ilike,
-  inArray,
-  ne,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { AliyunLlmService, EXPECTED_EMBEDDING_DIMENSION } from "../../../shared/llm/aliyun-llm.js";
 import { parseSpreadsheetForBatchImport } from "../../../shared/import/spreadsheet-import.js";
@@ -502,8 +489,6 @@ export class KnowledgeItemService {
       conditions.push(eq(knowledgeItems.status, "published"), eq(knowledgeItems.enabled, true));
     } else if (query.status !== undefined) {
       conditions.push(eq(knowledgeItems.status, query.status));
-    } else {
-      conditions.push(ne(knowledgeItems.status, "archived"));
     }
     if (query.keyword !== undefined) {
       const keyword = `%${query.keyword}%`;

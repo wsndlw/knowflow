@@ -153,32 +153,6 @@ void describe("KnowledgeItemService archive semantics", () => {
     assert.ok(values.includes("published"));
     assert.ok(values.includes(true));
   });
-
-  void it("excludes archived items from manager lists by default", () => {
-    const service = makeService(makeAccessStub());
-    const condition = (service as unknown as KnowledgeItemListConditionInternals).buildListCondition(
-      "00000000-0000-0000-0000-000000000200",
-      { page: 1, pageSize: 20, tagIds: [] },
-      true,
-    );
-    const fragments = collectStringFragments(condition);
-
-    assert.ok(fragments.includes("archived"));
-    assert.ok(fragments.some((fragment) => fragment.includes("<>")));
-  });
-
-  void it("shows archived items only when managers request the archived status", () => {
-    const service = makeService(makeAccessStub());
-    const condition = (service as unknown as KnowledgeItemListConditionInternals).buildListCondition(
-      "00000000-0000-0000-0000-000000000200",
-      { page: 1, pageSize: 20, tagIds: [], status: "archived" },
-      true,
-    );
-    const fragments = collectStringFragments(condition);
-
-    assert.ok(fragments.includes("archived"));
-    assert.equal(fragments.some((fragment) => fragment.includes("<>")), false);
-  });
 });
 
 async function captureUpdateValues(action: () => Promise<KnowledgeItem>): Promise<KnowledgeItemUpdateValues> {
@@ -344,13 +318,6 @@ function collectValues(value: unknown): unknown[] {
   return values;
 }
 
-function collectStringFragments(value: unknown): string[] {
-  const fragments: string[] = [];
-  const seen = new WeakSet();
-  collectStrings(value, fragments, seen);
-  return fragments;
-}
-
 function collect(value: unknown, values: unknown[], seen: WeakSet<object>): void {
   if (value === null || typeof value !== "object") {
     values.push(value);
@@ -373,30 +340,5 @@ function collect(value: unknown, values: unknown[], seen: WeakSet<object>): void
   }
   for (const symbol of Object.getOwnPropertySymbols(value)) {
     collect((value as Record<symbol, unknown>)[symbol], values, seen);
-  }
-}
-
-function collectStrings(value: unknown, fragments: string[], seen: WeakSet<object>): void {
-  if (typeof value === "string") {
-    fragments.push(value);
-    return;
-  }
-  if (value === null || typeof value !== "object" || seen.has(value)) {
-    return;
-  }
-
-  seen.add(value);
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectStrings(item, fragments, seen);
-    }
-    return;
-  }
-
-  for (const key of Object.getOwnPropertyNames(value)) {
-    collectStrings((value as Record<string, unknown>)[key], fragments, seen);
-  }
-  for (const symbol of Object.getOwnPropertySymbols(value)) {
-    collectStrings((value as Record<symbol, unknown>)[symbol], fragments, seen);
   }
 }

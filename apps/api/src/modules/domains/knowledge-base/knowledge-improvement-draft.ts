@@ -16,6 +16,8 @@ export type DraftParseContext = {
 };
 
 const MAX_DOCUMENT_DRAFT_CONTENT_LENGTH = 4000;
+const MIN_DOCUMENT_PARAGRAPH_CONTENT_LENGTH = 220;
+const MAX_MERGED_DOCUMENT_DRAFT_CONTENT_LENGTH = 3200;
 const SUMMARY_STYLE_PREFIXES = [
   "本文主要介绍",
   "本文主要讲述",
@@ -67,33 +69,35 @@ export function filterDocumentDrafts(drafts: CandidateDraft[]): CandidateDraft[]
   const seen = new Set<string>();
   const filtered: CandidateDraft[] = [];
   for (const draft of drafts) {
-    if (draft.title.trim().length === 0 || draft.content.trim().length === 0) {
+    const normalizedDraft = normalizeDocumentDraft(draft);
+    if (normalizedDraft.title.length === 0 || normalizedDraft.content.length === 0) {
       continue;
     }
-    if (draft.content.length > MAX_DOCUMENT_DRAFT_CONTENT_LENGTH) {
+    if (normalizedDraft.content.length > MAX_DOCUMENT_DRAFT_CONTENT_LENGTH) {
       continue;
     }
-    if (isSummaryStyleDraft(draft)) {
+    if (isSummaryStyleDraft(normalizedDraft)) {
       continue;
     }
 
-    const duplicateKey = normalizeDraftDuplicateKey(draft);
+    const duplicateKey = normalizeDraftDuplicateKey(normalizedDraft);
     if (seen.has(duplicateKey)) {
       continue;
     }
     seen.add(duplicateKey);
-    filtered.push({
-      ...draft,
-      metadata: {
-        ...draft.metadata,
-        documentKnowledgeIndex: filtered.length + 1,
-      },
-    });
+    filtered.push(normalizedDraft);
   }
-  if (drafts.length > 0 && filtered.length === 0) {
+  const merged = coalesceShortDocumentDrafts(filtered);
+  if (drafts.length > 0 && merged.length === 0) {
     throw new Error("Document draft quality filter rejected all candidates");
   }
-  return filtered;
+  return merged.map((draft, index) => ({
+    ...draft,
+    metadata: {
+      ...draft.metadata,
+      documentKnowledgeIndex: index + 1,
+    },
+  }));
 }
 
 export function buildPublishedKnowledgeMetadata(input: {
@@ -160,9 +164,7 @@ function parseDraftObject(
       sourceChunkId: context.sourceContext["chunkId"],
       sourceChunkIndex: context.sourceContext["chunkIndex"],
       ...(documentKnowledgeIndex === undefined ? {} : { documentKnowledgeIndex }),
-      ...(sourceEvidence === null
-        ? {}
-        : { sourceEvidence, sourceTextExcerpt: sourceEvidence }),
+      ...(sourceEvidence === null ? {} : { sourceEvidence, sourceTextExcerpt: sourceEvidence }),
     },
   };
 }
@@ -223,6 +225,149 @@ function isSummaryStyleDraft(draft: CandidateDraft): boolean {
   return SUMMARY_STYLE_PREFIXES.some(
     (prefix) => title.startsWith(prefix.toLowerCase()) || content.startsWith(prefix.toLowerCase()),
   );
+}
+
+function normalizeDocumentDraft(draft: CandidateDraft): CandidateDraft {
+  return {
+    ...draft,
+    title: draft.title.trim(),
+    content: normalizeDocumentParagraph(draft.content),
+    summary:
+      draft.summary === null
+        ? null
+        : normalizeDocumentParagraph(draft.summary).slice(0, 2000) || null,
+    reasoning:
+      draft.reasoning === null
+        ? null
+        : normalizeDocumentParagraph(draft.reasoning).slice(0, 2000) || null,
+  };
+}
+
+function normalizeDocumentParagraph(value: string): string {
+  return value
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join(" ")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function coalesceShortDocumentDrafts(drafts: CandidateDraft[]): CandidateDraft[] {
+  const merged: CandidateDraft[] = [];
+  let shortGroup: CandidateDraft[] = [];
+
+  function flushShortGroup(): void {
+    if (shortGroup.length >= 3) {
+      const [first, ...rest] = shortGroup;
+      if (first !== undefined) {
+        merged.push(rest.reduce((current, draft) => mergeDocumentDrafts(current, draft), first));
+      }
+    } else {
+      merged.push(...shortGroup);
+    }
+    shortGroup = [];
+  }
+
+  for (const draft of drafts) {
+    if (!isShortDocumentDraft(draft)) {
+      flushShortGroup();
+      merged.push(draft);
+      continue;
+    }
+
+    const combinedLength =
+      shortGroup.reduce((sum, item) => sum + item.content.length + 1, 0) + draft.content.length;
+    if (shortGroup.length > 0 && combinedLength > MAX_MERGED_DOCUMENT_DRAFT_CONTENT_LENGTH) {
+      flushShortGroup();
+    }
+    shortGroup.push(draft);
+  }
+  flushShortGroup();
+  return merged;
+}
+
+function isShortDocumentDraft(draft: CandidateDraft): boolean {
+  return (
+    draft.content.length < MIN_DOCUMENT_PARAGRAPH_CONTENT_LENGTH ||
+    countSentences(draft.content) <= 2
+  );
+}
+
+function countSentences(content: string): number {
+  return content.split(/[.!?\u3002\uff01\uff1f]+/).filter((part) => part.trim().length > 0).length;
+}
+
+function mergeDocumentDrafts(previous: CandidateDraft, draft: CandidateDraft): CandidateDraft {
+  return {
+    ...previous,
+    title: mergeDraftTitles(previous, draft),
+    content: `${previous.content} ${draft.content}`.trim(),
+    summary: previous.summary ?? draft.summary,
+    confidence: mergeConfidence(previous.confidence, draft.confidence),
+    reasoning: mergeOptionalText(previous.reasoning, draft.reasoning, 2000),
+    metadata: {
+      ...previous.metadata,
+      mergedDocumentKnowledgeIndexes: [
+        ...documentKnowledgeIndexes(previous),
+        ...documentKnowledgeIndexes(draft),
+      ],
+      mergedDocumentKnowledgeTitles: [...documentKnowledgeTitles(previous), draft.title],
+    },
+  };
+}
+
+function mergeDraftTitles(previous: CandidateDraft, draft: CandidateDraft): string {
+  const titles = [...new Set([...documentKnowledgeTitles(previous), draft.title])];
+  if (titles.length === 0) {
+    return previous.title;
+  }
+  if (titles.length === 1) {
+    return titles[0] ?? previous.title;
+  }
+  const title = titles.slice(0, 3).join(" / ");
+  return title.length <= 255 ? title : `${title.slice(0, 252)}...`;
+}
+
+function documentKnowledgeIndexes(draft: CandidateDraft): number[] {
+  const merged = draft.metadata["mergedDocumentKnowledgeIndexes"];
+  if (Array.isArray(merged)) {
+    return merged.filter((value): value is number => typeof value === "number");
+  }
+  const index = draft.metadata["documentKnowledgeIndex"];
+  return typeof index === "number" ? [index] : [];
+}
+
+function documentKnowledgeTitles(draft: CandidateDraft): string[] {
+  const merged = draft.metadata["mergedDocumentKnowledgeTitles"];
+  if (Array.isArray(merged)) {
+    return merged.filter((value): value is string => typeof value === "string");
+  }
+  return [draft.title];
+}
+
+function mergeConfidence(
+  previousConfidence: number | null,
+  draftConfidence: number | null,
+): number | null {
+  if (previousConfidence === null) {
+    return draftConfidence;
+  }
+  if (draftConfidence === null) {
+    return previousConfidence;
+  }
+  return Math.min(previousConfidence, draftConfidence);
+}
+
+function mergeOptionalText(
+  previousText: string | null,
+  draftText: string | null,
+  maxLength: number,
+): string | null {
+  const parts = [previousText, draftText].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  return parts.length === 0 ? null : parts.join(" ").slice(0, maxLength);
 }
 
 function normalizeDraftDuplicateKey(draft: CandidateDraft): string {

@@ -217,6 +217,28 @@ export class DocumentController {
     return { ok: true, data: {} };
   }
 
+  @Post("documents/:id/archive")
+  @AuditLog("document.archive", AuditTargetType.DOCUMENT)
+  async archive(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DocumentSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.documentService.archive(id, this.requireUser(request));
+    return { ok: true, data: documentSchema.parse(data) };
+  }
+
+  @Post("documents/:id/restore")
+  @AuditLog("document.restore", AuditTargetType.DOCUMENT)
+  async restore(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DocumentSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.documentService.restore(id, this.requireUser(request));
+    return { ok: true, data: documentSchema.parse(data) };
+  }
+
   @Post("documents/:id/reprocess")
   @AuditLog("document.reprocess", AuditTargetType.DOCUMENT)
   async reprocess(

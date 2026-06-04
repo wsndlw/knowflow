@@ -4,6 +4,7 @@ import { APP_INTERCEPTOR } from "@nestjs/core";
 import { AgentModule } from "./domains/agent/agent.module.js";
 import { AnalyticsModule } from "./domains/analytics/analytics.module.js";
 import { AuthModule } from "./domains/auth/auth.module.js";
+import { DepartmentModule } from "./domains/department/department.module.js";
 import { DocumentModule } from "./domains/document/document.module.js";
 import { HealthModule } from "./domains/health/health.module.js";
 import { KnowledgeBaseModule } from "./domains/knowledge-base/knowledge-base.module.js";
@@ -17,6 +18,7 @@ import { AuditLogService } from "../shared/audit/audit-log.service.js";
     AnalyticsModule,
     HealthModule,
     AuthModule,
+    DepartmentModule,
     KnowledgeBaseModule,
     DocumentModule,
     AgentModule,

@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "pnpm -r --parallel --if-present dev",
+    "dev:all": "concurrently -k -n api,web,worker -c blue,green,magenta \"pnpm --filter @knowflow/api dev\" \"pnpm --filter @knowflow/web dev\" \"pnpm --filter @knowflow/api worker\"",
     "lint": "pnpm -r --if-present lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^25.9.1",
+    "concurrently": "^9.1.0",
     "eslint": "^9.39.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",

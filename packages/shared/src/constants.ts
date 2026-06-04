@@ -38,6 +38,7 @@ export const RETRIEVAL_ITEM_STATUS_FILTERS = ["all", "published"] as const;
 
 export enum AuditTargetType {
   USER = "user",
+  DEPARTMENT = "department",
   KNOWLEDGE_BASE = "knowledge_base",
   DOCUMENT = "document",
   KNOWLEDGE_ITEM = "knowledge_item",
@@ -49,6 +50,7 @@ export enum AuditTargetType {
 
 export const AUDIT_TARGET_TYPES = [
   AuditTargetType.USER,
+  AuditTargetType.DEPARTMENT,
   AuditTargetType.KNOWLEDGE_BASE,
   AuditTargetType.DOCUMENT,
   AuditTargetType.KNOWLEDGE_ITEM,
@@ -63,14 +65,24 @@ export const AUDIT_RESULTS = ["success", "failure"] as const;
 export const ACTION_LABELS: Record<string, string> = {
   "user.login": "用户登录",
   "user.logout": "用户登出",
+  "user.department.assign": "设置用户部门",
+  "department.create": "创建部门",
+  "department.update": "更新部门",
+  "department.delete": "删除部门",
+  "department.member.add": "添加部门成员",
+  "department.member.remove": "移除部门成员",
   "kb.create": "创建知识库",
   "kb.update": "更新知识库",
   "kb.delete": "删除知识库",
+  "kb.disable": "禁用知识库",
+  "kb.enable": "启用知识库",
   "kb.member.add": "添加成员",
   "kb.member.remove": "移除成员",
   "kb.admin.set": "设置管理员",
   "kb.admin.unset": "取消管理员",
   "document.upload": "上传文档",
+  "document.archive": "归档文档",
+  "document.restore": "恢复文档",
   "document.delete": "删除文档",
   "document.reprocess": "重新处理文档",
   "knowledge_item.create": "创建知识条目",

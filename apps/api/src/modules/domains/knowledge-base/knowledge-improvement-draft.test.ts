@@ -150,6 +150,48 @@ void describe("knowledge improvement draft parsing", () => {
     );
   });
 
+  void it("coalesces adjacent short document drafts into paragraph-level entries", () => {
+    const drafts = parseDocumentDraftResponse(
+      JSON.stringify({
+        items: [
+          {
+            title: "Travel approval",
+            content:
+              "Employees must submit a travel request before departure.\nThe direct manager must approve it.",
+            confidence: 0.95,
+            reasoning: "The source lists the approval requirement.",
+          },
+          {
+            title: "Reimbursement deadline",
+            content: "Travel reimbursement must be submitted within 30 days after the trip ends.",
+            confidence: 0.91,
+            reasoning: "The source lists the reimbursement deadline.",
+          },
+          {
+            title: "Invoice requirements",
+            content:
+              "Invoices must be authentic, complete, and verifiable through official channels.",
+            confidence: 0.9,
+            reasoning: "The source lists invoice requirements.",
+          },
+        ],
+      }),
+      parseContext,
+    );
+
+    const filtered = filterDocumentDrafts(drafts);
+
+    assert.equal(filtered.length, 1);
+    const merged = filtered[0];
+    assert.ok(merged);
+    assert.equal(merged.metadata["documentKnowledgeIndex"], 1);
+    assert.deepEqual(merged.metadata["mergedDocumentKnowledgeIndexes"], [1, 2, 3]);
+    assert.match(merged.title, /Travel approval/);
+    assert.match(merged.title, /Reimbursement deadline/);
+    assert.match(merged.content, /direct manager must approve it\. Travel reimbursement/);
+    assert.match(merged.content, /Invoices must be authentic/);
+  });
+
   void it("fails clearly when quality filters reject every document draft", () => {
     const summaryDrafts = parseDocumentDraftResponse(
       JSON.stringify({

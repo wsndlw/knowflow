@@ -37,7 +37,7 @@ type RecallKnowledgeItemRow = {
   createdBy: string;
   verifiedBy: string | null;
   verifiedAt: Date | null;
-  status: "draft" | "pending_review" | "published" | "unpublished" | "expired";
+  status: "draft" | "pending_review" | "published" | "unpublished" | "expired" | "archived";
   viewCount: number;
   citeCount: number;
   likeCount: number;

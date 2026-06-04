@@ -3,15 +3,20 @@ import "./shared/config/load-env.js";
 import { CSRF_HEADER_NAME } from "@knowflow/shared";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 
 import { AppModule } from "./modules/app.module.js";
 import { GlobalExceptionFilter } from "./shared/filters/global-exception.filter.js";
 import { csrfMiddleware } from "./shared/middleware/csrf.middleware.js";
+import { shouldTrustProxy } from "./shared/net/client-ip.js";
 
 const DEFAULT_PORT = 4000;
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  if (shouldTrustProxy()) {
+    app.set("trust proxy", 1);
+  }
   app.enableCors({
     origin: process.env["WEB_ORIGIN"] ?? "http://localhost:3000",
     credentials: true,

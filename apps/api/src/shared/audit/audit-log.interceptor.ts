@@ -12,6 +12,7 @@ import { catchError, from, mergeMap, tap, throwError, type Observable } from "rx
 
 import { AUDIT_LOG_METADATA_KEY, type AuditLogMetadata } from "./audit-log.decorator.js";
 import { AuditLogService } from "./audit-log.service.js";
+import { getClientIp } from "../net/client-ip.js";
 
 type RequestWithAuditContext = {
   user?: {
@@ -25,6 +26,37 @@ type RequestWithAuditContext = {
   socket?: {
     remoteAddress?: string;
   };
+};
+
+const SENSITIVE_BUSINESS_KEYS = new Set([
+  "content",
+  "correctionContent",
+  "systemPrompt",
+  "prompt",
+  "messages",
+  "metadata",
+  "sourceContext",
+  "reasoning",
+  "answer",
+]);
+
+const ACTION_BODY_SUMMARY_KEYS: Record<string, readonly string[]> = {
+  "agent.create": ["name", "description", "knowledgeBaseIds"],
+  "agent.update": ["name", "description", "status", "knowledgeBaseIds"],
+  "document.reprocess": ["reason"],
+  "kb.admin.set": ["userId"],
+  "kb.admin.unset": ["userId"],
+  "kb.create": ["name", "departmentId", "visibility"],
+  "kb.member.add": ["userId", "role"],
+  "kb.member.remove": ["userId"],
+  "kb.update": ["name", "description", "visibility", "status"],
+  "knowledge_item.create": ["title", "summary", "status", "tagIds"],
+  "knowledge_item.update": ["title", "summary", "status", "tagIds"],
+  "knowledge_item.publish": ["status"],
+  "knowledge_item.unpublish": ["status"],
+  "retrieval_settings.update": ["strategy", "topK", "scoreThreshold"],
+  "tag.create": ["name", "color"],
+  "tag.update": ["name", "color"],
 };
 
 @Injectable()
@@ -72,16 +104,19 @@ export class AuditLogInterceptor implements NestInterceptor {
     error?: unknown,
   ): void {
     const detail: Record<string, unknown> = {
-      params: this.sanitize(request.params ?? {}),
-      query: this.sanitize(request.query ?? {}),
-      body: this.sanitize(request.body ?? {}),
+      params: this.sanitizeForAudit(request.params ?? {}),
+      query: this.sanitizeForAudit(request.query ?? {}),
     };
+    const bodySummary = this.buildBodySummary(metadata.action, request.body);
+    if (Object.keys(bodySummary).length > 0) {
+      detail["body"] = bodySummary;
+    }
     const responseId = this.extractResponseId(response);
     if (responseId !== null) {
       detail["responseId"] = responseId;
     }
     if (error !== undefined) {
-      detail["error"] = this.errorMessage(error);
+      detail["error"] = this.errorSummary(error);
     }
 
     void this.auditLogService
@@ -93,7 +128,7 @@ export class AuditLogInterceptor implements NestInterceptor {
         targetId: this.extractTargetId(metadata.targetType, request, response),
         result,
         detail,
-        ip: this.getRequestIp(request),
+        ip: getClientIp(request),
         userAgent: this.getHeader(request, "user-agent"),
       })
       .catch((auditError: unknown) => {
@@ -187,16 +222,32 @@ export class AuditLogInterceptor implements NestInterceptor {
     return typeof userId === "string" ? userId : null;
   }
 
-  private sanitize(value: unknown, depth = 0): unknown {
+  private buildBodySummary(action: string, body: unknown): Record<string, unknown> {
+    const allowedKeys = ACTION_BODY_SUMMARY_KEYS[action];
+    const record = this.asRecord(body);
+    if (allowedKeys === undefined || record === null) {
+      return {};
+    }
+
+    const summary: Record<string, unknown> = {};
+    for (const key of allowedKeys) {
+      if (Object.prototype.hasOwnProperty.call(record, key)) {
+        summary[key] = this.sanitizeForAudit(record[key]);
+      }
+    }
+    return summary;
+  }
+
+  private sanitizeForAudit(value: unknown, depth = 0): unknown {
     if (depth > 6) {
       return "[Truncated]";
     }
     if (Array.isArray(value)) {
-      return value.map((item) => this.sanitize(item, depth + 1));
+      return value.map((item) => this.sanitizeForAudit(item, depth + 1));
     }
     const record = this.asRecord(value);
     if (record === null) {
-      return value;
+      return this.truncateScalar(value);
     }
 
     const sanitized: Record<string, unknown> = {};
@@ -205,13 +256,16 @@ export class AuditLogInterceptor implements NestInterceptor {
         sanitized[key] = "[Filtered]";
         continue;
       }
-      sanitized[key] = this.sanitize(child, depth + 1);
+      sanitized[key] = this.sanitizeForAudit(child, depth + 1);
     }
     return sanitized;
   }
 
   private isSensitiveKey(key: string): boolean {
-    return /password|token|apikey|api_key|session/i.test(key);
+    return (
+      /password|token|apikey|api_key|session|secret|credential/i.test(key) ||
+      SENSITIVE_BUSINESS_KEYS.has(key)
+    );
   }
 
   private asRecord(value: unknown): Record<string, unknown> | null {
@@ -228,14 +282,6 @@ export class AuditLogInterceptor implements NestInterceptor {
     return value ?? null;
   }
 
-  private getRequestIp(request: RequestWithAuditContext): string | null {
-    const forwarded = this.getHeader(request, "x-forwarded-for");
-    if (forwarded !== null) {
-      return forwarded.split(",")[0]?.trim() ?? null;
-    }
-    return request.ip ?? request.socket?.remoteAddress ?? null;
-  }
-
   private errorMessage(error: unknown): string {
     if (error instanceof Error) {
       return error.message;
@@ -244,5 +290,23 @@ export class AuditLogInterceptor implements NestInterceptor {
       return error;
     }
     return "Unknown error";
+  }
+
+  private errorSummary(error: unknown): Record<string, string> {
+    return {
+      type: error instanceof Error ? error.constructor.name : typeof error,
+      message: this.truncateString(this.errorMessage(error), 200),
+    };
+  }
+
+  private truncateScalar(value: unknown): unknown {
+    if (typeof value === "string") {
+      return this.truncateString(value, 200);
+    }
+    return value;
+  }
+
+  private truncateString(value: string, maxLength: number): string {
+    return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
   }
 }

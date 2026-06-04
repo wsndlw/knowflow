@@ -1,14 +1,11 @@
 import { Injectable } from "@nestjs/common";
-import {
-  db,
-  decryptApiKey,
-  modelCatalog,
-  modelProviders,
-  modelUsagePolicies,
-} from "@knowflow/db";
 import type { ModelUsageType } from "@knowflow/shared";
-import { and, eq } from "drizzle-orm";
 import OpenAI from "openai";
+
+import {
+  resolveModelConfig,
+  type ResolvedModelConfig,
+} from "./model-usage-client.js";
 
 export const EXPECTED_EMBEDDING_DIMENSION = 1024;
 
@@ -18,11 +15,6 @@ type ModelConfig = {
   maxOutputTokens: number | null;
   timeoutMs: number;
   retryCount: number;
-};
-
-type ResolvedModelConfig = ModelConfig & {
-  apiKey: string;
-  baseUrl: string;
 };
 
 type ChatMessage = {
@@ -91,6 +83,12 @@ export function createAliyunLlmClient(): AliyunLlmClient {
 }
 
 export class AliyunLlmClient {
+  constructor(
+    private readonly modelConfigResolver: (
+      usageType: ModelUsageType,
+    ) => Promise<ResolvedModelConfig> = resolveModelConfig,
+  ) {}
+
   async embedTexts(texts: string[], model?: string): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
@@ -139,7 +137,7 @@ export class AliyunLlmClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Aliyun rerank failed: ${String(response.status)} ${await response.text()}`);
+      throw new Error("Model provider request failed");
     }
 
     const body = (await response.json()) as DashScopeRerankResponse;
@@ -217,45 +215,7 @@ export class AliyunLlmClient {
   }
 
   private async resolveModelConfig(usageType: ModelUsageType): Promise<ResolvedModelConfig> {
-    const [row] = await db
-      .select({
-        model: modelCatalog.modelName,
-        temperature: modelUsagePolicies.temperature,
-        maxOutputTokens: modelUsagePolicies.maxOutputTokens,
-        timeoutMs: modelUsagePolicies.timeoutMs,
-        retryCount: modelUsagePolicies.retryCount,
-        baseUrl: modelProviders.baseUrl,
-        encryptedApiKey: modelProviders.encryptedApiKey,
-      })
-      .from(modelUsagePolicies)
-      .innerJoin(modelCatalog, eq(modelCatalog.id, modelUsagePolicies.defaultModelId))
-      .innerJoin(modelProviders, eq(modelProviders.id, modelCatalog.providerId))
-      .where(
-        and(
-          eq(modelUsagePolicies.usageType, usageType),
-          eq(modelUsagePolicies.enabled, true),
-          eq(modelCatalog.enabled, true),
-          eq(modelProviders.enabled, true),
-        ),
-      )
-      .limit(1);
-
-    if (row !== undefined) {
-      if (row.encryptedApiKey === null) {
-        throw new Error(`Model provider API key is not configured for ${usageType}`);
-      }
-      return {
-        model: row.model,
-        temperature: row.temperature,
-        maxOutputTokens: row.maxOutputTokens,
-        timeoutMs: row.timeoutMs,
-        retryCount: row.retryCount,
-        baseUrl: row.baseUrl,
-        apiKey: decryptApiKey(row.encryptedApiKey),
-      };
-    }
-
-    throw new Error(`Model usage policy is not configured for ${usageType}`);
+    return this.modelConfigResolver(usageType);
   }
 
   private createOpenAiClient(config: ResolvedModelConfig): OpenAI {

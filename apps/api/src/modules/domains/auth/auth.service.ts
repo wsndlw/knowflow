@@ -7,10 +7,11 @@ import {
   type LoginRequest,
 } from "@knowflow/shared";
 import { db, sessions, users, verifyPassword } from "@knowflow/db";
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { HttpException, HttpStatus, Injectable, UnauthorizedException } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
+import { getClientIp } from "../../../shared/net/client-ip.js";
 import {
   clearCookie,
   clearCsrfCookie,
@@ -23,6 +24,8 @@ import type { AuthenticatedUser, RequestLike, ResponseLike } from "./auth.types.
 
 const ACCESS_SESSION_TTL_SECONDS = 15 * 60;
 const REFRESH_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+const LOGIN_FAILURE_LIMIT = 5;
+const LOGIN_FAILURE_WINDOW_MS = 5 * 60 * 1000;
 
 type SessionType = "access" | "refresh";
 
@@ -40,18 +43,30 @@ type CreatedSession = {
   expiresAt: Date;
 };
 
+type LoginFailureBucket = {
+  count: number;
+  expiresAt: number;
+};
+
 @Injectable()
 export class AuthService {
+  private readonly loginFailures = new Map<string, LoginFailureBucket>();
+
   async login(input: LoginRequest, request: RequestLike, response: ResponseLike): Promise<CurrentUser> {
+    const failureKey = this.buildLoginFailureKey(input.username, request);
+    this.assertLoginAllowed(failureKey);
+
     const user = await db.query.users.findFirst({
       where: eq(users.username, input.username),
     });
 
     if (user?.status !== "active") {
+      this.recordLoginFailure(failureKey);
       throw new UnauthorizedException("Invalid username or password");
     }
 
     if (!verifyPassword(input.password, user.passwordHash)) {
+      this.recordLoginFailure(failureKey);
       throw new UnauthorizedException("Invalid username or password");
     }
 
@@ -61,6 +76,7 @@ export class AuthService {
     ]);
 
     this.setSessionCookies(response, access.token, refresh.token);
+    this.clearLoginFailures(failureKey);
     return this.toCurrentUser(user);
   }
 
@@ -72,12 +88,24 @@ export class AuthService {
   async refresh(request: RequestLike, response: ResponseLike): Promise<CurrentUser> {
     const refreshContext = await this.authenticateRequest(request, "refresh");
     const oldAccessToken = this.readCookie(request, ACCESS_SESSION_COOKIE_NAME);
+    const oldRefreshToken = this.readCookie(request, REFRESH_SESSION_COOKIE_NAME);
     if (oldAccessToken !== undefined) {
       await this.revokeToken(oldAccessToken, "access");
     }
+    if (oldRefreshToken !== undefined) {
+      const revokedRefresh = await this.revokeToken(oldRefreshToken, "refresh", {
+        onlyIfActive: true,
+      });
+      if (!revokedRefresh) {
+        throw new UnauthorizedException("Authentication required");
+      }
+    }
 
-    const access = await this.createSession(refreshContext.user.id, "access", request);
-    this.setAccessCookie(response, access.token);
+    const [access, refresh] = await Promise.all([
+      this.createSession(refreshContext.user.id, "access", request),
+      this.createSession(refreshContext.user.id, "refresh", request),
+    ]);
+    this.setSessionCookies(response, access.token, refresh.token);
     return refreshContext.user;
   }
 
@@ -147,18 +175,31 @@ export class AuthService {
       type,
       sessionTokenHash: hashSessionToken(token),
       expiresAt,
-      ip: this.getRequestIp(request),
+      ip: getClientIp(request),
       userAgent: this.getHeader(request, "user-agent"),
     });
 
     return { token, expiresAt };
   }
 
-  private async revokeToken(token: string, type: SessionType): Promise<void> {
-    await db
+  private async revokeToken(
+    token: string,
+    type: SessionType,
+    options: { onlyIfActive?: boolean } = {},
+  ): Promise<boolean> {
+    const where = options.onlyIfActive
+      ? and(
+          eq(sessions.sessionTokenHash, hashSessionToken(token)),
+          eq(sessions.type, type),
+          isNull(sessions.revokedAt),
+        )
+      : and(eq(sessions.sessionTokenHash, hashSessionToken(token)), eq(sessions.type, type));
+    const revoked = await db
       .update(sessions)
       .set({ revokedAt: new Date() })
-      .where(and(eq(sessions.sessionTokenHash, hashSessionToken(token)), eq(sessions.type, type)));
+      .where(where)
+      .returning({ id: sessions.id });
+    return revoked.length > 0;
   }
 
   private setSessionCookies(response: ResponseLike, accessToken: string, refreshToken: string): void {
@@ -167,10 +208,6 @@ export class AuthService {
       this.buildRefreshCookie(refreshToken),
       this.buildCsrfCookie(),
     ]);
-  }
-
-  private setAccessCookie(response: ResponseLike, accessToken: string): void {
-    response.setHeader("Set-Cookie", [this.buildAccessCookie(accessToken), this.buildCsrfCookie()]);
   }
 
   private clearSessionCookies(response: ResponseLike): void {
@@ -224,17 +261,46 @@ export class AuthService {
     return value;
   }
 
-  private getRequestIp(request: RequestLike): string | null {
-    const forwarded = this.getHeader(request, "x-forwarded-for");
-    if (forwarded !== undefined) {
-      return forwarded.split(",")[0]?.trim() ?? null;
-    }
-
-    return request.ip ?? request.socket?.remoteAddress ?? null;
-  }
-
   private useSecureCookies(): boolean {
     return process.env["NODE_ENV"] === "production";
+  }
+
+  private buildLoginFailureKey(username: string, request: RequestLike): string {
+    return `${username.trim().toLowerCase()}:${getClientIp(request) ?? "unknown"}`;
+  }
+
+  private assertLoginAllowed(key: string): void {
+    const bucket = this.loginFailures.get(key);
+    if (bucket === undefined) {
+      return;
+    }
+
+    if (bucket.expiresAt <= Date.now()) {
+      this.loginFailures.delete(key);
+      return;
+    }
+
+    if (bucket.count >= LOGIN_FAILURE_LIMIT) {
+      throw new HttpException("Invalid username or password", HttpStatus.TOO_MANY_REQUESTS);
+    }
+  }
+
+  private recordLoginFailure(key: string): void {
+    const now = Date.now();
+    const existing = this.loginFailures.get(key);
+    if (existing === undefined || existing.expiresAt <= now) {
+      this.loginFailures.set(key, {
+        count: 1,
+        expiresAt: now + LOGIN_FAILURE_WINDOW_MS,
+      });
+      return;
+    }
+
+    existing.count += 1;
+  }
+
+  private clearLoginFailures(key: string): void {
+    this.loginFailures.delete(key);
   }
 
   private toCurrentUser(user: UserRecord): CurrentUser {

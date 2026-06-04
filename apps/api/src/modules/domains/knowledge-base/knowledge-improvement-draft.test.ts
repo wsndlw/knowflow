@@ -150,6 +150,25 @@ void describe("knowledge improvement draft parsing", () => {
     );
   });
 
+  void it("fails clearly when quality filters reject every document draft", () => {
+    const summaryDrafts = parseDocumentDraftResponse(
+      JSON.stringify({
+        items: [
+          {
+            title: "本文主要介绍差旅制度",
+            content: "本文主要介绍差旅申请、报销和发票要求。",
+          },
+        ],
+      }),
+      parseContext,
+    );
+
+    assert.throws(
+      () => filterDocumentDrafts(summaryDrafts),
+      /quality filter rejected all candidates/,
+    );
+  });
+
   void it("builds published metadata with candidate source fields and source evidence", () => {
     const metadata = buildPublishedKnowledgeMetadata({
       taskId: "task-1",

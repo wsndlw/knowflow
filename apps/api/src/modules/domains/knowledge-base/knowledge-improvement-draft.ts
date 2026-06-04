@@ -90,6 +90,9 @@ export function filterDocumentDrafts(drafts: CandidateDraft[]): CandidateDraft[]
       },
     });
   }
+  if (drafts.length > 0 && filtered.length === 0) {
+    throw new Error("Document draft quality filter rejected all candidates");
+  }
   return filtered;
 }
 

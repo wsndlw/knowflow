@@ -75,11 +75,7 @@ function KnowledgeBaseDetailContent() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
-      <DetailHeader
-        kb={kb}
-        canManage={canManage}
-        onDeleted={() => router.replace("/knowledge-bases")}
-      />
+      <DetailHeader kb={kb} />
 
       <TabList
         items={tabItems}
@@ -94,7 +90,7 @@ function KnowledgeBaseDetailContent() {
         className="min-h-[300px]"
       >
         {activeTab === "overview" && overview ? (
-          <TabOverview kb={kb} overview={overview} canManage={canManage} onJumpTab={setActiveTab} />
+          <TabOverview kb={kb} overview={overview} />
         ) : null}
         {activeTab === "documents" ? (
           <TabDocuments knowledgeBaseId={knowledgeBaseId} canManage={canManage} />
@@ -121,7 +117,13 @@ function KnowledgeBaseDetailContent() {
         {activeTab === "retrieval-test" ? (
           <TabRetrievalTest knowledgeBaseId={knowledgeBaseId} />
         ) : null}
-        {activeTab === "settings" ? <TabSettings knowledgeBaseId={knowledgeBaseId} /> : null}
+        {activeTab === "settings" ? (
+          <TabSettings
+            knowledgeBaseId={knowledgeBaseId}
+            kbName={kb.name}
+            onDeleted={() => router.replace("/knowledge-bases")}
+          />
+        ) : null}
         {activeTab === "improvement" ? (
           <TabImprovement knowledgeBaseId={knowledgeBaseId} />
         ) : null}

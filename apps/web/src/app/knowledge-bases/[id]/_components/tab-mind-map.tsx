@@ -218,13 +218,13 @@ export function TabMindMap({ knowledgeBaseId, canManage, onJumpTab }: TabMindMap
 
         {generating ? (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-surface/80 backdrop-blur-sm">
-            <Loader2Icon className="size-8 animate-spin text-primary" />
+            <Loader2Icon className="size-8 animate-spin text-brand-600" />
             <p className="text-sm text-ink-muted">正在分析知识结构，请稍候…</p>
           </div>
         ) : null}
 
         {toast ? (
-          <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-md bg-foreground px-4 py-2 text-sm text-background shadow-lg">
+          <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-md bg-neutral-900 px-4 py-2 text-sm text-neutral-50 shadow-md">
             {toast}
           </div>
         ) : null}

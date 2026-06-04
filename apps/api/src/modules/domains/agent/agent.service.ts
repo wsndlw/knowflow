@@ -32,7 +32,7 @@ import type {
   RelatedDocument,
 } from "@knowflow/shared";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import { AnalyticsEventService } from "../analytics/analytics-event.service.js";
@@ -78,20 +78,18 @@ export class AgentService {
   ) {}
 
   async listAgents(user: AuthenticatedUser): Promise<AgentListResponse> {
+    const accessCondition = this.buildAgentAccessCondition(user);
     const rows = await db
       .select()
       .from(agents)
-      .where(eq(agents.status, "published"))
+      .where(
+        accessCondition === undefined
+          ? eq(agents.status, "published")
+          : and(eq(agents.status, "published"), accessCondition),
+      )
       .orderBy(desc(agents.isDefault), asc(agents.name));
 
-    const visible: Agent[] = [];
-    for (const row of rows) {
-      if (await this.canUseAgent(row, user)) {
-        visible.push(this.toAgent(row));
-      }
-    }
-
-    return { items: visible };
+    return { items: rows.map((row) => this.toAgent(row)) };
   }
 
   async createConversation(
@@ -398,13 +396,9 @@ export class AgentService {
     const rows = await db
       .select({ knowledgeBaseId: agentKnowledgeBases.knowledgeBaseId })
       .from(agentKnowledgeBases)
-      .where(eq(agentKnowledgeBases.agentId, agent.id));
-    const allowed: string[] = [];
-    for (const row of rows) {
-      if (await this.accessService.canAccess(row.knowledgeBaseId, state.user)) {
-        allowed.push(row.knowledgeBaseId);
-      }
-    }
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, agentKnowledgeBases.knowledgeBaseId))
+      .where(this.buildAgentKnowledgeBaseScopeCondition(agent.id, state.user));
+    const allowed = rows.map((row) => row.knowledgeBaseId);
     return {
       ...state,
       knowledgeScope: allowed,
@@ -805,31 +799,70 @@ export class AgentService {
   }
 
   private async canUseAgent(agent: AgentRow, user: AuthenticatedUser): Promise<boolean> {
-    if (agent.status !== "published") {
-      return user.platformRole === "super_admin";
-    }
     if (user.platformRole === "super_admin") {
       return true;
     }
-    if (agent.visibility === "global") {
-      return true;
-    }
-    if (agent.visibility === "private") {
-      return agent.ownerId === user.id || agent.createdBy === user.id;
-    }
-    if (agent.visibility === "knowledge_base_members") {
-      const rows = await db
-        .select({ knowledgeBaseId: agentKnowledgeBases.knowledgeBaseId })
-        .from(agentKnowledgeBases)
-        .where(eq(agentKnowledgeBases.agentId, agent.id));
-      for (const row of rows) {
-        if (await this.accessService.canAccess(row.knowledgeBaseId, user)) {
-          return true;
-        }
-      }
+    if (agent.status !== "published") {
       return false;
     }
-    return agent.ownerId === user.id || agent.createdBy === user.id;
+
+    const accessCondition = this.buildAgentAccessCondition(user);
+    const [row] = await db
+      .select({ id: agents.id })
+      .from(agents)
+      .where(and(eq(agents.id, agent.id), eq(agents.status, "published"), accessCondition))
+      .limit(1);
+    return row !== undefined;
+  }
+
+  private buildAgentAccessCondition(user: AuthenticatedUser): SQL | undefined {
+    if (user.platformRole === "super_admin") {
+      return undefined;
+    }
+
+    const ownerAccess = or(eq(agents.ownerId, user.id), eq(agents.createdBy, user.id));
+    return or(
+      eq(agents.visibility, "global"),
+      and(eq(agents.visibility, "private"), ownerAccess),
+      and(eq(agents.visibility, "selected_members"), ownerAccess),
+      and(
+        eq(agents.visibility, "knowledge_base_members"),
+        this.buildAgentKnowledgeBaseAccessExists(user),
+      ),
+    );
+  }
+
+  private buildAgentKnowledgeBaseAccessExists(user: AuthenticatedUser): SQL {
+    const accessCondition = this.accessService.buildAccessCondition(user);
+    return exists(
+      db
+        .select({ id: agentKnowledgeBases.id })
+        .from(agentKnowledgeBases)
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, agentKnowledgeBases.knowledgeBaseId))
+        .where(
+          accessCondition === undefined
+            ? and(eq(agentKnowledgeBases.agentId, agents.id), eq(knowledgeBases.status, "active"))
+            : and(
+                eq(agentKnowledgeBases.agentId, agents.id),
+                eq(knowledgeBases.status, "active"),
+                accessCondition,
+              ),
+        ),
+    );
+  }
+
+  private buildAgentKnowledgeBaseScopeCondition(
+    agentId: string,
+    user: AuthenticatedUser,
+  ): SQL | undefined {
+    const accessCondition = this.accessService.buildAccessCondition(user);
+    return accessCondition === undefined
+      ? and(eq(agentKnowledgeBases.agentId, agentId), eq(knowledgeBases.status, "active"))
+      : and(
+          eq(agentKnowledgeBases.agentId, agentId),
+          eq(knowledgeBases.status, "active"),
+          accessCondition,
+        );
   }
 
   private async findCitations(messageIds: string[]): Promise<Map<string, Citation[]>> {

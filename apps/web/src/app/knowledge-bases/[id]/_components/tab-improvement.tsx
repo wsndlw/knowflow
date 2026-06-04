@@ -87,10 +87,10 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
         </div>
       ) : (
         <div className="flex gap-4">
-          <Skeleton className="h-24 flex-1" />
-          <Skeleton className="h-24 flex-1" />
-          <Skeleton className="h-24 flex-1" />
-          <Skeleton className="h-24 flex-1" />
+          <Skeleton className="h-[88px] flex-1" />
+          <Skeleton className="h-[88px] flex-1" />
+          <Skeleton className="h-[88px] flex-1" />
+          <Skeleton className="h-[88px] flex-1" />
         </div>
       )}
 
@@ -142,8 +142,8 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
                 <p className="text-xs text-ink-muted truncate">
                   {task.candidateSummary ?? "暂无摘要"}
                 </p>
-                <p className="text-xs text-ink-subtle">
-                  AI 信心度: {task.aiConfidence !== null ? `${(task.aiConfidence * 100).toFixed(0)}%` : "N/A"}
+                <p className="text-xs text-ink-subtle tabular-nums">
+                  AI 信心度 {task.aiConfidence !== null ? `${(task.aiConfidence * 100).toFixed(0)}%` : "N/A"}
                 </p>
               </div>
               <div className="shrink-0">
@@ -167,20 +167,20 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
         className="max-w-2xl"
       >
         {selectedTask ? (
-          <div className="flex flex-col gap-4 mt-2">
-            {actionError ? <p className="text-sm text-danger bg-danger-bg p-2 rounded-md">{actionError}</p> : null}
-            <div className="rounded-md bg-neutral-50 p-3 flex flex-col gap-2">
-              <p className="text-sm font-medium text-ink">来源问题/触发条件</p>
-              <p className="text-sm text-ink-muted">{selectedTask.sourceQuestion}</p>
+          <div className="flex flex-col gap-5 mt-2">
+            {actionError ? <p className="text-sm text-danger bg-danger-bg px-3 py-2 rounded-md">{actionError}</p> : null}
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs font-medium text-ink-muted">来源问题/触发条件</p>
+              <p className="text-sm text-ink">{selectedTask.sourceQuestion}</p>
             </div>
-            
+
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium text-ink">候选标题</p>
+              <p className="text-xs font-medium text-ink-muted">候选标题</p>
               <Input value={selectedTask.candidateTitle ?? ""} readOnly />
             </div>
 
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium text-ink">候选内容</p>
+              <p className="text-xs font-medium text-ink-muted">候选内容</p>
               <Textarea
                 className="w-full min-h-[150px]"
                 value={selectedTask.candidateContent ?? ""}
@@ -188,13 +188,13 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
               />
             </div>
 
-            <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium text-ink">AI 推理</p>
-              <p className="text-sm text-ink-muted bg-neutral-50 p-2 rounded-md">{selectedTask.aiReasoning ?? "无"}</p>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs font-medium text-ink-muted">AI 推理</p>
+              <p className="text-sm text-ink-muted leading-relaxed">{selectedTask.aiReasoning ?? "无"}</p>
             </div>
 
             {selectedTask.status === "candidate_ready" ? (
-              <div className="flex flex-col gap-3 pt-4 border-t border-border mt-2">
+              <div className="flex flex-col gap-3 pt-4 border-t border-border">
                 <Input
                   placeholder="驳回原因（驳回时必填）"
                   value={rejectReason}
@@ -212,8 +212,8 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
             ) : null}
 
             {selectedTask.status === "rejected" ? (
-              <div className="mt-2 text-sm text-danger bg-danger-bg p-2 rounded-md">
-                已驳回: {selectedTask.reviewNote}
+              <div className="text-sm text-danger bg-danger-bg px-3 py-2 rounded-md">
+                已驳回：{selectedTask.reviewNote}
               </div>
             ) : null}
           </div>
@@ -225,10 +225,10 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
 
 function StatCard({ title, value, sub1, sub2 }: { title: string; value: number; sub1: string; sub2: string }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-      <p className="text-sm font-medium text-ink-muted">{title}</p>
-      <p className="text-2xl font-semibold text-ink">{value}</p>
-      <div className="flex items-center gap-2 text-xs text-ink-subtle">
+    <div className="flex flex-col rounded-lg border border-border bg-surface px-4 py-3.5">
+      <p className="text-xs text-ink-muted">{title}</p>
+      <p className="mt-1 text-2xl font-semibold text-ink tabular-nums">{value}</p>
+      <div className="mt-2 flex items-center gap-3 text-xs text-ink-subtle tabular-nums">
         <span>{sub1}</span>
         <span>{sub2}</span>
       </div>

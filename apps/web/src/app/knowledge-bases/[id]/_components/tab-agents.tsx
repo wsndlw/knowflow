@@ -129,16 +129,16 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
   return (
     <div className="flex flex-col gap-4">
       {/* 一键生成按钮 — 加分项,UI 突出 */}
-      <Card className="p-5 border-brand-200 bg-brand-50/30">
+      <Card className="p-5 border-brand-200 bg-brand-50">
         <div className="flex items-center justify-between gap-4">
-          <div>
-            <h3 className="text-md font-medium text-ink">一键生成专家 Agent</h3>
-            <p className="text-sm text-ink-muted mt-0.5">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-brand-700">一键生成专家 Agent</h3>
+            <p className="text-sm text-ink-muted mt-1">
               基于知识库内容自动生成具有专业知识的 AI 专家
             </p>
           </div>
-          <Button loading={generating} onClick={() => void handleGenerate()}>
-            ✨ 一键生成
+          <Button className="shrink-0" loading={generating} onClick={() => void handleGenerate()}>
+            一键生成
           </Button>
         </div>
       </Card>
@@ -146,7 +146,8 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
       {/* 工具栏 */}
       <div className="flex items-center justify-between">
         <h3 className="text-md font-medium text-ink">
-          Agent 列表({agents.length})
+          Agent 列表
+          <span className="ml-1.5 text-sm font-normal text-ink-muted tabular-nums">{agents.length}</span>
         </h3>
         <Button variant="secondary" size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
           手动创建
@@ -183,11 +184,11 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
                     </Badge>
                   </div>
                   {agent.description ? (
-                    <p className="text-xs text-ink-muted mt-1 line-clamp-2 break-all">{agent.description}</p>
+                    <p className="text-sm text-ink-muted mt-1.5 line-clamp-2 break-words">{agent.description}</p>
                   ) : null}
                   {agent.openingMessage ? (
-                    <p className="text-xs text-ink-subtle mt-1 italic truncate">
-                      「{agent.openingMessage}」
+                    <p className="text-xs text-ink-subtle mt-1.5 truncate">
+                      开场白：{agent.openingMessage}
                     </p>
                   ) : null}
                 </div>

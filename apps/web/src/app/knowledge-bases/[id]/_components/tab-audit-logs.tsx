@@ -109,7 +109,7 @@ export function TabAuditLogs({ knowledgeBaseId, onJumpTab }: TabAuditLogsProps) 
           <AuditLogTable items={items} onJumpTarget={handleJumpTarget} />
 
           <div className="flex items-center justify-between">
-            <p className="text-xs text-ink-subtle">共 {total} 条记录</p>
+            <p className="text-xs text-ink-subtle tabular-nums">共 {total} 条记录</p>
             {totalPages > 1 ? (
               <Pagination className="mx-0 w-auto justify-end">
                 <PaginationContent>

@@ -61,7 +61,7 @@ function Sidebar() {
 
   return (
     <aside
-      className="flex w-60 shrink-0 flex-col bg-sidebar text-sidebar-ink"
+      className="flex w-60 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-ink"
       aria-label="主导航"
     >
       <div className="flex items-center gap-2.5 px-5 py-5">
@@ -95,8 +95,8 @@ function Sidebar() {
                     className={cn(
                       "mb-0.5 flex items-center rounded-md px-3 py-2 text-base transition-colors duration-150",
                       active
-                        ? "bg-sidebar-active font-medium text-white"
-                        : "text-sidebar-ink/85 hover:bg-sidebar-hover hover:text-white",
+                        ? "bg-sidebar-active font-medium text-brand-700"
+                        : "text-sidebar-ink/80 hover:bg-sidebar-hover hover:text-sidebar-ink",
                     )}
                   >
                     {item.label}
@@ -109,7 +109,7 @@ function Sidebar() {
       </nav>
 
       {user !== null ? (
-        <div className="border-t border-white/8 px-4 py-4">
+        <div className="border-t border-border px-4 py-4">
           <div className="mb-3 min-w-0">
             <p className="truncate text-base font-medium text-sidebar-ink">{user.name}</p>
             <p className="truncate text-xs text-sidebar-muted">{roleLabels[user.platformRole]}</p>
@@ -117,7 +117,7 @@ function Sidebar() {
           <Button
             variant="secondary"
             size="sm"
-            className="w-full border-white/12 bg-white/8 text-sidebar-ink hover:bg-white/14 hover:text-white"
+            className="w-full"
             onClick={() => void logout()}
           >
             退出登录
@@ -150,9 +150,9 @@ function ShellContent({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex h-dvh overflow-hidden">
       <Sidebar />
-      <main className="min-w-0 flex-1 overflow-x-hidden">{children}</main>
+      <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
     </div>
   );
 }

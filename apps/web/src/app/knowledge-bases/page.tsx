@@ -294,32 +294,39 @@ function CardView({ items }: { items: KnowledgeBaseListItem[] }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => (
-        <Link key={item.id} href={`/knowledge-bases/${item.id}`} className="group">
-          <Card className="h-full p-5 transition-shadow duration-150 hover:shadow-md">
-            <div className="mb-2 flex items-start justify-between gap-2">
-              <h3 className="text-md font-semibold text-ink group-hover:text-brand-700">
+        <Card key={item.id} className="group flex h-full flex-col p-5 transition-shadow duration-150 hover:shadow-md">
+          <div className="mb-2 flex items-start justify-between gap-2">
+            <Link href={`/knowledge-bases/${item.id}`} className="min-w-0">
+              <h3 className="truncate text-md font-semibold text-ink transition-colors group-hover:text-brand-700">
                 {item.name}
               </h3>
-              <Badge tone={visibilityMeta[item.visibility].tone}>
-                {visibilityMeta[item.visibility].label}
-              </Badge>
-            </div>
+            </Link>
+            <Badge tone={visibilityMeta[item.visibility].tone}>
+              {visibilityMeta[item.visibility].label}
+            </Badge>
+          </div>
+          <Link href={`/knowledge-bases/${item.id}`} className="block">
             <p className="line-clamp-2 min-h-10 text-sm text-ink-muted">
               {item.description ?? "暂无描述"}
             </p>
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
               <CountStat label="文档" value={item.documentCount} />
               <CountStat label="条目" value={item.knowledgeItemCount} />
               <CountStat label="成员" value={item.memberCount} />
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-              <span className="text-xs text-ink-subtle">{item.departmentName}</span>
-              {item.canManage ? (
-                <span className="ml-auto text-xs font-medium text-brand-600">管理员</span>
-              ) : null}
-            </div>
-          </Card>
-        </Link>
+          </Link>
+          <div className="mt-auto flex items-center gap-2 border-t border-border pt-3">
+            <Button asChild variant="outline" size="xs">
+              <Link href={`/knowledge-bases/${item.id}?tab=agents`}>专家 Agent</Link>
+            </Button>
+            <Button asChild variant="outline" size="xs">
+              <Link href={`/knowledge-bases/${item.id}?tab=documents`}>文档</Link>
+            </Button>
+            <Button asChild variant="outline" size="xs">
+              <Link href={`/knowledge-bases/${item.id}?tab=knowledge-items`}>知识条目</Link>
+            </Button>
+          </div>
+        </Card>
       ))}
     </div>
   );
@@ -327,9 +334,9 @@ function CardView({ items }: { items: KnowledgeBaseListItem[] }) {
 
 function CountStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md bg-neutral-50 px-2 py-1.5">
-      <div className="text-sm font-semibold text-ink">{value}</div>
-      <div className="text-xs text-ink-subtle">{label}</div>
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-base font-semibold tabular-nums text-ink">{value}</span>
+      <span className="text-xs text-ink-subtle">{label}</span>
     </div>
   );
 }

@@ -154,14 +154,14 @@ export default function HomePage() {
             <div className="grid gap-3 sm:grid-cols-2">
               {data.knowledgeBases.slice(0, 4).map((kb) => (
                 <Link key={kb.id} href={`/knowledge-bases/${kb.id}`}>
-                  <Card className="p-4 transition-shadow duration-150 hover:shadow-sm">
+                  <Card className="h-full p-4 transition-shadow duration-150 hover:shadow-sm">
                     <div className="flex items-start justify-between gap-2">
                       <span className="font-medium text-ink">{kb.name}</span>
-                      <Badge tone={kb.indexStatus === "ready" ? "success" : "neutral"}>
-                        {indexLabel(kb.indexStatus)}
+                      <Badge tone={kbVisibilityMeta[kb.visibility].tone}>
+                        {kbVisibilityMeta[kb.visibility].label}
                       </Badge>
                     </div>
-                    <p className="mt-1 line-clamp-1 text-sm text-ink-muted">
+                    <p className="mt-1 line-clamp-2 min-h-10 text-sm text-ink-muted">
                       {kb.description ?? "暂无描述"}
                     </p>
                   </Card>
@@ -262,16 +262,14 @@ function SkeletonRows() {
   );
 }
 
-function indexLabel(status: KnowledgeBase["indexStatus"]): string {
-  const map: Record<KnowledgeBase["indexStatus"], string> = {
-    not_indexed: "未构建",
-    indexing: "构建中",
-    ready: "可用",
-    partial_failed: "部分失败",
-    failed: "失败",
-  };
-  return map[status];
-}
+const kbVisibilityMeta: Record<
+  KnowledgeBase["visibility"],
+  { label: string; tone: "info" | "neutral" | "warning" }
+> = {
+  public: { label: "公开", tone: "info" },
+  department: { label: "部门", tone: "neutral" },
+  restricted: { label: "受限", tone: "warning" },
+};
 
 function formatTime(iso: string): string {
   const date = new Date(iso);

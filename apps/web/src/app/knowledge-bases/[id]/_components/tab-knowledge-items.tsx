@@ -321,8 +321,8 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
                     <span className="text-sm">{item.enabled ? "是" : "否"}</span>
                   )}
                 </TableCell>
-                <TableCell className="text-ink-muted">{item.citeCount}</TableCell>
-                <TableCell className="text-ink-muted text-xs">{formatDate(item.updatedAt)}</TableCell>
+                <TableCell className="text-ink-muted tabular-nums">{item.citeCount}</TableCell>
+                <TableCell className="text-ink-muted text-xs tabular-nums">{formatDate(item.updatedAt)}</TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">

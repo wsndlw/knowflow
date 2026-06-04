@@ -140,7 +140,7 @@ export function TabMembers({ knowledgeBaseId, canManage }: TabMembersProps) {
           <Select
             value={selectedUserId}
             onChange={(e) => setSelectedUserId(e.target.value)}
-            className="max-w-xs"
+            className="max-w-sm flex-1"
             aria-label="选择用户"
           >
             {userOptions.map((opt) => (

@@ -116,20 +116,21 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-9 w-48" />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
         </div>
-        <Skeleton className="h-48" />
+        <Skeleton className="h-64" />
       </div>
     );
   }
 
   if (error) {
-    return <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{error}</p>;
+    return <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger" role="alert">{error}</p>;
   }
 
   if (!data) return null;
@@ -233,7 +234,7 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
                 </PieChart>
               </ResponsiveContainer>
             </ChartFrame>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 self-center">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3 self-center">
               <FeedbackStat label="有用" value={feedback.answerUseful} />
               <FeedbackStat label="无用" value={feedback.answerNotUseful} />
               <FeedbackStat label="纠错" value={feedback.answerCorrections} />
@@ -450,8 +451,8 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
 
 function FeedbackStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md border border-border bg-surface px-3 py-2 text-center">
-      <p className="text-lg font-semibold text-ink">{value}</p>
+    <div className="flex flex-col gap-0.5">
+      <p className="text-2xl font-semibold tabular-nums text-ink">{value}</p>
       <p className="text-xs text-ink-muted">{label}</p>
     </div>
   );

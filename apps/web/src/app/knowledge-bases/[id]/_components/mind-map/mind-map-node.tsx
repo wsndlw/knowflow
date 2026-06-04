@@ -122,7 +122,7 @@ function MindMapNodeComponent({ id, data }: NodeProps<MindMapNodeData>) {
           }}
           onMouseDown={(e) => e.stopPropagation()}
           // 始终半可见（移动端无 hover 也能看到/点击），hover 时加深
-          className="shrink-0 rounded p-0.5 opacity-60 transition-opacity hover:bg-black/5 hover:opacity-100"
+          className="shrink-0 rounded p-0.5 opacity-60 transition-opacity hover:bg-neutral-100 hover:opacity-100"
         >
           <ExternalLinkIcon className="size-3.5" />
         </button>

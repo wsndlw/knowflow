@@ -136,9 +136,21 @@ function AnalyticsContent() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-ink-muted">加载中...</p>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-[88px] animate-pulse rounded-lg border border-border bg-neutral-50"
+              />
+            ))}
+          </div>
+          <div className="h-60 animate-pulse rounded-lg border border-border bg-neutral-50" />
+        </div>
       ) : data === null ? (
-        <p className="text-sm text-danger">加载失败</p>
+        <p className="rounded-md bg-danger-bg px-4 py-3 text-sm text-danger" role="alert">
+          加载失败,请稍后重试。
+        </p>
       ) : (
         <div className="space-y-6">
           <div>

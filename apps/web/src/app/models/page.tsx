@@ -105,14 +105,18 @@ function ModelsPageContent() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-ink-muted">加载中...</p>
+        <div className="space-y-4">
+          <div className="h-28 animate-pulse rounded-lg border border-border bg-neutral-50" />
+          <div className="h-28 animate-pulse rounded-lg border border-border bg-neutral-50" />
+        </div>
       ) : (
         <div className="space-y-6">
           <div className="space-y-4">
             {providers.length === 0 ? (
-              <div className="rounded-lg border border-border bg-surface p-8 text-center">
-                <p className="text-sm text-ink-muted">暂无供应商配置</p>
-              </div>
+              <EmptyState
+                title="暂无供应商配置"
+                description="添加模型供应商后,即可在对话与知识库问答中调用其模型。"
+              />
             ) : (
               providers.map((provider) => (
                 <div key={provider.id}>

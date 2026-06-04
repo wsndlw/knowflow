@@ -376,14 +376,14 @@ function DocumentRow({
   const isActive = !["completed", "failed"].includes(doc.processStatus);
 
   return (
-    <div className="flex items-center gap-4 rounded-lg border border-border bg-surface px-4 py-3">
+    <div className="flex items-center gap-4 rounded-lg border border-border bg-surface px-4 py-3 transition-colors hover:border-brand-200">
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-ink truncate">{doc.title}</p>
-        <p className="text-xs text-ink-muted mt-0.5">
+        <p className="text-xs text-ink-muted mt-0.5 tabular-nums">
           {doc.sourceType} · {formatBytes(doc.fileSize)} · {doc.uploaderName}
         </p>
         {/* 已返回但此前未展示的字段：分块数 + 创建/更新时间（M5） */}
-        <p className="text-xs text-ink-subtle mt-0.5">
+        <p className="text-xs text-ink-subtle mt-0.5 tabular-nums">
           {doc.processStatus === "completed" ? (
             <>父块 {doc.parentChunkCount} · 子块 {doc.childChunkCount} · </>
           ) : null}
@@ -430,13 +430,13 @@ function DocumentRow({
         </div>
         {isActive ? (
           <div className="mt-2 flex items-center gap-2">
-            <div className="h-1.5 flex-1 rounded-full bg-neutral-200 overflow-hidden">
+            <div className="h-1.5 flex-1 rounded-full bg-neutral-100 overflow-hidden">
               <div
                 className="h-full rounded-full bg-brand-500 transition-all duration-300"
                 style={{ width: `${String(percent)}%` }}
               />
             </div>
-            <span className="text-xs text-ink-subtle shrink-0">{percent}%</span>
+            <span className="text-xs text-ink-subtle shrink-0 tabular-nums">{percent}%</span>
           </div>
         ) : null}
         {doc.processStatus === "failed" ? (

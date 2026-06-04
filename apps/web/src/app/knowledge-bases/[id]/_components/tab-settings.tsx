@@ -123,7 +123,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex justify-between">
             <Label>Top K (最大召回数)</Label>
-            <span className="text-sm text-ink-subtle">{settings.topK}</span>
+            <span className="text-sm font-medium text-ink tabular-nums">{settings.topK}</span>
           </div>
           <Slider
             min={1}
@@ -137,7 +137,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex justify-between">
             <Label>相似度阈值 (Similarity Threshold)</Label>
-            <span className="text-sm text-ink-subtle">{settings.similarityThreshold.toFixed(2)}</span>
+            <span className="text-sm font-medium text-ink tabular-nums">{settings.similarityThreshold.toFixed(2)}</span>
           </div>
           <Slider
             min={0}
@@ -166,7 +166,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
             <div className="flex flex-col gap-3">
               <div className="flex justify-between">
                 <Label>候选数量 (Rerank Top N)</Label>
-                <span className="text-sm text-ink-subtle">{settings.rerankTopN}</span>
+                <span className="text-sm font-medium text-ink tabular-nums">{settings.rerankTopN}</span>
               </div>
               <Slider
                 min={1}
@@ -181,7 +181,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
             <div className="flex flex-col gap-3">
               <div className="flex justify-between">
                 <Label>保留数量 (Rerank Keep N)</Label>
-                <span className="text-sm text-ink-subtle">{settings.rerankKeepN}</span>
+                <span className="text-sm font-medium text-ink tabular-nums">{settings.rerankKeepN}</span>
               </div>
               <Slider
                 min={1}
@@ -203,7 +203,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex justify-between">
             <Label>向量权重 (Vector Weight)</Label>
-            <span className="text-sm text-ink-subtle">{settings.vectorWeight.toFixed(2)}</span>
+            <span className="text-sm font-medium text-ink tabular-nums">{settings.vectorWeight.toFixed(2)}</span>
           </div>
           <Slider
             min={0}
@@ -217,7 +217,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex justify-between">
             <Label>全文权重 (FTS Weight)</Label>
-            <span className="text-sm text-ink-subtle">{settings.ftsWeight.toFixed(2)}</span>
+            <span className="text-sm font-medium text-ink tabular-nums">{settings.ftsWeight.toFixed(2)}</span>
           </div>
           <Slider
             min={0}
@@ -231,7 +231,7 @@ export function TabSettings({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex justify-between">
             <Label>知识条目权重 (KI Weight)</Label>
-            <span className="text-sm text-ink-subtle">{settings.kiWeight.toFixed(2)}</span>
+            <span className="text-sm font-medium text-ink tabular-nums">{settings.kiWeight.toFixed(2)}</span>
           </div>
           <Slider
             min={0}

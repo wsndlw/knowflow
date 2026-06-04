@@ -81,6 +81,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "kb.admin.set": "设置管理员",
   "kb.admin.unset": "取消管理员",
   "document.upload": "上传文档",
+  "document.archive": "归档文档",
+  "document.restore": "恢复文档",
   "document.delete": "删除文档",
   "document.reprocess": "重新处理文档",
   "knowledge_item.create": "创建知识条目",

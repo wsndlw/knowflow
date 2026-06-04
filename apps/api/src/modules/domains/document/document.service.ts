@@ -419,6 +419,14 @@ export class DocumentService {
     }
   }
 
+  async archive(id: string, user: AuthenticatedUser): Promise<KnowledgeDocument> {
+    return this.setEnabled(id, user, false);
+  }
+
+  async restore(id: string, user: AuthenticatedUser): Promise<KnowledgeDocument> {
+    return this.setEnabled(id, user, true);
+  }
+
   async reprocess(id: string, user: AuthenticatedUser): Promise<KnowledgeDocument> {
     const row = await this.findRow(id);
     if (row === undefined) {
@@ -543,6 +551,8 @@ export class DocumentService {
 
   private buildListCondition(knowledgeBaseId: string, query: DocumentListQuery): SQL | undefined {
     const conditions: SQL[] = [eq(documents.knowledgeBaseId, knowledgeBaseId)];
+    const enabled = query.archived !== undefined ? !query.archived : (query.enabled ?? true);
+    conditions.push(eq(documents.enabled, enabled));
     if (query.keyword !== undefined) {
       conditions.push(ilike(documents.title, `%${query.keyword}%`));
     }
@@ -561,6 +571,30 @@ export class DocumentService {
     }
 
     return and(...conditions);
+  }
+
+  private async setEnabled(
+    id: string,
+    user: AuthenticatedUser,
+    enabled: boolean,
+  ): Promise<KnowledgeDocument> {
+    const row = await this.findRow(id);
+    if (row === undefined) {
+      throw new NotFoundException("Document not found");
+    }
+    await this.ensureCanManage(row.knowledgeBaseId, user);
+
+    await db
+      .update(documents)
+      .set({ enabled, updatedAt: new Date() })
+      .where(eq(documents.id, id));
+
+    const updated = await this.findRow(id);
+    if (updated === undefined) {
+      throw new NotFoundException("Document not found");
+    }
+    const tagsByDocumentId = await this.fetchTagsByDocumentIds([id]);
+    return this.toDocument(updated, await this.countChunks(id), tagsByDocumentId.get(id) ?? []);
   }
 
   private detectFileKind(file: UploadedFile): FileKind {

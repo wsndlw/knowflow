@@ -371,10 +371,18 @@ export const documentListResponseSchema = z.object({
   total: z.number().int().nonnegative(),
 });
 
+const documentBooleanQuerySchema = z.preprocess((value) => {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return value;
+}, z.boolean().optional());
+
 export const documentListQuerySchema = z.object({
   keyword: z.string().trim().min(1).max(120).optional(),
   status: documentProcessStatusSchema.optional(),
   tagIds: commaSeparatedUuidListSchema,
+  archived: documentBooleanQuerySchema,
+  enabled: documentBooleanQuerySchema,
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });

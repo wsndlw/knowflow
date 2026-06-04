@@ -59,14 +59,38 @@ void describe("document chunking", () => {
         "第一章 总则",
         "这里是总则正文，描述制度背景。",
         "",
+        "一、基本原则",
+        "这里是基本原则正文，描述原则。",
+        "",
+        "（一）管理要求",
+        "这里是管理要求正文，描述要求。",
+        "",
         "1.1 适用范围",
         "这里是适用范围正文，描述适用对象。",
       ].join("\n"),
     );
 
-    assert.equal(chunks.length, 2);
+    assert.equal(chunks.length, 4);
     assert.deepEqual(chunks[0]?.headingPath, ["第一章 总则"]);
-    assert.deepEqual(chunks[1]?.headingPath, ["第一章 总则", "1.1 适用范围"]);
+    assert.deepEqual(chunks[1]?.headingPath, ["第一章 总则", "一、基本原则"]);
+    assert.deepEqual(chunks[2]?.headingPath, ["第一章 总则", "一、基本原则", "（一）管理要求"]);
+    assert.deepEqual(chunks[3]?.headingPath, ["第一章 总则", "1.1 适用范围"]);
+  });
+
+  void it("does not detect normal short sentences as headings", () => {
+    const chunks = splitParentChunks(
+      [
+        "第一章 总则",
+        "普通短句",
+        "这里继续说明普通短句，不应该产生新的标题路径。",
+      ].join("\n"),
+    );
+
+    assert.equal(chunks.length, 1);
+    const chunk = chunks[0];
+    assert.ok(chunk);
+    assert.deepEqual(chunk.headingPath, ["第一章 总则"]);
+    assert.match(chunk.content, /普通短句/);
   });
 
   void it("fills parent chunk page ranges from page markers", () => {
@@ -88,5 +112,32 @@ void describe("document chunking", () => {
     assert.equal(first.pageEnd, 1);
     assert.equal(second.pageStart, 2);
     assert.equal(second.pageEnd, 2);
+  });
+
+  void it("keeps page ranges granular when one long section splits across pages", () => {
+    const longLine = "制度正文内容".repeat(320);
+    const chunks = splitParentChunks(
+      [
+        "第一章 长章节",
+        longLine,
+        pageBreak(2),
+        longLine,
+        pageBreak(3),
+        longLine,
+      ].join("\n"),
+    );
+
+    assert.ok(chunks.length >= 2);
+    const first = chunks[0];
+    const second = chunks[1];
+    assert.ok(first);
+    assert.ok(second);
+    assert.equal(first.pageStart, 1);
+    assert.equal(first.pageEnd, 1);
+    assert.equal(second.pageStart, 2);
+    assert.notDeepEqual(
+      chunks.map((chunk) => [chunk.pageStart, chunk.pageEnd]),
+      chunks.map(() => [1, 3]),
+    );
   });
 });

@@ -95,6 +95,7 @@ type ParentChunkInput = {
   boundaryType: BoundaryType;
   pageStart: number | null;
   pageEnd: number | null;
+  lines: PageAwareLine[];
 };
 
 type ChildChunkInput = {
@@ -110,6 +111,12 @@ type PageAwareLine = {
 };
 
 type TextBlock = {
+  content: string;
+  boundaryType: BoundaryType;
+  lines: PageAwareLine[];
+};
+
+type SemanticParentPiece = {
   content: string;
   boundaryType: BoundaryType;
   pageStart: number | null;
@@ -492,7 +499,7 @@ export function splitParentChunks(text: string): ParentChunkInput[] {
   const parents: ParentChunkInput[] = [];
 
   for (const section of sections) {
-    const pieces = splitSemanticParentContent(section.content, section.pageStart, section.pageEnd);
+    const pieces = splitSemanticParentLines(section.lines);
     pieces.forEach((piece, index) => {
       parents.push({
         title:
@@ -501,11 +508,12 @@ export function splitParentChunks(text: string): ParentChunkInput[] {
             : section.title === null
               ? null
               : `${section.title} (${String(index + 1)})`,
-        content: piece,
+        content: piece.content,
         headingPath: section.headingPath,
-        boundaryType: index === 0 && section.title !== null ? "heading" : inferBoundaryType(piece),
-        pageStart: section.pageStart,
-        pageEnd: section.pageEnd,
+        boundaryType: index === 0 && section.title !== null ? "heading" : piece.boundaryType,
+        pageStart: piece.pageStart,
+        pageEnd: piece.pageEnd,
+        lines: [],
       });
     });
   }
@@ -533,6 +541,7 @@ function splitHeadingSections(text: string): ParentChunkInput[] {
       boundaryType: currentTitle === null ? inferBoundaryType(content) : "heading",
       pageStart: range.pageStart,
       pageEnd: range.pageEnd,
+      lines: [...currentLines],
     });
     currentLines = [];
   }
@@ -552,14 +561,15 @@ function splitHeadingSections(text: string): ParentChunkInput[] {
   flush();
 
   return sections.length > 0
-    ? sections.flatMap((section) => splitOversizedSection(section))
-    : splitSemanticParentContent(stripPageMarkers(text), null, null).map((content, index) => ({
+    ? sections
+    : splitSemanticParentLines(toPageAwareLines(stripPageMarkers(text))).map((piece, index) => ({
         title: index === 0 ? null : `Part ${String(index + 1)}`,
         headingPath: [],
-        boundaryType: inferBoundaryType(content),
-        pageStart: null,
-        pageEnd: null,
-        content,
+        boundaryType: piece.boundaryType,
+        pageStart: piece.pageStart,
+        pageEnd: piece.pageEnd,
+        content: piece.content,
+        lines: [],
       }));
 }
 
@@ -572,97 +582,85 @@ function splitChildChunks(content: string): ChildChunkInput[] {
   }));
 }
 
-function splitOversizedSection(section: ParentChunkInput): ParentChunkInput[] {
-  if (section.content.length <= PARENT_MAX_CHARS) {
-    return [section];
-  }
-  return splitSemanticParentContent(section.content, section.pageStart, section.pageEnd).map(
-    (content, index) => ({
-      ...section,
-      title:
-        index === 0
-          ? section.title
-          : section.title === null
-            ? null
-            : `${section.title} (${String(index + 1)})`,
-      content,
-      boundaryType: index === 0 && section.title !== null ? "heading" : inferBoundaryType(content),
-    }),
-  );
-}
-
-function splitSemanticParentContent(
-  content: string,
-  pageStart: number | null,
-  pageEnd: number | null,
-): string[] {
-  const blocks = splitTextBlocks(content, pageStart, pageEnd);
-  const chunks: string[] = [];
-  let current = "";
+function splitSemanticParentLines(lines: PageAwareLine[]): SemanticParentPiece[] {
+  const blocks = splitTextBlocks(lines);
+  const chunks: SemanticParentPiece[] = [];
+  let currentLines: PageAwareLine[] = [];
 
   function pushCurrent(): void {
-    const trimmed = current.trim();
-    if (trimmed.length > 0) {
-      chunks.push(trimmed);
+    const content = currentLines.map((line) => line.text).join("\n").trim();
+    if (content.length > 0) {
+      const range = pageRange(currentLines);
+      chunks.push({
+        content,
+        boundaryType: inferBoundaryType(content),
+        pageStart: range.pageStart,
+        pageEnd: range.pageEnd,
+      });
     }
-    current = "";
+    currentLines = [];
   }
 
   for (const block of blocks) {
     const pieces =
       block.content.length > PARENT_MAX_CHARS
-        ? splitBySentenceThenLength(block.content, PARENT_TARGET_CHARS, PARENT_MAX_CHARS)
-        : [block.content];
+        ? splitBlockBySentenceThenLength(block, PARENT_TARGET_CHARS, PARENT_MAX_CHARS)
+        : [block.lines];
     for (const piece of pieces) {
-      if (current.length === 0) {
-        current = piece;
+      if (currentLines.length === 0) {
+        currentLines = piece;
         continue;
       }
-      const next = `${current}\n\n${piece}`;
+      const currentContent = currentLines.map((line) => line.text).join("\n").trim();
+      const pieceContent = piece.map((line) => line.text).join("\n").trim();
+      const next = `${currentContent}\n\n${pieceContent}`;
       if (
         next.length <= PARENT_TARGET_CHARS ||
-        current.length < Math.floor(PARENT_TARGET_CHARS * 0.65)
+        currentContent.length < Math.floor(PARENT_TARGET_CHARS * 0.65)
       ) {
-        current = next;
+        currentLines = [...currentLines, { text: "", page: null }, ...piece];
       } else {
         pushCurrent();
-        current = piece;
+        currentLines = piece;
       }
     }
   }
   pushCurrent();
 
   return chunks.flatMap((chunk) =>
-    chunk.length <= PARENT_MAX_CHARS ? [chunk] : splitByLength(chunk, PARENT_MAX_CHARS, 0),
+    chunk.content.length <= PARENT_MAX_CHARS
+      ? [chunk]
+      : splitByLength(chunk.content, PARENT_MAX_CHARS, 0).map((content) => ({
+          content,
+          boundaryType: inferBoundaryType(content),
+          pageStart: chunk.pageStart,
+          pageEnd: chunk.pageEnd,
+        })),
   );
 }
 
-function splitTextBlocks(
-  content: string,
-  pageStart: number | null,
-  pageEnd: number | null,
-): TextBlock[] {
-  const lines = content.split("\n");
+function splitTextBlocks(lines: PageAwareLine[]): TextBlock[] {
   const blocks: TextBlock[] = [];
-  let currentLines: string[] = [];
+  let currentLines: PageAwareLine[] = [];
   let currentType: BoundaryType | null = null;
+  let currentPage: number | null | undefined;
 
   function flush(): void {
-    const text = currentLines.join("\n").trim();
+    const text = currentLines.map((line) => line.text).join("\n").trim();
     if (text.length > 0) {
       blocks.push({
         content: text,
         boundaryType: currentType ?? "paragraph",
-        pageStart,
-        pageEnd,
+        lines: [...currentLines],
       });
     }
     currentLines = [];
     currentType = null;
+    currentPage = undefined;
   }
 
   for (const line of lines) {
-    const trimmed = line.trim();
+    const trimmed = line.text.trim();
     if (trimmed.length === 0) {
       flush();
       continue;
@@ -670,11 +668,15 @@ function splitTextBlocks(
     const type = classifyBlockLine(trimmed);
     if (
       currentType !== null &&
-      (type !== currentType || type === "heading" || currentType === "paragraph")
+      (type !== currentType ||
+        type === "heading" ||
+        currentType === "paragraph" ||
+        line.page !== currentPage)
     ) {
       flush();
     }
     currentType = type;
+    currentPage = line.page;
     currentLines.push(line);
   }
   flush();
@@ -682,12 +684,12 @@ function splitTextBlocks(
   return blocks;
 }
 
-function splitBySentenceThenLength(
-  text: string,
+function splitBlockBySentenceThenLength(
+  block: TextBlock,
   targetChars: number,
   maxChars: number,
-): string[] {
-  const sentences = text.match(/[^。！？.!?]+[。！？.!?]?/g) ?? [text];
+): PageAwareLine[][] {
+  const sentences = block.content.match(/[^。！？.!?]+[。！？.!?]?/g) ?? [block.content];
   const chunks: string[] = [];
   let current = "";
   for (const sentence of sentences) {
@@ -706,8 +708,13 @@ function splitBySentenceThenLength(
   if (current.length > 0) {
     chunks.push(current);
   }
+  const range = pageRange(block.lines);
   return chunks.flatMap((chunk) =>
-    chunk.length <= maxChars ? [chunk] : splitByLength(chunk, maxChars, 0),
+    chunk.length <= maxChars
+      ? [[{ text: chunk, page: range.pageStart }]]
+      : splitByLength(chunk, maxChars, 0).map((content) => [
+          { text: content, page: range.pageStart },
+        ]),
   );
 }
 
@@ -733,7 +740,7 @@ function detectHeadingLine(line: string): { title: string; level: number } | nul
     trimmed,
   );
   if (chineseNumbered !== null && !/[。！？.!?]$/.test(trimmed)) {
-    return { level: 2, title: trimmed };
+    return { level: trimmed.startsWith("（") ? 3 : 2, title: trimmed };
   }
 
   return null;

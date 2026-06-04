@@ -115,7 +115,6 @@ export class TagService {
     const tagIds = [...new Set(input.tagIds)];
     const [document] = await db
       .select({
-        id: documents.id,
         knowledgeBaseId: documents.knowledgeBaseId,
       })
       .from(documents)
@@ -124,7 +123,7 @@ export class TagService {
     if (document === undefined) {
       throw new NotFoundException("Document not found");
     }
-    await this.ensureCanAccess(document.knowledgeBaseId, user);
+    await this.ensureCanManage(document.knowledgeBaseId, user);
     await this.ensureTagsBelongToKnowledgeBase(tagIds, document.knowledgeBaseId);
 
     await db.transaction(async (tx) => {
@@ -150,10 +149,7 @@ export class TagService {
     const tagIds = [...new Set(input.tagIds)];
     const [item] = await db
       .select({
-        id: knowledgeItems.id,
         knowledgeBaseId: knowledgeItems.knowledgeBaseId,
-        status: knowledgeItems.status,
-        enabled: knowledgeItems.enabled,
       })
       .from(knowledgeItems)
       .where(eq(knowledgeItems.id, knowledgeItemId))
@@ -161,7 +157,7 @@ export class TagService {
     if (item === undefined) {
       throw new NotFoundException("Knowledge item not found");
     }
-    await this.ensureCanReadKnowledgeItem(item, user);
+    await this.ensureCanManage(item.knowledgeBaseId, user);
     await this.ensureTagsBelongToKnowledgeBase(tagIds, item.knowledgeBaseId);
 
     await db.transaction(async (tx) => {
@@ -240,26 +236,6 @@ export class TagService {
       return;
     }
     throw new ForbiddenException("Cannot manage tags in this knowledge base");
-  }
-
-  private async ensureCanReadKnowledgeItem(
-    item: {
-      knowledgeBaseId: string;
-      status: "draft" | "pending_review" | "published" | "unpublished" | "expired";
-      enabled: boolean;
-    },
-    user: AuthenticatedUser,
-  ): Promise<void> {
-    if (!(await this.accessService.canAccess(item.knowledgeBaseId, user))) {
-      throw new NotFoundException("Knowledge item not found");
-    }
-    if (item.status === "published" && item.enabled) {
-      return;
-    }
-    if (await this.accessService.canManage(item.knowledgeBaseId, user)) {
-      return;
-    }
-    throw new NotFoundException("Knowledge item not found");
   }
 
   private async findTag(tagId: string): Promise<TagRow | undefined> {

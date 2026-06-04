@@ -41,14 +41,15 @@ export class RetrievalController {
   ): Promise<ApiSuccess<RetrievalTestResponse>> {
     const { id } = uuidParamSchema.parse(params);
     const user = this.requireUser(request);
-    if (!(await this.accessService.canAccess(id, user))) {
+    const canManage = await this.accessService.canManage(id, user);
+    if (!canManage) {
       throw new NotFoundException("Knowledge base not found");
     }
 
     const data = await this.retrievalService.testRetrieve({
       knowledgeBaseId: id,
       request: retrievalTestRequestSchema.parse(body),
-      canManage: await this.accessService.canManage(id, user),
+      canManage,
     });
     return { ok: true, data: retrievalTestResponseSchema.parse(data) };
   }

@@ -38,6 +38,7 @@ export const RETRIEVAL_ITEM_STATUS_FILTERS = ["all", "published"] as const;
 
 export enum AuditTargetType {
   USER = "user",
+  DEPARTMENT = "department",
   KNOWLEDGE_BASE = "knowledge_base",
   DOCUMENT = "document",
   KNOWLEDGE_ITEM = "knowledge_item",
@@ -49,6 +50,7 @@ export enum AuditTargetType {
 
 export const AUDIT_TARGET_TYPES = [
   AuditTargetType.USER,
+  AuditTargetType.DEPARTMENT,
   AuditTargetType.KNOWLEDGE_BASE,
   AuditTargetType.DOCUMENT,
   AuditTargetType.KNOWLEDGE_ITEM,
@@ -63,6 +65,12 @@ export const AUDIT_RESULTS = ["success", "failure"] as const;
 export const ACTION_LABELS: Record<string, string> = {
   "user.login": "用户登录",
   "user.logout": "用户登出",
+  "user.department.assign": "设置用户部门",
+  "department.create": "创建部门",
+  "department.update": "更新部门",
+  "department.delete": "删除部门",
+  "department.member.add": "添加部门成员",
+  "department.member.remove": "移除部门成员",
   "kb.create": "创建知识库",
   "kb.update": "更新知识库",
   "kb.delete": "删除知识库",

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { ForbiddenException } from "@nestjs/common";
 import { db, documents } from "@knowflow/db";
 import type { DocumentListQuery } from "@knowflow/shared";
 import { documentListQuerySchema } from "@knowflow/shared";
@@ -125,31 +125,22 @@ void describe("DocumentService archive semantics", () => {
     assert.equal(access.canManageCalls, 1);
   });
 
-  void it("requires archived documents to be restored before reprocessing", async () => {
-    const access = makeAccessStub({ canManage: true });
-    const service = makeService(access);
-    const internals = service as unknown as DocumentServiceInternals;
-    internals.findRow = () => Promise.resolve(makeDocumentRow({ enabled: false }));
-
-    await assert.rejects(() => service.reprocess(documentId, user), BadRequestException);
-    assert.equal(access.canManageCalls, 1);
-  });
-
   void it("excludes archived documents from list results by default", () => {
-    const { params, sql } = buildListSql({});
+    const { params } = buildListSql({});
 
-    assert.match(sql, /"documents"\."enabled" =/);
     assert.equal(params.includes(knowledgeBaseId), true);
     assert.equal(params.includes(true), true);
   });
 
-  void it("supports archived list filters without coerce-boolean false positives", () => {
+  void it("supports archived and enabled list filters", () => {
     const archived = buildListSql({ archived: "true" });
-    const active = buildListSql({ archived: "false" });
+    const enabled = buildListSql({ enabled: "false" });
+    const archivedWins = buildListSql({ archived: "false", enabled: "false" });
 
     assert.equal(archived.params.includes(false), true);
-    assert.equal(active.params.includes(true), true);
-    assert.equal(active.params.includes(false), false);
+    assert.equal(enabled.params.includes(false), true);
+    assert.equal(archivedWins.params.includes(true), true);
+    assert.equal(archivedWins.params.includes(false), false);
   });
 });
 

@@ -433,9 +433,6 @@ export class DocumentService {
       throw new NotFoundException("Document not found");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
-    if (!row.enabled) {
-      throw new BadRequestException("Archived documents must be restored before reprocessing");
-    }
     if (
       row.processStatus === "pending" ||
       row.processStatus === "parsing" ||
@@ -554,7 +551,8 @@ export class DocumentService {
 
   private buildListCondition(knowledgeBaseId: string, query: DocumentListQuery): SQL | undefined {
     const conditions: SQL[] = [eq(documents.knowledgeBaseId, knowledgeBaseId)];
-    conditions.push(eq(documents.enabled, !(query.archived ?? false)));
+    const enabled = query.archived !== undefined ? !query.archived : (query.enabled ?? true);
+    conditions.push(eq(documents.enabled, enabled));
     if (query.keyword !== undefined) {
       conditions.push(ilike(documents.title, `%${query.keyword}%`));
     }

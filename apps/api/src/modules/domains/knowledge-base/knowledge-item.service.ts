@@ -9,6 +9,7 @@ import {
   db,
   documents,
   knowledgeBases,
+  knowledgeImprovementTasks,
   messageCitations,
   knowledgeItemFeedback,
   knowledgeItemTags,
@@ -366,6 +367,9 @@ export class KnowledgeItemService {
         .update(messageCitations)
         .set({ knowledgeItemId: null })
         .where(eq(messageCitations.knowledgeItemId, id));
+      await tx
+        .delete(knowledgeImprovementTasks)
+        .where(eq(knowledgeImprovementTasks.publishedItemId, id));
       await tx.delete(knowledgeItemFeedback).where(eq(knowledgeItemFeedback.knowledgeItemId, id));
       await tx.delete(knowledgeItems).where(eq(knowledgeItems.id, id));
     });

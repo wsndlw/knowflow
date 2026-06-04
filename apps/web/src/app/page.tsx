@@ -2,9 +2,11 @@
 
 import {
   agentListResponseSchema,
+  analyticsOverviewResponseSchema,
   conversationListResponseSchema,
   knowledgeBaseListResponseSchema,
   type Agent,
+  type AnalyticsOverviewResponse,
   type Conversation,
   type KnowledgeBase,
 } from "@knowflow/shared";
@@ -16,6 +18,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { EmptyState, Skeleton } from "../components/ui/feedback";
+import { MetricCard } from "../components/ui/metric-card";
 import { apiRequest } from "../lib/api";
 
 type DashboardData = {
@@ -27,10 +30,14 @@ type DashboardData = {
 export default function HomePage() {
   const { user } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [overview, setOverview] = useState<AnalyticsOverviewResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
   const canCreate =
     user?.platformRole === "super_admin" || user?.platformRole === "department_admin";
+  // /analytics/overview 仅超管可访问（后端 ForbiddenException），普通用户不发该请求。
+  const canViewOverview = user?.platformRole === "super_admin";
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +66,34 @@ export default function HomePage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!canViewOverview) {
+      setOverview(null);
+      return;
+    }
+    let cancelled = false;
+    async function loadOverview() {
+      setOverviewLoading(true);
+      try {
+        const result = await apiRequest(
+          "/analytics/overview?range=7d",
+          analyticsOverviewResponseSchema,
+          { cache: "no-store" },
+        );
+        if (!cancelled) setOverview(result);
+      } catch {
+        // 概览失败不阻塞首页其余区块
+        if (!cancelled) setOverview(null);
+      } finally {
+        if (!cancelled) setOverviewLoading(false);
+      }
+    }
+    void loadOverview();
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewOverview]);
+
   return (
     <div className="mx-auto max-w-6xl px-8 py-7">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -79,6 +114,36 @@ export default function HomePage() {
           </Button>
         </div>
       </header>
+
+      {/* 平台概览（仅超管，接 /analytics/overview） */}
+      {canViewOverview ? (
+        <section className="mb-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-md font-semibold text-ink">平台概览 · 近 7 天</h2>
+            <Link href="/admin/analytics" className="text-sm text-brand-600 hover:text-brand-700">
+              查看统计
+            </Link>
+          </div>
+          {overviewLoading ? (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className="h-20" />
+              ))}
+            </div>
+          ) : overview === null ? (
+            <EmptyState title="概览暂不可用" description="统计数据加载失败，可前往统计页重试。" />
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+              <MetricCard label="知识库" value={overview.entityTotals.knowledgeBaseCount} />
+              <MetricCard label="文档" value={overview.entityTotals.documentCount} />
+              <MetricCard label="用户" value={overview.entityTotals.userCount} />
+              <MetricCard label="Agent" value={overview.entityTotals.agentCount} />
+              <MetricCard label="7 日活跃" value={overview.sevenDayActiveUsers} />
+              <MetricCard label="提问数" value={overview.totals.questions} />
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* 我的知识库 */}

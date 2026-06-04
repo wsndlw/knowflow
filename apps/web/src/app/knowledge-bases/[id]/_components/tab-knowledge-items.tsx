@@ -22,6 +22,7 @@ import { TagFilterPopover } from "./tag-filter-popover";
 import { TagManagerDialog } from "./tag-manager-dialog";
 import { TagPickerPopover } from "./tag-picker-popover";
 import { KnowledgeItemDialog } from "./dialogs/knowledge-item-dialog";
+import { BatchImportDialog } from "./dialogs/batch-import-dialog";
 
 type TabKnowledgeItemsProps = {
   knowledgeBaseId: string;
@@ -63,6 +64,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [editing, setEditing] = useState<KnowledgeItem | null>(null);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -212,6 +214,11 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
             </Button>
           ) : null}
           {canManage ? (
+            <Button variant="outline" size="sm" onClick={() => setBatchImportOpen(true)}>
+              批量导入
+            </Button>
+          ) : null}
+          {canManage ? (
             <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
               新建条目
             </Button>
@@ -240,7 +247,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
       ) : (
         <Table>
           <TableHead>
-            <tr>
+            <TableRow>
               <TableHeaderCell>标题</TableHeaderCell>
               <TableHeaderCell>标签</TableHeaderCell>
               <TableHeaderCell>状态</TableHeaderCell>
@@ -248,37 +255,50 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
               <TableHeaderCell>引用</TableHeaderCell>
               <TableHeaderCell>更新时间</TableHeaderCell>
               {canManage ? <TableHeaderCell className="text-right">操作</TableHeaderCell> : null}
-            </tr>
+            </TableRow>
           </TableHead>
           <TableBody>
             {items.map((item) => (
               <TableRow key={item.id}>
                 <TableCell className="font-medium max-w-xs truncate">{item.title}</TableCell>
                 <TableCell>
-                  <TagPickerPopover
-                    allTags={allTags}
-                    selectedTagIds={item.tags.map((tag) => tag.id)}
-                    onChange={(tagIds) => handleReplaceItemTags(item.id, tagIds)}
-                  >
-                    <button
-                      type="button"
-                      className="inline-flex max-w-[220px] flex-wrap items-center gap-1 rounded-md border border-dashed border-transparent px-1 py-0.5 text-left transition-colors hover:border-border hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-                      aria-label="编辑标签"
+                  {canManage ? (
+                    <TagPickerPopover
+                      allTags={allTags}
+                      selectedTagIds={item.tags.map((tag) => tag.id)}
+                      onChange={(tagIds) => handleReplaceItemTags(item.id, tagIds)}
                     >
-                      {item.tags.length > 0 ? (
-                        <>
-                          {item.tags.slice(0, 3).map((tag) => (
-                            <TagBadge key={tag.id} tag={tag} />
-                          ))}
-                          {item.tags.length > 3 ? (
-                            <span className="text-xs text-ink-subtle">+{item.tags.length - 3}</span>
-                          ) : null}
-                        </>
-                      ) : (
-                        <span className="text-xs text-ink-subtle">+ 添加标签</span>
-                      )}
-                    </button>
-                  </TagPickerPopover>
+                      <button
+                        type="button"
+                        className="inline-flex max-w-[220px] flex-wrap items-center gap-1 rounded-md border border-dashed border-transparent px-1 py-0.5 text-left transition-colors hover:border-border hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                        aria-label="编辑标签"
+                      >
+                        {item.tags.length > 0 ? (
+                          <>
+                            {item.tags.slice(0, 3).map((tag) => (
+                              <TagBadge key={tag.id} tag={tag} />
+                            ))}
+                            {item.tags.length > 3 ? (
+                              <span className="text-xs text-ink-subtle">+{item.tags.length - 3}</span>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-xs text-ink-subtle">+ 添加标签</span>
+                        )}
+                      </button>
+                    </TagPickerPopover>
+                  ) : item.tags.length > 0 ? (
+                    <div className="inline-flex max-w-[220px] flex-wrap items-center gap-1 px-1 py-0.5">
+                      {item.tags.slice(0, 3).map((tag) => (
+                        <TagBadge key={tag.id} tag={tag} />
+                      ))}
+                      {item.tags.length > 3 ? (
+                        <span className="text-xs text-ink-subtle">+{item.tags.length - 3}</span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-ink-subtle">-</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Badge tone={statusTone[item.status] ?? "neutral"}>
@@ -331,6 +351,13 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
         onClose={() => { setDialogOpen(false); setEditing(null); }}
         onSubmit={editing ? handleUpdate : handleCreate}
         editing={editing}
+      />
+
+      <BatchImportDialog
+        open={batchImportOpen}
+        onClose={() => setBatchImportOpen(false)}
+        knowledgeBaseId={knowledgeBaseId}
+        onSuccess={loadItems}
       />
 
       <TagManagerDialog

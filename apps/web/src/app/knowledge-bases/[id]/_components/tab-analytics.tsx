@@ -1,14 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   knowledgeBaseAnalyticsResponseSchema,
   type KnowledgeBaseAnalyticsResponse,
 } from "@knowflow/shared";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
-import { Skeleton } from "../../../../components/ui/feedback";
+import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { MetricCard } from "../../../../components/ui/metric-card";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "../../../../components/ui/table";
+import {
+  AXIS_LINE_STYLE,
+  AXIS_TICK_STYLE,
+  ChartFrame,
+  chartColor,
+  GRID_STYLE,
+  LEGEND_STYLE,
+  TOOLTIP_CONTENT_STYLE,
+  TOOLTIP_ITEM_STYLE,
+  TOOLTIP_LABEL_STYLE,
+} from "../../../../components/ui/charts";
 import { apiRequest } from "../../../../lib/api";
 
 type TabAnalyticsProps = {
@@ -46,6 +69,51 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
 
   useEffect(() => { void loadAnalytics(); }, [loadAnalytics]);
 
+  // 指标「本期 vs 上期」对比柱状数据（接口给的是聚合值，非逐日序列，如实呈现对比）。
+  const trendCompareData = useMemo(() => {
+    if (data === null) return [];
+    const { trends } = data;
+    return [
+      { metric: "访问量", 本期: trends.visits.current, 上期: trends.visits.previous },
+      { metric: "搜索", 本期: trends.searches.current, 上期: trends.searches.previous },
+      { metric: "提问", 本期: trends.questions.current, 上期: trends.questions.previous },
+      { metric: "活跃用户", 本期: trends.activeUsers.current, 上期: trends.activeUsers.previous },
+    ];
+  }, [data]);
+
+  // 反馈分布饼图数据（过滤掉 0 值，避免空扇区；fill 走 token 色，逐扇区着色）。
+  const feedbackPieData = useMemo(() => {
+    if (data === null) return [];
+    const { feedback } = data;
+    return [
+      { name: "有用", value: feedback.answerUseful },
+      { name: "无用", value: feedback.answerNotUseful },
+      { name: "纠错", value: feedback.answerCorrections },
+      { name: "条目赞", value: feedback.knowledgeItemLikes },
+      { name: "条目踩", value: feedback.knowledgeItemDislikes },
+    ]
+      .filter((entry) => entry.value > 0)
+      .map((entry, index) => ({ ...entry, fill: chartColor(index) }));
+  }, [data]);
+
+  // 热门文档浏览量柱状（取前 8，按浏览量倒序，标题截断）。
+  const popularDocChartData = useMemo(() => {
+    if (data === null) return [];
+    return [...data.popularDocuments]
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 8)
+      .map((doc) => ({ name: truncate(doc.title, 14), 浏览: doc.views, 引用: doc.citations }));
+  }, [data]);
+
+  // 热门搜索关键词柱状（取前 10，按搜索次数倒序，关键词截断）。
+  const topKeywordsChartData = useMemo(() => {
+    if (data === null) return [];
+    return [...data.topKeywords]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+      .map((kw) => ({ name: truncate(kw.keyword, 14), 搜索次数: kw.count }));
+  }, [data]);
+
   if (loading) {
     return (
       <div className="flex flex-col gap-4">
@@ -66,7 +134,7 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
 
   if (!data) return null;
 
-  const { metrics, trends, popularDocuments, popularKnowledgeItems, feedback, feedbackReasons, noAnswerQuestions, lowConfidenceQuestions } = data;
+  const { metrics, trends, popularDocuments, popularKnowledgeItems, topKeywords, feedback, feedbackReasons, noAnswerQuestions, lowConfidenceQuestions } = data;
 
   return (
     <div className="flex flex-col gap-6">
@@ -114,17 +182,100 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
         />
       </div>
 
-      {/* 反馈分布 */}
+      {/* 本期 vs 上期对比 */}
+      <ChartFrame title="活跃趋势（本期 vs 上期）" height={260}>
+        <ResponsiveContainer>
+          <BarChart data={trendCompareData} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+            <CartesianGrid strokeDasharray="3 3" {...GRID_STYLE} vertical={false} />
+            <XAxis dataKey="metric" tick={AXIS_TICK_STYLE} axisLine={AXIS_LINE_STYLE} tickLine={false} />
+            <YAxis allowDecimals={false} tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} width={36} />
+            <Tooltip
+              contentStyle={TOOLTIP_CONTENT_STYLE}
+              labelStyle={TOOLTIP_LABEL_STYLE}
+              itemStyle={TOOLTIP_ITEM_STYLE}
+              cursor={{ fill: "var(--color-neutral-100)" }}
+            />
+            <Legend wrapperStyle={LEGEND_STYLE} />
+            <Bar dataKey="上期" fill="var(--color-neutral-300)" radius={[4, 4, 0, 0]} maxBarSize={36} />
+            <Bar dataKey="本期" fill={chartColor(0)} radius={[4, 4, 0, 0]} maxBarSize={36} />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartFrame>
+
+      {/* 反馈分布饼图 */}
       <section>
         <h3 className="text-md font-medium text-ink mb-3">反馈分布</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <FeedbackStat label="有用" value={feedback.answerUseful} />
-          <FeedbackStat label="无用" value={feedback.answerNotUseful} />
-          <FeedbackStat label="纠错" value={feedback.answerCorrections} />
-          <FeedbackStat label="条目赞" value={feedback.knowledgeItemLikes} />
-          <FeedbackStat label="条目踩" value={feedback.knowledgeItemDislikes} />
-        </div>
+        {feedbackPieData.length === 0 ? (
+          <EmptyState title="暂无反馈数据" description="该时间范围内还没有用户反馈。" />
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ChartFrame height={240}>
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie
+                    data={feedbackPieData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={88}
+                    paddingAngle={2}
+                    stroke="var(--color-surface)"
+                    strokeWidth={2}
+                  />
+                  <Tooltip
+                    contentStyle={TOOLTIP_CONTENT_STYLE}
+                    labelStyle={TOOLTIP_LABEL_STYLE}
+                    itemStyle={TOOLTIP_ITEM_STYLE}
+                  />
+                  <Legend wrapperStyle={LEGEND_STYLE} />
+                </PieChart>
+              </ResponsiveContainer>
+            </ChartFrame>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 self-center">
+              <FeedbackStat label="有用" value={feedback.answerUseful} />
+              <FeedbackStat label="无用" value={feedback.answerNotUseful} />
+              <FeedbackStat label="纠错" value={feedback.answerCorrections} />
+              <FeedbackStat label="条目赞" value={feedback.knowledgeItemLikes} />
+              <FeedbackStat label="条目踩" value={feedback.knowledgeItemDislikes} />
+            </div>
+          </div>
+        )}
       </section>
+
+      {/* 热门文档柱状 */}
+      {popularDocChartData.length > 0 ? (
+        <ChartFrame title="热门文档浏览/引用" height={280}>
+          <ResponsiveContainer>
+            <BarChart
+              data={popularDocChartData}
+              layout="vertical"
+              margin={{ top: 4, right: 16, bottom: 4, left: 8 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" {...GRID_STYLE} horizontal={false} />
+              <XAxis type="number" allowDecimals={false} tick={AXIS_TICK_STYLE} axisLine={AXIS_LINE_STYLE} tickLine={false} />
+              <YAxis
+                type="category"
+                dataKey="name"
+                tick={AXIS_TICK_STYLE}
+                axisLine={false}
+                tickLine={false}
+                width={104}
+              />
+              <Tooltip
+                contentStyle={TOOLTIP_CONTENT_STYLE}
+                labelStyle={TOOLTIP_LABEL_STYLE}
+                itemStyle={TOOLTIP_ITEM_STYLE}
+                cursor={{ fill: "var(--color-neutral-100)" }}
+              />
+              <Legend wrapperStyle={LEGEND_STYLE} />
+              <Bar dataKey="浏览" fill={chartColor(0)} radius={[0, 4, 4, 0]} maxBarSize={18} />
+              <Bar dataKey="引用" fill={chartColor(1)} radius={[0, 4, 4, 0]} maxBarSize={18} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartFrame>
+      ) : null}
 
       {/* 热门文档 */}
       {popularDocuments.length > 0 ? (
@@ -175,6 +326,62 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
           </Table>
         </section>
       ) : null}
+
+      {/* 热门搜索关键词 */}
+      <section>
+        <h3 className="text-md font-medium text-ink mb-3">热门搜索关键词</h3>
+        {topKeywords.length === 0 ? (
+          <EmptyState title="暂无搜索记录" description="该时间范围内还没有知识搜索记录。" />
+        ) : (
+          <>
+            {topKeywordsChartData.length > 0 ? (
+              <ChartFrame title="搜索关键词 Top 10" height={280}>
+                <ResponsiveContainer>
+                  <BarChart
+                    data={topKeywordsChartData}
+                    layout="vertical"
+                    margin={{ top: 4, right: 16, bottom: 4, left: 8 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" {...GRID_STYLE} horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} tick={AXIS_TICK_STYLE} axisLine={AXIS_LINE_STYLE} tickLine={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={AXIS_TICK_STYLE}
+                      axisLine={false}
+                      tickLine={false}
+                      width={104}
+                    />
+                    <Tooltip
+                      contentStyle={TOOLTIP_CONTENT_STYLE}
+                      labelStyle={TOOLTIP_LABEL_STYLE}
+                      itemStyle={TOOLTIP_ITEM_STYLE}
+                      cursor={{ fill: "var(--color-neutral-100)" }}
+                    />
+                    <Bar dataKey="搜索次数" fill={chartColor(1)} radius={[0, 4, 4, 0]} maxBarSize={18} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartFrame>
+            ) : null}
+            <Table className="mt-3">
+              <TableHead>
+                <tr>
+                  <TableHeaderCell>关键词</TableHeaderCell>
+                  <TableHeaderCell>搜索次数</TableHeaderCell>
+                </tr>
+              </TableHead>
+              <TableBody>
+                {topKeywords.slice(0, 10).map((kw) => (
+                  <TableRow key={kw.keyword}>
+                    <TableCell className="font-medium truncate max-w-xs">{kw.keyword}</TableCell>
+                    <TableCell className="text-ink-muted">{kw.count}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </>
+        )}
+      </section>
 
       {/* 反馈原因 */}
       {feedbackReasons.length > 0 ? (
@@ -248,4 +455,8 @@ function FeedbackStat({ label, value }: { label: string; value: number }) {
       <p className="text-xs text-ink-muted">{label}</p>
     </div>
   );
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
 }

@@ -17,6 +17,7 @@ import type {
   AnalyticsOverviewResponse,
   AnalyticsRangeQuery,
   AnalyticsTopContent,
+  AnalyticsTopKeyword,
   KnowledgeBaseAnalyticsResponse,
 } from "@knowflow/shared";
 import type { AnyColumn } from "drizzle-orm";
@@ -85,6 +86,7 @@ export class AnalyticsService {
       previousActiveUsers,
       popularDocuments,
       popularKnowledgeItems,
+      topKeywords,
       unvisitedContent,
       noAnswerQuestions,
       lowConfidenceQuestions,
@@ -110,6 +112,7 @@ export class AnalyticsService {
       this.countActiveUsers(this.previousRange(range), knowledgeBaseId),
       this.getPopularDocuments(range, knowledgeBaseId),
       this.getPopularKnowledgeItems(range, knowledgeBaseId),
+      this.getTopKeywords(range, knowledgeBaseId),
       this.getUnvisitedContent(range, knowledgeBaseId),
       this.getNoAnswerQuestions(range, knowledgeBaseId),
       this.getLowConfidenceQuestions(range, knowledgeBaseId),
@@ -134,6 +137,7 @@ export class AnalyticsService {
       },
       popularDocuments,
       popularKnowledgeItems,
+      topKeywords,
       unvisitedContent,
       noAnswerQuestions,
       lowConfidenceQuestions,
@@ -162,6 +166,7 @@ export class AnalyticsService {
       knowledgeBaseRanking,
       topDocuments,
       topKnowledgeItems,
+      topKeywords,
     ] = await Promise.all([
       this.countEvents(range, { eventType: "knowledge_base_viewed" }),
       this.countEvents(range, { eventType: "knowledge_searched" }),
@@ -172,6 +177,7 @@ export class AnalyticsService {
       this.getKnowledgeBaseRanking(range),
       this.getPopularDocuments(range),
       this.getPopularKnowledgeItems(range),
+      this.getTopKeywords(range),
     ]);
 
     return {
@@ -193,6 +199,7 @@ export class AnalyticsService {
         ...item,
         knowledgeBaseName: item.knowledgeBaseName ?? "",
       })),
+      topKeywords,
     };
   }
 
@@ -424,6 +431,33 @@ export class AnalyticsService {
       lastViewedAt,
       knowledgeBaseId,
     );
+  }
+
+  private async getTopKeywords(
+    range: NormalizedRange,
+    knowledgeBaseId?: string,
+  ): Promise<AnalyticsTopKeyword[]> {
+    const keywordExpression = sql<string>`lower(trim(${analyticsEvents.metadata}->>'keyword'))`;
+    const countExpression = sql<number>`count(*)::int`;
+    const conditions = [
+      this.eventRangeCondition(range),
+      eq(analyticsEvents.eventType, "knowledge_searched"),
+      sql`${keywordExpression} <> ''`,
+    ];
+    if (knowledgeBaseId !== undefined) {
+      conditions.push(eq(analyticsEvents.knowledgeBaseId, knowledgeBaseId));
+    }
+
+    return db
+      .select({
+        keyword: keywordExpression,
+        count: countExpression,
+      })
+      .from(analyticsEvents)
+      .where(and(...conditions))
+      .groupBy(keywordExpression)
+      .orderBy(desc(countExpression), keywordExpression)
+      .limit(10);
   }
 
   private toCountMap(rows: { id: string | null; value: number }[]): Map<string, number> {

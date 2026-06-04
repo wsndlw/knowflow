@@ -72,6 +72,39 @@ export async function parseApiError(response: Response): Promise<string> {
   }
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
+async function doRefreshAccess(): Promise<boolean> {
+  try {
+    const response = await fetch(apiUrl("/auth/refresh"), {
+      method: "POST",
+      credentials: "include",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function refreshAccess(): Promise<boolean> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+  refreshPromise = doRefreshAccess().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export async function apiRequest<TData>(
   path: string,
   dataSchema: ParsableSchema<TData>,
@@ -86,14 +119,34 @@ export async function apiRequest<TData>(
     headers.set(CSRF_HEADER_NAME, getCsrfToken());
   }
 
-  const response = await fetch(apiUrl(path), {
+  let response = await fetch(apiUrl(path), {
     ...init,
     credentials: "include",
     headers,
   });
 
+  if (response.status === 401) {
+    const refreshed = await refreshAccess();
+    if (refreshed) {
+      if (isStateChangingMethod(init?.method)) {
+        headers.set(CSRF_HEADER_NAME, getCsrfToken());
+      }
+      if (!isFormData) {
+        response = await fetch(apiUrl(path), {
+          ...init,
+          credentials: "include",
+          headers,
+        });
+      }
+    } else {
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+  }
+
   if (!response.ok) {
-    throw new Error(await parseApiError(response));
+    throw new ApiError(await parseApiError(response), response.status);
   }
 
   const body: unknown = await response.json();

@@ -7,6 +7,7 @@ import {
   documentSchema,
   type KnowledgeDocument,
   type DocumentProgressEvent,
+  createImprovementTasksResponseSchema,
 } from "@knowflow/shared";
 
 import { Badge } from "../../../../components/ui/badge";
@@ -24,6 +25,7 @@ import { Pagination } from "./pagination";
 import { TagFilterPopover } from "./tag-filter-popover";
 import { TagManagerDialog } from "./tag-manager-dialog";
 import { TagPickerPopover } from "./tag-picker-popover";
+import { DocumentPreviewDialog } from "./document-preview-dialog";
 
 type TabDocumentsProps = {
   knowledgeBaseId: string;
@@ -68,7 +70,10 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<KnowledgeDocument | null>(null);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -181,6 +186,36 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     }
   }
 
+  const handleExtract = async (documentId: string) => {
+    setActionError(null);
+    setActionSuccess(null);
+    setExtractingIds((prev) => new Set(prev).add(documentId));
+    try {
+      const res = await apiRequest(
+        `/knowledge-bases/${knowledgeBaseId}/improvement-tasks/generate`,
+        createImprovementTasksResponseSchema,
+        {
+          method: "POST",
+          body: JSON.stringify({ documentId }),
+        },
+      );
+      const msg =
+        res.created > 0
+          ? `已生成 ${String(res.created)} 条候选条目，可在『知识改进/审核台』查看审批`
+          : "未生成新候选条目（可能已提炼过），可在『知识改进/审核台』查看已有条目";
+      setActionSuccess(msg);
+      setTimeout(() => setActionSuccess((prev) => (prev === msg ? null : prev)), 5000);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "提炼失败");
+    } finally {
+      setExtractingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(documentId);
+        return next;
+      });
+    }
+  };
+
   // 打标签：全量替换，用返回的标签列表更新该行
   async function handleReplaceDocTags(docId: string, tagIds: string[]) {
     const updated = await replaceDocumentTags(docId, { tagIds });
@@ -224,7 +259,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.md,.markdown,.txt,.docx,.csv,.xls,.xlsx,application/pdf,text/markdown,text/plain"
+              accept=".pdf,.md,.markdown,.txt,.docx,.csv,.xls,.xlsx,.png,.jpg,.jpeg,.webp,application/pdf,text/markdown,text/plain,image/png,image/jpeg,image/webp"
               className="text-sm file:mr-2 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
             />
             <Button size="sm" loading={isUploading} onClick={() => void handleUpload()}>
@@ -236,6 +271,9 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
 
       {actionError ? (
         <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{actionError}</p>
+      ) : null}
+      {actionSuccess ? (
+        <p className="rounded-md bg-success-bg px-3 py-2 text-sm text-success">{actionSuccess}</p>
       ) : null}
       {error ? (
         <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{error}</p>
@@ -265,6 +303,9 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               onReprocess={() => void handleReprocess(doc.id)}
               onDelete={() => setDeleteTarget(doc.id)}
               onReplaceTags={handleReplaceDocTags}
+              onPreview={() => setPreviewTarget(doc)}
+              onExtract={(docId) => void handleExtract(docId)}
+              isExtracting={extractingIds.has(doc.id)}
             />
           ))}
         </div>
@@ -297,6 +338,11 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
         onUpdate={updateTagFn}
         onDelete={removeTag}
       />
+      
+      <DocumentPreviewDialog 
+        doc={previewTarget} 
+        onClose={() => setPreviewTarget(null)} 
+      />
     </div>
   );
 }
@@ -309,6 +355,9 @@ function DocumentRow({
   onReprocess,
   onDelete,
   onReplaceTags,
+  onPreview,
+  onExtract,
+  isExtracting,
 }: {
   doc: KnowledgeDocument;
   progress: DocumentProgressEvent | undefined;
@@ -317,6 +366,9 @@ function DocumentRow({
   onReprocess: () => void;
   onDelete: () => void;
   onReplaceTags: (docId: string, tagIds: string[]) => Promise<void>;
+  onPreview: () => void;
+  onExtract: (docId: string) => void;
+  isExtracting: boolean;
 }) {
   const percent = progress?.percent ?? statusPercent(doc.processStatus);
   const message = progress?.message ?? doc.errorMessage ?? statusLabels[doc.processStatus] ?? doc.processStatus;
@@ -330,32 +382,51 @@ function DocumentRow({
         <p className="text-xs text-ink-muted mt-0.5">
           {doc.sourceType} · {formatBytes(doc.fileSize)} · {doc.uploaderName}
         </p>
-        {/* 标签区：点击弹出打标签 Popover */}
+        {/* 已返回但此前未展示的字段：分块数 + 创建/更新时间（M5） */}
+        <p className="text-xs text-ink-subtle mt-0.5">
+          {doc.processStatus === "completed" ? (
+            <>父块 {doc.parentChunkCount} · 子块 {doc.childChunkCount} · </>
+          ) : null}
+          上传 {formatDate(doc.createdAt)}
+          {doc.updatedAt !== doc.createdAt ? <> · 更新 {formatDate(doc.updatedAt)}</> : null}
+        </p>
+        {/* 标签区：canManage 可打标签（写）；member 仅只读展示已有标签 */}
         <div className="mt-1.5">
-          <TagPickerPopover
-            allTags={allTags}
-            selectedTagIds={doc.tags.map((tag) => tag.id)}
-            onChange={(tagIds) => onReplaceTags(doc.id, tagIds)}
-          >
-            <button
-              type="button"
-              className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-dashed border-transparent px-1 py-0.5 text-left transition-colors hover:border-border hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-              aria-label="编辑标签"
+          {canManage ? (
+            <TagPickerPopover
+              allTags={allTags}
+              selectedTagIds={doc.tags.map((tag) => tag.id)}
+              onChange={(tagIds) => onReplaceTags(doc.id, tagIds)}
             >
-              {doc.tags.length > 0 ? (
-                <>
-                  {doc.tags.slice(0, 3).map((tag) => (
-                    <TagBadge key={tag.id} tag={tag} />
-                  ))}
-                  {doc.tags.length > 3 ? (
-                    <span className="text-xs text-ink-subtle">+{doc.tags.length - 3}</span>
-                  ) : null}
-                </>
-              ) : (
-                <span className="text-xs text-ink-subtle">+ 添加标签</span>
-              )}
-            </button>
-          </TagPickerPopover>
+              <button
+                type="button"
+                className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-dashed border-transparent px-1 py-0.5 text-left transition-colors hover:border-border hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                aria-label="编辑标签"
+              >
+                {doc.tags.length > 0 ? (
+                  <>
+                    {doc.tags.slice(0, 3).map((tag) => (
+                      <TagBadge key={tag.id} tag={tag} />
+                    ))}
+                    {doc.tags.length > 3 ? (
+                      <span className="text-xs text-ink-subtle">+{doc.tags.length - 3}</span>
+                    ) : null}
+                  </>
+                ) : (
+                  <span className="text-xs text-ink-subtle">+ 添加标签</span>
+                )}
+              </button>
+            </TagPickerPopover>
+          ) : doc.tags.length > 0 ? (
+            <div className="inline-flex max-w-full flex-wrap items-center gap-1 px-1 py-0.5">
+              {doc.tags.slice(0, 3).map((tag) => (
+                <TagBadge key={tag.id} tag={tag} />
+              ))}
+              {doc.tags.length > 3 ? (
+                <span className="text-xs text-ink-subtle">+{doc.tags.length - 3}</span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         {isActive ? (
           <div className="mt-2 flex items-center gap-2">
@@ -374,9 +445,24 @@ function DocumentRow({
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <Badge tone={tone}>{statusLabels[doc.processStatus] ?? doc.processStatus}</Badge>
+        <Button variant="outline" size="sm" onClick={onPreview}>
+          预览
+        </Button>
         {canManage && doc.processStatus === "failed" ? (
           <Button variant="secondary" size="sm" onClick={onReprocess}>
             重试
+          </Button>
+        ) : null}
+        {canManage ? (
+          <Button
+            variant="outline"
+            size="sm"
+            loading={isExtracting}
+            disabled={doc.processStatus !== "completed"}
+            title={doc.processStatus !== "completed" ? "仅对已解析完成的文档可提炼" : ""}
+            onClick={() => onExtract(doc.id)}
+          >
+            AI 提炼条目
           </Button>
         ) : null}
         {canManage ? (
@@ -406,4 +492,10 @@ function formatBytes(value: number | null): string {
   if (value < 1024) return `${String(value)} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return `${String(date.getFullYear())}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }

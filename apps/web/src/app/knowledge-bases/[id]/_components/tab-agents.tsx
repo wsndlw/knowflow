@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   managedAgentListResponseSchema,
   generateManagedAgentResponseSchema,
+  managedAgentSchema,
   type ManagedAgent,
 } from "@knowflow/shared";
 
@@ -86,7 +87,7 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
   async function handleCreate(data: AgentFormData) {
     await apiRequest(
       `/knowledge-bases/${knowledgeBaseId}/agents`,
-      emptyObjectSchema,
+      managedAgentSchema,
       { method: "POST", body: JSON.stringify(data) },
     );
     await loadAgents();
@@ -96,19 +97,18 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
     if (!editing) return;
     await apiRequest(
       `/agents/${editing.id}`,
-      emptyObjectSchema,
+      managedAgentSchema,
       { method: "PATCH", body: JSON.stringify(data) },
     );
     await loadAgents();
   }
 
   async function handleToggleStatus(agent: ManagedAgent) {
-    const newStatus = agent.status === "published" ? "disabled" : "published";
+    const action = agent.status === "published" ? "disable" : "publish";
     setActionError(null);
     try {
-      await apiRequest(`/agents/${agent.id}`, emptyObjectSchema, {
-        method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
+      await apiRequest(`/agents/${agent.id}/${action}`, managedAgentSchema, {
+        method: "POST",
       });
       await loadAgents();
     } catch (caught) {
@@ -183,7 +183,7 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
                     </Badge>
                   </div>
                   {agent.description ? (
-                    <p className="text-xs text-ink-muted mt-1 line-clamp-2">{agent.description}</p>
+                    <p className="text-xs text-ink-muted mt-1 line-clamp-2 break-all">{agent.description}</p>
                   ) : null}
                   {agent.openingMessage ? (
                     <p className="text-xs text-ink-subtle mt-1 italic truncate">

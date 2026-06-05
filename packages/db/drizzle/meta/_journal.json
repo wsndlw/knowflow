@@ -92,6 +92,13 @@
       "when": 1780563421193,
       "tag": "0012_lumpy_killmonger",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1780647245528,
+      "tag": "0013_unknown_zombie",
+      "breakpoints": true
     }
   ]
 }

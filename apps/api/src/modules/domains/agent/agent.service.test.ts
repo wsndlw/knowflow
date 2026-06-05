@@ -8,6 +8,7 @@ import { and, eq, type SQL } from "drizzle-orm";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { AgentService } from "./agent.service.js";
+import type { AgentState } from "./agent.types.js";
 
 type AgentServiceInternals = {
   buildAgentAccessCondition: (user: AuthenticatedUser) => SQL | undefined;
@@ -47,6 +48,22 @@ type UpdateRecord = {
   table: unknown;
   values: Record<string, unknown>;
   condition?: unknown;
+};
+
+type AgentServiceGenerationInternals = {
+  generateAnswerStream: (state: AgentState) => Promise<AgentState>;
+};
+
+type AgentServiceQueueInternals = {
+  logger: { warn: (message: string) => void };
+  enqueueConversationSummaryIfNeeded: (conversationId: string) => Promise<void>;
+};
+
+type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+
+type LlmStub = {
+  streamedMessages: ChatMessage[];
+  streamChat: (input: { messages: ChatMessage[] }) => AsyncIterable<{ delta: string }>;
 };
 
 const user: AuthenticatedUser = {
@@ -332,6 +349,215 @@ function makeConversationRow(overrides: Partial<ConversationRow> = {}): Conversa
     lastMessageAt: new Date("2026-06-05T02:00:00.000Z"),
     createdAt: new Date("2026-06-05T01:00:00.000Z"),
     updatedAt: new Date("2026-06-05T02:00:00.000Z"),
+    rollingSummary: null,
+    summarizedMessageCount: 0,
+    ...overrides,
+  };
+}
+
+void describe("AgentService conversation memory answer generation", () => {
+  void it("uses short-term memory even when retrieval returns no contexts", async () => {
+    const llm = makeLlmStub("memory answer");
+    const service = serviceWithGeneration(llm);
+    const state = makeGenerationState({
+      retrievalContexts: [],
+      recentMessages: [{ role: "user", content: "previous topic" }],
+    });
+
+    const result = await service.generateAnswerStream(state);
+
+    assert.equal(result.answer, "memory answer");
+    assert.equal(result.noAnswerType, null);
+    assert.deepEqual(llm.streamedMessages.map((message) => message.role), [
+      "system",
+      "system",
+      "user",
+      "user",
+    ]);
+    assert.equal(
+      llm.streamedMessages.some((message) => message.content.includes("previous topic")),
+      true,
+    );
+  });
+
+  void it("uses memory instead of low-score fallback when weak retrieval exists", async () => {
+    const llm = makeLlmStub("low score memory answer");
+    const service = serviceWithGeneration(llm);
+    const state = makeGenerationState({
+      retrievalContexts: [makeRetrievalContext({ rerankScore: 0.01 })],
+      conversationSummary: "The user asked about onboarding.",
+    });
+
+    const result = await service.generateAnswerStream(state);
+
+    assert.equal(result.answer, "low score memory answer");
+    assert.equal(result.noAnswerType, null);
+    assert.equal(
+      llm.streamedMessages.some((message) => message.content.includes("onboarding")),
+      true,
+    );
+  });
+
+  void it("keeps fallback when there is neither retrieval context nor conversation memory", async () => {
+    const llm = makeLlmStub("should not stream");
+    const service = serviceWithGeneration(llm);
+    const state = makeGenerationState({ retrievalContexts: [] });
+
+    const result = await service.generateAnswerStream(state);
+
+    assert.equal(result.noAnswerType, "no_answer");
+    assert.equal(llm.streamedMessages.length, 0);
+  });
+});
+
+void describe("AgentService conversation summary enqueue", () => {
+  void it("swallows enqueue failures and logs a warning", async () => {
+    const mutableDb = db as unknown as MutableDb;
+    const originalSelect = mutableDb.select;
+    const warnings: string[] = [];
+    const service = serviceWithQueue();
+    service.logger = {
+      warn(message: string) {
+        warnings.push(message);
+      },
+    };
+    mutableDb.select = () => {
+      throw new Error("database unavailable");
+    };
+
+    try {
+      await service.enqueueConversationSummaryIfNeeded(
+        "00000000-0000-0000-0000-000000000010",
+      );
+
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0] ?? "", /Failed to enqueue conversation summary/);
+    } finally {
+      mutableDb.select = originalSelect;
+    }
+  });
+});
+
+function serviceWithGeneration(llm: LlmStub): AgentServiceGenerationInternals {
+  return new AgentService(
+    llm as unknown as ConstructorParameters<typeof AgentService>[0],
+    {} as ConstructorParameters<typeof AgentService>[1],
+    {} as ConstructorParameters<typeof AgentService>[2],
+    {} as ConstructorParameters<typeof AgentService>[3],
+  ) as unknown as AgentServiceGenerationInternals;
+}
+
+function serviceWithQueue(): AgentServiceQueueInternals {
+  return new AgentService(
+    {} as ConstructorParameters<typeof AgentService>[0],
+    {} as ConstructorParameters<typeof AgentService>[1],
+    {} as ConstructorParameters<typeof AgentService>[2],
+    {} as ConstructorParameters<typeof AgentService>[3],
+  ) as unknown as AgentServiceQueueInternals;
+}
+
+function makeLlmStub(answer: string): LlmStub {
+  return {
+    streamedMessages: [],
+    async *streamChat(input: { messages: ChatMessage[] }) {
+      this.streamedMessages = input.messages;
+      await Promise.resolve();
+      yield { delta: answer };
+    },
+  };
+}
+
+function makeGenerationState(
+  options: {
+    retrievalContexts?: NonNullable<AgentState["retrieval"]>["contexts"];
+    recentMessages?: AgentState["recentMessages"];
+    conversationSummary?: string | null;
+  } = {},
+): AgentState {
+  const retrievalContexts = options.retrievalContexts ?? [];
+  return {
+    user,
+    conversation: {
+      id: "00000000-0000-0000-0000-000000000010",
+      agentId: "00000000-0000-0000-0000-000000000020",
+      title: "Conversation",
+      status: "active",
+      pinned: false,
+      favorited: false,
+      lastMessageAt: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    },
+    userMessageId: "00000000-0000-0000-0000-000000000030",
+    query: "What did I ask before?",
+    agent: {
+      id: "00000000-0000-0000-0000-000000000020",
+      name: "Agent",
+      description: null,
+      type: "global",
+      visibility: "global",
+      status: "published",
+      isDefault: true,
+      openingMessage: null,
+      recommendedQuestions: [],
+      systemPrompt: null,
+    },
+    knowledgeScope: [],
+    accessibleKnowledgeBases: [],
+    recentMessages: options.recentMessages ?? [],
+    conversationSummary: options.conversationSummary ?? null,
+    rewrittenQueries: ["What did I ask before?"],
+    retrieval: {
+      query: "What did I ask before?",
+      rewrittenQueries: ["What did I ask before?"],
+      candidates: [],
+      contexts: retrievalContexts,
+      trace: {
+        allowedKnowledgeBaseIds: [],
+        recalled: { vector: 0, fts: 0, knowledgeItem: 0 },
+        merged: 0,
+        reranked: 0,
+        final: retrievalContexts.length,
+      },
+    },
+    promptSnapshot: "system prompt",
+    answer: "",
+    citations: [],
+    confidenceLevel: null,
+    noAnswerType: null,
+    assistantMessage: null,
+    steps: [],
+    startedAt: Date.now(),
+    error: null,
+    emit: () => Promise.resolve(),
+  };
+}
+
+function makeRetrievalContext(
+  overrides: Partial<NonNullable<AgentState["retrieval"]>["contexts"][number]> = {},
+): NonNullable<AgentState["retrieval"]>["contexts"][number] {
+  return {
+    id: "context-1",
+    sourceType: "knowledge_document",
+    knowledgeBaseId: "00000000-0000-0000-0000-000000000040",
+    knowledgeBaseName: "Knowledge base",
+    documentId: "00000000-0000-0000-0000-000000000050",
+    knowledgeItemId: null,
+    childChunkId: "00000000-0000-0000-0000-000000000060",
+    parentChunkId: null,
+    title: "Context",
+    content: "Context",
+    parentContent: null,
+    snippet: "Context",
+    pageOrSection: null,
+    channels: ["fts"],
+    initialScore: 0.01,
+    rerankScore: null,
+    knowledgeItemVerified: false,
+    sourceExpired: false,
+    tokenCount: 10,
+    contextText: "Context",
+    citationIndex: 1,
     ...overrides,
   };
 }

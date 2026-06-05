@@ -140,6 +140,17 @@ void describe("UserService", () => {
     }
   });
 
+  void it("rejects self role updates", async () => {
+    const service = makeService({
+      ensureUserExists: () => Promise.resolve(),
+    });
+
+    await assert.rejects(
+      () => service.updateRole(superAdmin.id, { platformRole: "user" }, superAdmin),
+      BadRequestException,
+    );
+  });
+
   void it("resets passwords and revokes user sessions", async () => {
     const service = makeService({
       ensureUserExists: () => Promise.resolve(),
@@ -215,23 +226,45 @@ void describe("UserService", () => {
     }
   });
 
-  void it("rejects user management by non-super admins", async () => {
+  void it("rejects every user management action by non-super admins", async () => {
     const service = new UserService();
+    const targetUserId = "00000000-0000-0000-0000-000000000030";
+    const cases: { name: string; call: () => Promise<unknown> }[] = [
+      {
+        name: "createUser",
+        call: () =>
+          service.createUser(
+            {
+              username: "new.user",
+              name: "New User",
+              password: "password-123",
+              departmentId: "00000000-0000-0000-0000-000000000010",
+              platformRole: "user",
+            },
+            normalUser,
+          ),
+      },
+      {
+        name: "updateRole",
+        call: () => service.updateRole(targetUserId, { platformRole: "department_admin" }, normalUser),
+      },
+      {
+        name: "resetPassword",
+        call: () => service.resetPassword(targetUserId, { password: "new-password-123" }, normalUser),
+      },
+      {
+        name: "disableUser",
+        call: () => service.disableUser(targetUserId, normalUser),
+      },
+      {
+        name: "enableUser",
+        call: () => service.enableUser(targetUserId, normalUser),
+      },
+    ];
 
-    await assert.rejects(
-      () =>
-        service.createUser(
-          {
-            username: "new.user",
-            name: "New User",
-            password: "password-123",
-            departmentId: "00000000-0000-0000-0000-000000000010",
-            platformRole: "user",
-          },
-          normalUser,
-        ),
-      ForbiddenException,
-    );
+    for (const item of cases) {
+      await assert.rejects(item.call, ForbiddenException, item.name);
+    }
   });
 });
 

@@ -233,6 +233,23 @@ void describe("AuthService", () => {
     );
   });
 
+  void it("rejects disabled users during login and session authentication", async () => {
+    const service = new AuthService();
+    const disabledUser: UserRecord = { ...testUser, status: "disabled" };
+    usersFindFirst = () => Promise.resolve(disabledUser);
+    sessionsFindFirst = () =>
+      Promise.resolve(sessionRecord({ token: "access-token", type: "access" }));
+
+    await assert.rejects(
+      service.login({ username: "alice", password: "correct-password" }, request(), response()),
+      UnauthorizedException,
+    );
+    await assert.rejects(
+      service.authenticateRequest(request(`${ACCESS_SESSION_COOKIE_NAME}=access-token`)),
+      UnauthorizedException,
+    );
+  });
+
   void it("does not mint new sessions when refresh revocation loses the active-session race", async () => {
     const service = new AuthService();
     sessionsFindFirst = () =>

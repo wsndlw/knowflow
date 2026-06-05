@@ -11,7 +11,7 @@ import {
   type KnowledgeBaseVisibility,
 } from "@knowflow/shared";
 import Link from "next/link";
-import { useCallback, useEffect, useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 
 import { useAuth } from "../../components/auth-provider";
 import { Badge } from "../../components/ui/badge";
@@ -68,6 +68,14 @@ export default function KnowledgeBasesPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "danger" } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  function showToast(message: string, tone: "success" | "danger" = "success") {
+    setToast({ message, tone });
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
+  }
 
   const canCreate =
     user?.platformRole === "super_admin" || user?.platformRole === "department_admin";
@@ -221,9 +229,9 @@ export default function KnowledgeBasesPage() {
 
       {!isLoading && error === null && items.length > 0 ? (
         view === "card" ? (
-          <CardView items={items} onRefresh={loadKnowledgeBases} />
+          <CardView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
         ) : (
-          <TableView items={items} onRefresh={loadKnowledgeBases} />
+          <TableView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
         )
       ) : null}
 
@@ -284,6 +292,19 @@ export default function KnowledgeBasesPage() {
           </div>
         </form>
       </Dialog>
+
+      {/* 操作反馈 toast */}
+      {toast ? (
+        <div
+          className={cn(
+            "fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg px-5 py-2.5 text-sm font-medium text-white shadow-lg transition-opacity",
+            toast.tone === "success" ? "bg-success" : "bg-danger",
+          )}
+          role="status"
+        >
+          {toast.message}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -297,7 +318,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function CardView({ items, onRefresh }: { items: KnowledgeBaseListItem[]; onRefresh: () => Promise<void> }) {
+function CardView({ items, onRefresh, showToast }: { items: KnowledgeBaseListItem[]; onRefresh: () => Promise<void>; showToast: (msg: string, tone?: "success" | "danger") => void }) {
   const [enablingId, setEnablingId] = useState<string | null>(null);
 
   async function handleEnable(id: string) {
@@ -306,9 +327,10 @@ function CardView({ items, onRefresh }: { items: KnowledgeBaseListItem[]; onRefr
       await apiRequest(`/knowledge-bases/${id}/enable`, knowledgeBaseSchema, {
         method: "POST",
       });
+      showToast("知识库已启用");
       await onRefresh();
-    } catch {
-      // error silently — list will show stale state, user can retry
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "启用失败", "danger");
     } finally {
       setEnablingId(null);
     }
@@ -383,7 +405,7 @@ function CountStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function TableView({ items, onRefresh }: { items: KnowledgeBaseListItem[]; onRefresh: () => Promise<void> }) {
+function TableView({ items, onRefresh, showToast }: { items: KnowledgeBaseListItem[]; onRefresh: () => Promise<void>; showToast: (msg: string, tone?: "success" | "danger") => void }) {
   const [enablingId, setEnablingId] = useState<string | null>(null);
 
   async function handleEnable(id: string) {
@@ -392,9 +414,10 @@ function TableView({ items, onRefresh }: { items: KnowledgeBaseListItem[]; onRef
       await apiRequest(`/knowledge-bases/${id}/enable`, knowledgeBaseSchema, {
         method: "POST",
       });
+      showToast("知识库已启用");
       await onRefresh();
-    } catch {
-      // error silently
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "启用失败", "danger");
     } finally {
       setEnablingId(null);
     }

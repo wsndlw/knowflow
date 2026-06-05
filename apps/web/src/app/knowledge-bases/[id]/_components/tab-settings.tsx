@@ -92,11 +92,13 @@ export function TabSettings({
 
   async function handleDisable() {
     setToggling(true);
+    setError(null);
     try {
       await apiRequest(`/knowledge-bases/${knowledgeBaseId}/disable`, emptyObjectSchema, {
         method: "POST",
       });
       setConfirmOpen(false);
+      setSuccess("知识库已禁用，可随时重新启用");
       await onStatusChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "禁用失败");
@@ -107,10 +109,12 @@ export function TabSettings({
 
   async function handleEnable() {
     setToggling(true);
+    setError(null);
     try {
       await apiRequest(`/knowledge-bases/${knowledgeBaseId}/enable`, knowledgeBaseSchema, {
         method: "POST",
       });
+      setSuccess("知识库已启用");
       await onStatusChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "启用失败");

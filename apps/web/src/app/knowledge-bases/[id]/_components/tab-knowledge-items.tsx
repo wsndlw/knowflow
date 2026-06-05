@@ -76,6 +76,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [actionTarget, setActionTarget] = useState<{ ids: string[], type: "archive" | "delete" } | null>(null);
   const [actioning, setActioning] = useState(false);
+  const [feedbackPending, setFeedbackPending] = useState<Set<string>>(new Set());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pageSize = 20;
 
@@ -176,6 +177,9 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
   }
 
   async function handleToggleFeedback(item: KnowledgeItem, rating: "like" | "dislike") {
+    if (feedbackPending.has(item.id)) return;
+    setFeedbackPending((prev) => new Set(prev).add(item.id));
+
     const newRating = item.userFeedback === rating ? null : rating;
     const payload = knowledgeItemFeedbackRequestSchema.parse({ rating: newRating });
     const prev = item;
@@ -204,6 +208,12 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
     } catch (caught) {
       setItems((prevItems) => prevItems.map((i) => (i.id === item.id ? prev : i)));
       setActionError(caught instanceof Error ? caught.message : "操作失败");
+    } finally {
+      setFeedbackPending((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
     }
   }
 
@@ -465,26 +475,30 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
+                      disabled={feedbackPending.has(item.id)}
                       onClick={() => void handleToggleFeedback(item, "like")}
                       className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors duration-150 ${
                         item.userFeedback === "like"
                           ? "bg-brand-50 text-brand-700"
                           : "text-ink-subtle hover:bg-neutral-100 hover:text-ink"
-                      }`}
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
                       aria-label="赞"
+                      aria-pressed={item.userFeedback === "like"}
                     >
                       <ThumbsUp className="size-3.5" />
                       <span className="tabular-nums font-medium">{item.likeCount}</span>
                     </button>
                     <button
                       type="button"
+                      disabled={feedbackPending.has(item.id)}
                       onClick={() => void handleToggleFeedback(item, "dislike")}
                       className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors duration-150 ${
                         item.userFeedback === "dislike"
                           ? "bg-brand-50 text-brand-700"
                           : "text-ink-subtle hover:bg-neutral-100 hover:text-ink"
-                      }`}
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
                       aria-label="踩"
+                      aria-pressed={item.userFeedback === "dislike"}
                     >
                       <ThumbsDown className="size-3.5" />
                       <span className="tabular-nums font-medium">{item.dislikeCount}</span>

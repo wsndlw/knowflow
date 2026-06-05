@@ -1,122 +1,244 @@
-# knowflow — 企业 AI 知识库平台
+# knowflow · 企业 AI 知识库管理平台
 
-knowflow 是面向企业/机构的 AI 知识库管理平台：让用户与 Agent 都能参与知识的**生产、管理、消费**，实现知识的高效流转与智能服务。
+knowflow 是面向企业/机构内部场景的 AI 知识库系统。它把分散在文档、对话、反馈里的业务知识沉淀为**可检索、可问答、可治理**的知识资产，让员工能快速得到带来源的答案，让管理员能持续维护知识质量，并通过后端权限校验保证知识库严格隔离。
 
-## 一、项目介绍
+当前代码中已实现这些主要模块：账号与权限、知识库管理、文档上传解析、RAG 问答、对话记忆、专家 Agent、知识自动提炼、统计治理。
 
-企业的业务知识分散在文档、对话、反馈中，难以复用。knowflow 通过 AI 把这些知识**自动沉淀为可检索、可问答、可治理的知识库**，核心能力：
-
-- **账号与权限**：超管 / 部门管理员 / 普通用户三级角色；全局部门管理；知识库公开/部门/受限三层可见范围，后端兜底校验。
-- **知识库与文档**：建库、上传文档（PDF/DOCX/TXT/MD/CSV/Excel/图片），异步解析 → 父子分段 → 向量化入库，全程处理状态可见。
-- **RAG 智能问答**：基于 LangGraph 固定图的检索增强问答——三路召回（向量 + 全文 + 知识条目）→ 真 rerank → 父子分段扩展 → Token Budget → 带引用来源的流式回答 + 可信度分级。
-- **知识条目**：面向人阅读的知识卡片/FAQ，含状态机（草稿/待审核/已发布/已下架/已归档）与审核流。
-- **知识自动提炼（生产闭环）**：系统从文档、用户反馈（点踩/纠错）、无答案缺口中**自动提炼候选知识**，经人工审核后入库（详见第四节）。
-- **专家 Agent**：基于知识库的对话载体；知识使用热度统计与可视化。
-
-## 二、系统架构
-
-**Monorepo（pnpm workspace）**，前后端同语言（TypeScript）：
-
-```
-apps/web         Next.js (App Router) 前端
-apps/api         NestJS 后端 + BullMQ Worker（独立进程）
-packages/shared  共享类型 / DTO / 常量 / Zod schema（前后端契约）
-packages/db      Drizzle schema / migrations / db client（api、seed、worker 共用）
-docker-compose   仅 PostgreSQL(pgvector) + Redis；前端/后端/Worker 本机 pnpm 跑
+```text
+技术栈   Next.js · NestJS · LangGraph.js · BullMQ + Redis · PostgreSQL + pgvector · Drizzle ORM · TypeScript
+模型     阿里云百炼 DashScope（对话 / Embedding 1024 维 / Rerank / 知识生产 / 视觉 OCR），支持后台多供应商配置
 ```
 
-**技术栈**：Next.js · NestJS · LangGraph.js（Agent 运行时）· BullMQ + Redis（异步任务 / 定时）· PostgreSQL + pgvector（向量）+ Full Text Search（关键词）· Drizzle ORM · 阿里云 MaaS（对话 / Embedding / Rerank，多供应商可在后台切换）。
+详细工程实现见 [TECH.md](TECH.md)，协作规则见 [AGENTS.md](AGENTS.md).
 
-**关键设计**：
+---
 
-- **异步文档处理**：上传 → 入 BullMQ 队列 → Worker 解析/分段/向量化，状态机 `pending→parsing→chunking→embedding→completed/failed`，SSE 推进度。
-- **检索权限前置**：所有召回先按授权知识库范围过滤；禁用/归档内容自动排除（`status=active` / `enabled=true` 正向过滤）。
-- **状态语义**：知识库 `active/disabled`（删除＝禁用，可启用）；文档 `enabled`（删除＝归档，可恢复）；知识条目 `archived`（归档，可恢复，区别于"下架 unpublished"）。
+## 目录
+
+1. [项目能力](#一项目能力)
+2. [系统架构与关键实现](#二系统架构与关键实现)
+3. [快速开始](#三快速开始)
+4. [目录结构](#五目录结构)
+5. [常见问题](#七常见问题)
+6. [协作说明](#八协作说明)
+7. [技术栈一览](#技术栈一览)
+
+---
+
+## 一、项目能力
+
+knowflow 围绕知识的**生产、管理、消费、治理**构建完整闭环。
+
+| 能力         | 说明                                                                                                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------------ |
+| 账号与权限   | 超级管理员 / 部门管理员 / 普通用户三级角色；知识库支持公开 / 部门 / 受限三层可见范围；权限由后端兜底校验。         |
+| 知识库与文档 | 支持建库、上传 PDF / DOCX / TXT / MD / CSV / Excel / 图片，异步解析、父子分段、向量化入库，处理进度实时可见。      |
+| RAG 智能问答 | 基于 LangGraph 固定图执行问答流程，三路召回、真实 Rerank、父子块扩展、Token 预算、流式回答、引用来源与可信度分级。 |
+| 对话与记忆   | 多轮对话持久化；最近消息短期窗口 + Worker 异步滚动摘要，让 Agent 能理解上下文。                                    |
+| 知识条目     | 面向人工维护的知识卡片 / FAQ，支持草稿、审核、发布、下架、归档、过期等状态。                                       |
+| 知识自动提炼 | 从文档、点踩、纠错、无答案缺口中生成候选知识，经人工审核后入库；AI 只生成候选，不直接写正式库。                    |
+| 专家 Agent   | 支持全局助手、知识库官方 Agent、个人 Agent，并可基于知识库一键生成。                                               |
+| 统计与治理   | 提供使用热度可视化、检索测试、操作审计、知识关系图等治理能力。                                                     |
+
+---
+
+## 二、系统架构与关键实现
+
+### Monorepo 布局
+
+```text
+apps/web          Next.js App Router 前端，负责页面、组件、交互状态与 API 调用
+apps/api          NestJS 后端 + BullMQ Worker，负责接口、权限、RAG、文档处理、任务队列
+packages/shared   前后端共享类型、DTO、常量、Zod schema
+packages/db       Drizzle schema、migrations、db client、seed
+docker-compose    仅启动 PostgreSQL(pgvector) + Redis；web/api/worker 本机 pnpm 运行
+```
+
+`packages/shared` 是前后端契约的单点来源，`packages/db` 被 API、Worker 和 seed 脚本共同复用。
+
+### 后端领域模块
+
+```text
+auth             登录 / Session / 三层权限 / 登录失败锁定 / CSRF
+department       部门组织与归属
+knowledge-base   知识库 CRUD / 成员 / 可见范围 / 知识条目 / 审核台 / 自动提炼
+document         上传 / 解析 / 分段 / 向量化 / 进度回推
+retrieval        三路召回 / Rerank / 父子扩展 / Token 预算 / 检索测试
+agent            LangGraph 问答运行时 / 对话记忆 / 会话归档
+model            模型供应商 / 用途映射 / 加密 Key / 热切换
+analytics        使用热度统计
+health           健康检查
+```
+
+### 关键设计与核心实现
+
+README 只保留总览；完整的「设计意图 -> 实现要点 -> 关键代码位置」见 [TECH.md](TECH.md)。
+
+| 技术支柱       | 核心实现                                                                                                                                         | 深入阅读                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| 权限隔离       | 后端 Guard + SQL 前置过滤；私有 / 部门 / 公开知识库严格隔离。                                                                                    | [TECH.md](TECH.md)                                |
+| 文档处理链路   | BullMQ Worker + Redis Pub/Sub + SSE 进度回推；`传入队 → 认领解析 → 文本清洗 → 父子分段 → 批量向量化 → 标记完成 → 触发知识提炼`；断连时轮询兜底。 | [TECH.md](TECH.md#一文档处理链路异步摄取)         |
+| RAG 检索链路   | 向量 + Full Text Search + 知识条目三路召回 -> 合并去重 -> DashScope Rerank -> 父子扩展 -> Token 预算。                                           | [TECH.md](TECH.md#二rag-检索链路三路召回--rerank) |
+| LangGraph 编排 | 12 个固定节点：加载 Agent、校验权限、解析知识范围、加载记忆、检索、构建提示词、流式回答、引用、置信度、trace。                                   | [TECH.md](TECH.md#三langgraph-12-节点-agent-编排) |
+| 对话记忆       | 最近 6 条消息同步注入；早期对话由 Worker 异步生成滚动摘要；全部按不可信背景注入，防 Prompt Injection。                                           | [TECH.md](TECH.md#四对话记忆短期窗口--滚动摘要)   |
+| 知识生产闭环   | 文档导入、点踩、纠错、无答案信号 -> 候选任务 -> 审核通过 -> 发布知识条目 -> 纳入 RAG。                                                           | [TECH.md](TECH.md#五知识自动提炼闭环)             |
+| 模型与向量空间 | `chat` / `embedding` / `rerank` / `knowledge_production` 等用途映射；pgvector 统一 `vector(1024)` 并强校验维度。                                 | [TECH.md](TECH.md#六跨切面模型配置与向量空间)     |
+
+---
 
 ## 三、快速开始
 
-### 前置
+### 前置依赖
 
-- Node.js 22+ · pnpm 10+ · Docker（仅跑 PostgreSQL + Redis）
+- Node.js 22+
+- pnpm 10+
+- Docker（仅用于 PostgreSQL + Redis）
+- 阿里云百炼 DashScope API Key（用于对话、Embedding、Rerank、知识生产；图片 OCR 需额外配置 OCR 用途模型）
 
-### 步骤
+### 环境变量
+
+复制环境变量模板：
 
 ```bash
-# 1. 环境变量
 cp .env.example .env
-# 按需检查：DATABASE_URL / REDIS_URL / SEED_ADMIN_USER / SEED_ADMIN_PASSWORD
-#          SESSION_SECRET / MODEL_API_KEY_ENCRYPTION_KEY / 模型 API Key
+```
 
-# 2. 安装依赖
+重点检查：
+
+| 变量                           | 用途               | 说明                               |
+| ------------------------------ | ------------------ | ---------------------------------- |
+| `DATABASE_URL`                 | PostgreSQL 连接    | 需与 docker compose 端口一致。     |
+| `REDIS_URL`                    | Redis 连接         | Worker、队列、进度回推依赖 Redis。 |
+| `SESSION_SECRET`               | Session 签名       | 本地开发也必须配置。               |
+| `MODEL_API_KEY_ENCRYPTION_KEY` | 模型 Key 加密      | 32 字节 base64。                   |
+| `ALIYUN_API_KEY`               | 默认模型供应商 Key | seed 会写入默认模型配置。          |
+| `SEED_ADMIN_USER`              | 初始超管账号       | 首次登录使用。                     |
+| `SEED_ADMIN_PASSWORD`          | 初始超管密码       | 首次登录使用。                     |
+
+### 启动步骤
+
+```bash
+# 1. 安装依赖
 pnpm install
 
-# 3. 起基础设施（仅 PG + Redis）
+# 2. 启动基础设施：PostgreSQL(pgvector) + Redis
 docker compose up -d postgres redis
 
-# 4. 迁移 + 种子数据（建超管、部门、演示用户、模型供应商与用途映射、演示知识库）
+# 3. 执行迁移并写入种子数据
 pnpm seed
 
-# 5. 一键启动 api + web + worker（推荐）
+# 4. 启动 api + web + worker
 pnpm dev:all
 ```
 
-> **`pnpm dev:all` 会同时起三个进程：api（:4000）、web（:3000）、worker。**
-> ⚠️ **Worker 是知识自动提炼与文档异步处理的执行进程，必须运行**。`pnpm dev` 只起 api+web、**不含 worker**，会导致"文档不自动提炼、定时扫描不跑"。演示/开发请用 `pnpm dev:all`，或单独再起 `pnpm --filter @knowflow/api worker`。
+启动后访问：
 
-访问：Web `http://localhost:3000`，API 健康检查 `http://localhost:4000/health`。
-默认登录：`.env` 的 `SEED_ADMIN_USER` / `SEED_ADMIN_PASSWORD`（超管）；seed 另建有部门管理员、普通用户演示账号。
+| 服务     | 地址                         |
+| -------- | ---------------------------- |
+| Web 前端 | http://localhost:3000        |
+| API      | http://localhost:4000        |
+| 健康检查 | http://localhost:4000/health |
 
-### 质量检查（与 CI 一致）
+默认登录使用 `.env` 中的 `SEED_ADMIN_USER` / `SEED_ADMIN_PASSWORD`。seed 还会创建部门管理员、普通用户、默认部门、演示知识库骨架、模型供应商与用途映射。
+
+> 注意：`pnpm dev:all` 会同时启动 api、web、worker。Worker 是文档处理、知识自动提炼、定时扫描、对话摘要的执行进程。只运行 `pnpm dev` 会启动 api + web，但不会启动 worker。
+
+**质量检查**
+
+本地检查命令与 CI 保持一致：
 
 ```bash
-pnpm lint && pnpm typecheck && pnpm build
+pnpm lint
+pnpm typecheck
+pnpm build
 ```
 
-## 四、知识自动提炼（生产闭环）
+提交前至少确保 lint、typecheck、build 通过。功能验收还需要真实启动应用，按演示路径走一遍关键流程。
 
-系统**自动**从使用过程中发现并提炼候选知识，经人工审核后入库——AI 只生成候选，不直接写入正式库（防幻觉）。
+### 常用脚本
 
-### 触发来源
+| 命令                                 | 作用                                              |
+| ------------------------------------ | ------------------------------------------------- |
+| `pnpm dev:all`                       | 一键启动 api + web + worker，推荐用于开发和演示。 |
+| `pnpm dev`                           | 仅启动 api + web，不包含 worker。                 |
+| `pnpm seed`                          | 执行迁移并写入种子数据。                          |
+| `pnpm db:migrate`                    | 仅执行数据库迁移。                                |
+| `pnpm db:generate`                   | 由 Drizzle schema 生成迁移文件。                  |
+| `pnpm --filter @knowflow/api worker` | 单独启动 Worker 进程。                            |
 
-由 Worker 进程驱动（**必须运行 worker**）：
+---
 
-| 来源                           | 触发时机                             | 提炼素材                                 |
-| ------------------------------ | ------------------------------------ | ---------------------------------------- |
-| **文档导入**                   | 文档处理完成后**自动**入队提炼       | 文档父分段内容 → 多条原子知识条目        |
-| **用户点踩**                   | 答案被标记 `not_useful`              | 该问答 + 命中内容（提示需改进/补充）     |
-| **用户纠错**                   | 反馈为 `correction` 且填写了正确内容 | **用户提供的正确内容**（质量最高的来源） |
-| **知识条目反馈**               | 条目级反馈                           | 相关反馈                                 |
-| **无答案 / 低可信 / 知识缺口** | 问答 `noAnswerType` 命中             | 问题本身（作为知识缺口信号）             |
+## 四、目录结构
 
-- **定时扫描**：Worker 每小时（BullMQ `repeat: "0 * * * *"`）扫描上述反馈与无答案信号，生成候选改进任务。
-- **手动触发**：管理者也可在审核台手动触发生成（`POST /knowledge-bases/:id/improvement-tasks/generate`）。
-
-### 审核与入库
-
-所有自动提炼产出的是**候选**，进入知识库「审核台」：管理员逐条**通过并发布 / 驳回 / 编辑后通过**。通过后生成正式知识条目，纳入 RAG 检索，并记录来源（文档 / 反馈 / 纠错）可追溯。
-
-### 前置条件
-
-1. **Worker 进程在跑**（`pnpm dev:all` 或 `pnpm --filter @knowflow/api worker`）。
-2. **配置"知识生产"模型**：seed 已预置 `knowledge_production` 用途映射（默认阿里云 qwen-plus）；如未配置，提炼会提示"请先在模型配置中配置知识生产模型"。
-
-## 五、目录结构
-
-```
-apps/web/src/app          页面与路由（知识库/文档/条目/Agent/统计/部门管理后台等）
-apps/api/src/modules      NestJS 领域模块（auth/knowledge-base/document/retrieval/agent/department/model…）
-apps/api/src/worker.ts    Worker 入口（文档处理 + 知识提炼 + 每小时定时扫描）
-packages/shared/src       前后端共享契约（schemas/constants/types）
-packages/db/src           Drizzle schema / migrations / seed
+```text
+apps/web/src/app           前端页面与路由：知识库、文档、条目、Agent、统计、部门后台等
+apps/api/src/modules       NestJS 领域模块：auth、knowledge-base、document、retrieval、agent、model 等
+apps/api/src/worker.ts     Worker 入口：文档处理、知识提炼、定时扫描、对话摘要
+packages/shared/src        前后端共享契约：schemas、constants、types
+packages/db/src            Drizzle schema、migrations、seed、db client
 ```
 
-## 六、团队分工（多 Agent 协作）
+---
 
-本项目由多 AI Agent 在统一规则（`AGENTS.md`）下串行协作开发，人类把控架构与质量：
+## 五、常见问题
 
-- **Claude Code（CC，主控）**：需求澄清、PRD、任务拆解、API 契约设计、最终审查与验收。
-- **Codex（后端）**：后端接口、数据库 schema、权限、RAG/检索、文档处理、测试与工程配置。
-- **Gemini（前端）**：前端页面、组件、交互、前端 API 调用、浏览器端验证。
-- **Trellis**：PRD / 任务 / 规范（spec）/ 上下文沉淀中心（`.trellis/`）。
+### 文档一直不解析
 
-协作纪律：功能分支开发 → 指定审查方本地审查 → PR（CI 跑 lint+typecheck+build）→ 人类拍板合并 main。两次审查（本地 + PR），实现与审查分离。详见 `AGENTS.md`。
+优先确认 Worker 是否运行。文档解析、分段、向量化、知识自动提炼都依赖 Worker。推荐使用：
+
+```bash
+pnpm dev:all
+```
+
+或单独启动：
+
+```bash
+pnpm --filter @knowflow/api worker
+```
+
+### Redis 6379 端口在 Windows 上启动失败
+
+如果 docker 报 `bind: ...forbidden`，可能是 6379 落入 Windows 保留端口段。可以把 `.env` 中的 `REDIS_PORT` / `REDIS_URL` 改到范围外端口，例如 16379，并重新启动 docker compose。
+
+### 图片 OCR 不工作
+
+图片解析依赖模型配置中的 `ocr` 用途模型。seed 默认配置了对话、Embedding、Rerank、知识生产等用途，但 OCR 可能需要在模型配置后台单独启用。
+
+### Rerank 失败是否会导致问答失败
+
+不会。检索服务会尝试调用 DashScope Rerank；如果 Rerank 失败，会兜底使用初排结果，避免整个问答链路中断。
+
+### AI 会不会直接把错误知识写入正式库
+
+不会。知识自动提炼只生成候选，必须由管理员审核通过后才会发布为正式知识条目并进入 RAG 检索。
+
+---
+
+## 六、协作说明
+
+本项目由本人与多 AI Agent 在统一规则下串行协作开发：
+
+| 角色                                                       | 职责                                                                | **边界**                                |
+| ---------------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------- |
+| 人类负责人                                                 | 把控产品方向、架构决策、需求边界与最终合并。                        | --                                      |
+| Claude Code主控                                            | 需求澄清、PRD、任务拆解、API 契约、最终审查。                       | 不作为主要前后端实现方                  |
+| Codex后端/Code审查                                         | 后端接口、数据库 schema、权限、RAG、文档处理/检索、测试与工程配置。 | 不大改正式前端页面与视觉                |
+| Gemini前端/Claude Code前端<br />Gemini审查/Claude Code审查 | 前端页面、组件、路由、交互状态、前端 API 调用、浏览器端验证。       | 不改后端核心 / schema / 权限 / RAG 逻辑 |
+| Trellis                                                    | PRD、任务、spec、上下文沉淀。                                       | --                                      |
+
+完整协作规则、分支策略、审查流程与 Definition of Done 见 [AGENTS.md](AGENTS.md)。长期技术约定见 [CONTEXT.md](CONTEXT.md)。
+
+---
+
+## 技术栈一览
+
+| 层   | 选型                                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------ |
+| 前端 | Next.js（App Router）· React · Radix UI · Tailwind                                               |
+| 后端 | NestJS · LangGraph.js（Agent 运行时）                                                            |
+| 异步 | BullMQ + Redis（任务队列 / 定时 / Pub-Sub）                                                      |
+| 存储 | PostgreSQL + pgvector（向量 1024 维）+ Full Text Search（关键词）· Drizzle ORM · 本地文件存储    |
+| 模型 | 阿里云百炼 MaaS（对话 / Embedding 1024 维 / Rerank / 知识生产 / 视觉 OCR），后台多供应商热切换   |
+| 工程 | pnpm workspace · TypeScript strict · ESLint + Prettier · husky / lint-staged · GitHub Actions CI |
+
+---

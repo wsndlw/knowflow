@@ -425,7 +425,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-dvh">
+    <div className="flex h-full">
       {/* 左:会话列表 */}
       <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-neutral-50">
         <div className="flex items-center justify-between px-4 py-4">

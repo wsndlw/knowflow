@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { ForbiddenException } from "@nestjs/common";
-import { db, documents } from "@knowflow/db";
+import { db, documents, knowledgeItems } from "@knowflow/db";
 import type { DocumentListQuery } from "@knowflow/shared";
 import { documentListQuerySchema } from "@knowflow/shared";
 import type { SQL } from "drizzle-orm";
@@ -29,7 +29,17 @@ type UpdateChain = {
 };
 
 type MutableDb = {
+  transaction: <T>(callback: (tx: TransactionClient) => Promise<T>) => Promise<T>;
+};
+
+type TransactionClient = {
   update: (table: unknown) => UpdateChain;
+};
+
+type UpdateRecord = {
+  table: unknown;
+  values: Record<string, unknown>;
+  condition?: unknown;
 };
 
 type DocumentRow = {
@@ -78,13 +88,23 @@ void describe("DocumentService archive semantics", () => {
     internals.fetchTagsByDocumentIds = () => Promise.resolve(new Map<string, []>());
     internals.countChunks = () => Promise.resolve({ parentChunkCount: 0, childChunkCount: 0 });
 
-    const { updateValues, restore } = captureDocumentUpdate();
+    const { updates, restore } = captureTransactionUpdates();
     try {
       const result = await service.archive(documentId, user);
+      const documentUpdate = updates.find((update) => update.table === documents);
+      const itemUpdate = updates.find((update) => update.table === knowledgeItems);
 
       assert.equal(access.canManageCalls, 1);
-      assert.equal(updateValues.values["enabled"], false);
-      assert.equal(Object.prototype.toString.call(updateValues.values["updatedAt"]), "[object Date]");
+      assert.ok(documentUpdate);
+      assert.ok(itemUpdate);
+      assert.equal(documentUpdate.values["enabled"], false);
+      assert.equal(
+        Object.prototype.toString.call(documentUpdate.values["updatedAt"]),
+        "[object Date]",
+      );
+      assert.equal(itemUpdate.values["status"], "archived");
+      assert.equal(itemUpdate.values["enabled"], false);
+      assert.equal(Object.prototype.toString.call(itemUpdate.values["updatedAt"]), "[object Date]");
       assert.equal(result.enabled, false);
     } finally {
       restore();
@@ -103,12 +123,15 @@ void describe("DocumentService archive semantics", () => {
     internals.fetchTagsByDocumentIds = () => Promise.resolve(new Map<string, []>());
     internals.countChunks = () => Promise.resolve({ parentChunkCount: 0, childChunkCount: 0 });
 
-    const { updateValues, restore } = captureDocumentUpdate();
+    const { updates, restore } = captureTransactionUpdates();
     try {
       const result = await service.restore(documentId, user);
+      const documentUpdate = updates.find((update) => update.table === documents);
+      const itemUpdate = updates.find((update) => update.table === knowledgeItems);
 
       assert.equal(access.canManageCalls, 1);
-      assert.equal(updateValues.values["enabled"], true);
+      assert.equal(documentUpdate?.values["enabled"], true);
+      assert.equal(itemUpdate, undefined);
       assert.equal(result.enabled, true);
     } finally {
       restore();
@@ -153,26 +176,34 @@ function buildListSql(input: Record<string, unknown>) {
   return db.select({ id: documents.id }).from(documents).where(condition).toSQL();
 }
 
-function captureDocumentUpdate() {
+function captureTransactionUpdates() {
   const mutableDb = db as unknown as MutableDb;
-  const originalUpdate = mutableDb.update;
-  const updateValues = { values: {} as Record<string, unknown> };
+  const originalTransaction = mutableDb.transaction;
+  const updates: UpdateRecord[] = [];
 
-  mutableDb.update = () => ({
-    set(values: Record<string, unknown>) {
-      updateValues.values = values;
+  const tx: TransactionClient = {
+    update(table: unknown) {
       return {
-        where() {
-          return Promise.resolve([]);
+        set(values: Record<string, unknown>) {
+          const update: UpdateRecord = { table, values };
+          updates.push(update);
+          return {
+            where(condition: unknown) {
+              update.condition = condition;
+              return Promise.resolve([]);
+            },
+          };
         },
       };
     },
-  });
+  };
+
+  mutableDb.transaction = (callback) => callback(tx);
 
   return {
-    updateValues,
+    updates,
     restore: () => {
-      mutableDb.update = originalUpdate;
+      mutableDb.transaction = originalTransaction;
     },
   };
 }

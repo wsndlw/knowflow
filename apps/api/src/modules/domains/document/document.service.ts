@@ -41,6 +41,7 @@ import {
   ilike,
   inArray,
   min,
+  ne,
   or,
   sql,
   type SQL,
@@ -584,10 +585,21 @@ export class DocumentService {
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
 
-    await db
-      .update(documents)
-      .set({ enabled, updatedAt: new Date() })
-      .where(eq(documents.id, id));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(documents)
+        .set({ enabled, updatedAt: new Date() })
+        .where(eq(documents.id, id));
+
+      if (!enabled) {
+        await tx
+          .update(knowledgeItems)
+          .set({ status: "archived", enabled: false, updatedAt: new Date() })
+          .where(
+            and(eq(knowledgeItems.sourceDocumentId, id), ne(knowledgeItems.status, "archived")),
+          );
+      }
+    });
 
     const updated = await this.findRow(id);
     if (updated === undefined) {

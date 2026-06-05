@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { ForbiddenException } from "@nestjs/common";
-import { db } from "@knowflow/db";
+import { db, knowledgeItems } from "@knowflow/db";
 import type { KnowledgeItem } from "@knowflow/shared";
+import type { SQL } from "drizzle-orm";
 
 import type { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import type { AnalyticsEventService } from "../analytics/analytics-event.service.js";
@@ -44,7 +45,7 @@ type KnowledgeItemListConditionInternals = {
     knowledgeBaseId: string,
     query: Parameters<KnowledgeItemService["listByKnowledgeBase"]>[1],
     canManage: boolean,
-  ) => unknown;
+  ) => SQL | undefined;
 };
 
 type KnowledgeItemRow = {
@@ -132,7 +133,9 @@ void describe("KnowledgeItemService archive semantics", () => {
 
   void it("keeps reader-visible and RAG-eligible list conditions pinned to published enabled items", () => {
     const service = makeService(makeAccessStub());
-    const condition = (service as unknown as KnowledgeItemListConditionInternals).buildListCondition(
+    const condition = (
+      service as unknown as KnowledgeItemListConditionInternals
+    ).buildListCondition(
       "00000000-0000-0000-0000-000000000200",
       { page: 1, pageSize: 20, tagIds: [] },
       false,
@@ -142,9 +145,41 @@ void describe("KnowledgeItemService archive semantics", () => {
     assert.ok(values.includes("published"));
     assert.ok(values.includes(true));
   });
+
+  void it("hides archived items from manager default list conditions", () => {
+    const condition = buildListConditionSql({ page: 1, pageSize: 20, tagIds: [] }, true);
+
+    assert.match(condition.sql, /<>|!=/);
+    assert.ok(condition.params.includes("archived"));
+  });
+
+  void it("allows managers to request archived items explicitly", () => {
+    const condition = buildListConditionSql(
+      { page: 1, pageSize: 20, tagIds: [], status: "archived" },
+      true,
+    );
+
+    assert.doesNotMatch(condition.sql, /<>|!=/);
+    assert.ok(condition.params.includes("archived"));
+  });
 });
 
-async function captureUpdateValues(action: () => Promise<KnowledgeItem>): Promise<KnowledgeItemUpdateValues> {
+function buildListConditionSql(
+  query: Parameters<KnowledgeItemService["listByKnowledgeBase"]>[1],
+  canManage: boolean,
+) {
+  const service = makeService(makeAccessStub());
+  const condition = (service as unknown as KnowledgeItemListConditionInternals).buildListCondition(
+    "00000000-0000-0000-0000-000000000200",
+    query,
+    canManage,
+  );
+  return db.select({ id: knowledgeItems.id }).from(knowledgeItems).where(condition).toSQL();
+}
+
+async function captureUpdateValues(
+  action: () => Promise<KnowledgeItem>,
+): Promise<KnowledgeItemUpdateValues> {
   const mutableDb = db as unknown as MutableDb;
   const originalUpdate = mutableDb.update;
   let updateValues: KnowledgeItemUpdateValues = {};
@@ -169,10 +204,7 @@ async function captureUpdateValues(action: () => Promise<KnowledgeItem>): Promis
   return updateValues;
 }
 
-function makeServiceHarness(
-  access: AccessStub,
-  row: KnowledgeItemRow,
-): KnowledgeItemService {
+function makeServiceHarness(access: AccessStub, row: KnowledgeItemRow): KnowledgeItemService {
   const service = makeService(access);
   const internals = service as unknown as KnowledgeItemMutationInternals;
   internals.findRow = () => Promise.resolve(row);

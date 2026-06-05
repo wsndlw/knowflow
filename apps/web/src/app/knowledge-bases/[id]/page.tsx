@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 
 import { Skeleton } from "../../../components/ui/feedback";
 import { TabList, type TabItem } from "../../../components/ui/tabs";
@@ -44,10 +44,9 @@ export default function KnowledgeBaseDetailPage() {
 
 function KnowledgeBaseDetailContent() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const knowledgeBaseId = params.id;
 
-  const { kb, overview, canManage, loading, error } = useKbDetail(knowledgeBaseId);
+  const { kb, overview, canManage, loading, error, reload } = useKbDetail(knowledgeBaseId);
 
   const visibleTabs = TAB_DEFS
     .filter((tab) => !tab.manageOnly || canManage)
@@ -121,7 +120,8 @@ function KnowledgeBaseDetailContent() {
           <TabSettings
             knowledgeBaseId={knowledgeBaseId}
             kbName={kb.name}
-            onDeleted={() => router.replace("/knowledge-bases")}
+            kbStatus={kb.status}
+            onStatusChanged={reload}
           />
         ) : null}
         {activeTab === "improvement" ? (

@@ -167,69 +167,69 @@ export function AssistantBubble({
                 rehypePlugins={[rehypeKatex, rehypeHighlight]}
                 components={{
                   p: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <p className="mb-2 last:mb-0" {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <p className="mb-2 last:mb-0" {..._rest} />;
                   },
                   ul: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <ul className="mb-2 ml-5 list-disc space-y-1" {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <ul className="mb-2 ml-5 list-disc space-y-1" {..._rest} />;
                   },
                   ol: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <ol className="mb-2 ml-5 list-decimal space-y-1" {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <ol className="mb-2 ml-5 list-decimal space-y-1" {..._rest} />;
                   },
                   li: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <li {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <li {..._rest} />;
                   },
                   h1: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <h1 className="mb-3 mt-5 text-xl font-bold text-ink" {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <h1 className="mb-3 mt-5 text-xl font-bold text-ink" {..._rest} />;
                   },
                   h2: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <h2 className="mb-3 mt-4 text-lg font-bold text-ink" {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <h2 className="mb-3 mt-4 text-lg font-bold text-ink" {..._rest} />;
                   },
                   h3: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <h3 className="mb-2 mt-4 text-base font-semibold text-ink" {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <h3 className="mb-2 mt-4 text-base font-semibold text-ink" {..._rest} />;
                   },
                   h4: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <h4 className="mb-2 mt-3 text-sm font-semibold text-ink" {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <h4 className="mb-2 mt-3 text-sm font-semibold text-ink" {..._rest} />;
                   },
                   a: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <a className="text-brand-600 underline hover:text-brand-700" target="_blank" rel="noopener noreferrer" {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <a className="text-brand-600 underline hover:text-brand-700" target="_blank" rel="noopener noreferrer" {..._rest} />;
                   },
                   strong: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <strong className="font-bold text-ink" {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <strong className="font-bold text-ink" {..._rest} />;
                   },
                   pre: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, ...rest } = props;
-                    return <pre className="my-3 overflow-x-auto rounded-md bg-neutral-100 p-3 text-sm" {...rest} />;
+                    
+                    const { node: _node, ..._rest } = props; void _node;
+                    return <pre className="my-3 overflow-x-auto rounded-md bg-neutral-100 p-3 text-sm" {..._rest} />;
                   },
                   code: (props) => {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { node, className, children, ...rest } = props;
+                    
+                    const { node: _node, className, children, ..._rest } = props; void _node;
                     return !className ? (
-                      <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-sm text-brand-700" {...rest}>
+                      <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-sm text-brand-700" {..._rest}>
                         {children}
                       </code>
                     ) : (
-                      <code className={className} {...rest}>
+                      <code className={className} {..._rest}>
                         {children}
                       </code>
                     );

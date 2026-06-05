@@ -52,6 +52,16 @@ export function useAgentChat({
   
   const listEndRef = useRef<HTMLDivElement>(null);
   const streamingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, [agentId]);
 
   // Auto-scroll when messages change
   useEffect(() => {
@@ -131,23 +141,29 @@ export function useAgentChat({
         createdAt: now,
       };
       setMessages((current) => [...current, userMessage, draft]);
-      await streamAnswer(conversationId, trimmed, draft.id);
+      abortControllerRef.current = new AbortController();
+      await streamAnswer(conversationId, trimmed, draft.id, abortControllerRef.current.signal);
       onStreamCompleted?.();
     } catch (caught) {
+      if (caught instanceof Error && caught.name === "AbortError") {
+        return;
+      }
       setError(caught instanceof Error ? caught.message : "提问失败");
     } finally {
       setIsAsking(false);
       setStatusText("");
       streamingRef.current = false;
+      abortControllerRef.current = null;
     }
   }
 
-  async function streamAnswer(conversationId: string, content: string, draftId: string) {
+  async function streamAnswer(conversationId: string, content: string, draftId: string, signal: AbortSignal) {
     const response = await fetch(apiUrl(`/conversations/${conversationId}/messages`), {
       method: "POST",
       headers: { "Content-Type": "application/json", [CSRF_HEADER_NAME]: getCsrfToken() },
       credentials: "include",
       body: JSON.stringify({ content }),
+      signal,
     });
     if (!response.ok || response.body === null) {
       throw new Error(await parseApiError(response));
@@ -155,18 +171,29 @@ export function useAgentChat({
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let result = await reader.read();
-    while (!result.done) {
-      buffer += decoder.decode(result.value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-      for (const part of parts) {
-        const event = parseSseEvent(part);
-        if (event !== null) {
-          handleStreamEvent(event, draftId);
+
+    try {
+      let result = await reader.read();
+      while (!result.done) {
+        if (signal.aborted) {
+          await reader.cancel();
+          break;
         }
+        buffer += decoder.decode(result.value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const event = parseSseEvent(part);
+          if (event !== null) {
+            handleStreamEvent(event, draftId);
+          }
+        }
+        result = await reader.read();
       }
-      result = await reader.read();
+    } finally {
+      if (signal.aborted) {
+        await reader.cancel();
+      }
     }
   }
 

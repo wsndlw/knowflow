@@ -87,7 +87,7 @@ function HistoryRow({
       <button
         type="button"
         onClick={onApply}
-        className="min-w-0 flex-1 text-left focus-visible:outline-none"
+        className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 rounded"
         title="点击回填到检索表单（不会自动检索）"
       >
         <p className="truncate text-sm font-medium text-ink">{entry.query}</p>

@@ -103,7 +103,7 @@ function MindMapNodeComponent({ id, data }: NodeProps<MindMapNodeData>) {
               setEditing(false);
             }
           }}
-          className="min-w-0 flex-1 rounded border border-border bg-surface px-1 text-sm text-ink outline-none"
+          className="min-w-0 flex-1 rounded border border-border bg-surface px-1 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
           // nodrag 让输入框内拖动不触发画布拖拽
           onMouseDown={(e) => e.stopPropagation()}
         />

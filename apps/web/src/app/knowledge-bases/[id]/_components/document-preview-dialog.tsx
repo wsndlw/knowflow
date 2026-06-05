@@ -253,7 +253,7 @@ function FileView({ doc }: { doc: KnowledgeDocument }) {
       </div>
       <div className="flex-1 border border-border rounded-md overflow-hidden bg-neutral-100 flex items-center justify-center">
         {isImage ? (
-          <img src={url} alt={doc.title} className="max-w-full max-h-full object-contain" />
+          <img src={url} alt={doc.title} loading="lazy" className="max-w-full max-h-full object-contain" />
         ) : isPdf ? (
           <iframe src={url} className="w-full h-full" title={doc.title} />
         ) : (

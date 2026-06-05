@@ -1,17 +1,29 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { db } from "@knowflow/db";
+import { BadRequestException } from "@nestjs/common";
+import { db, knowledgeImprovementTasks, knowledgeItems } from "@knowflow/db";
+import { improvementTaskListQuerySchema, type ImprovementTaskListQuery } from "@knowflow/shared";
+import type { SQL } from "drizzle-orm";
 
 import { KnowledgeImprovementService } from "./knowledge-improvement.service.js";
 import type { CandidateDraft } from "./knowledge-improvement-draft.js";
 
 type MutableDb = {
+  select: (selection?: unknown) => SelectChain;
   update: (table: unknown) => {
     set: (values: Record<string, unknown>) => {
       where: (condition: unknown) => Promise<unknown[]> | { returning: () => Promise<TaskRow[]> };
     };
   };
+};
+
+type SelectChain = {
+  from: (table: unknown) => SelectChain;
+  innerJoin: (...args: unknown[]) => SelectChain;
+  where: (condition: unknown) => SelectChain;
+  orderBy: (...args: unknown[]) => SelectChain;
+  limit: (limit: number) => Promise<unknown[]>;
 };
 
 type TaskRow = {
@@ -21,9 +33,20 @@ type TaskRow = {
   triggerType: string;
   sourceQuestion: string;
   sourceContext: Record<string, unknown>;
+  candidateTitle?: string | null;
+  candidateContent?: string | null;
+  candidateSummary?: string | null;
+  candidateMetadata?: Record<string, unknown>;
 };
 
 type ServiceHarness = {
+  approve: (
+    taskId: string,
+    input: { title?: string; content?: string; summary?: string | null },
+    user: AuthenticatedUserFixture,
+  ) => Promise<unknown>;
+  buildListCondition: (knowledgeBaseId: string, query: ImprovementTaskListQuery) => SQL | undefined;
+  collectItemFeedbackScanSignals: (knowledgeBaseId: string, cursor: null) => Promise<unknown[]>;
   generateCandidate: (taskId: string) => Promise<TaskRow>;
   findTask: (taskId: string) => Promise<TaskRow>;
   findRelatedItems: (
@@ -41,6 +64,14 @@ type ServiceHarness = {
   toTask: (row: TaskRow) => TaskRow;
 };
 
+type AuthenticatedUserFixture = {
+  id: string;
+  username: string;
+  name: string;
+  platformRole: "user";
+  departmentId: string;
+};
+
 const documentTask = {
   id: "task-1",
   status: "pending",
@@ -54,6 +85,116 @@ const documentTask = {
     chunkIndex: 0,
   },
 };
+
+const reviewer: AuthenticatedUserFixture = {
+  id: "00000000-0000-0000-0000-000000000001",
+  username: "alice",
+  name: "Alice",
+  platformRole: "user",
+  departmentId: "00000000-0000-0000-0000-000000000010",
+};
+
+void describe("KnowledgeImprovementService archived source filtering", () => {
+  void it("excludes archived knowledge items from item feedback scans", async () => {
+    const mutableDb = db as unknown as MutableDb;
+    const originalSelect = mutableDb.select;
+    let capturedCondition: unknown;
+
+    mutableDb.select = () => {
+      const chain: SelectChain = {
+        from() {
+          return chain;
+        },
+        innerJoin() {
+          return chain;
+        },
+        where(condition: unknown) {
+          capturedCondition = condition;
+          return chain;
+        },
+        orderBy() {
+          return chain;
+        },
+        limit() {
+          return Promise.resolve([]);
+        },
+      };
+      return chain;
+    };
+
+    try {
+      const service = makeService() as unknown as ServiceHarness;
+      await service.collectItemFeedbackScanSignals("kb-1", null);
+    } finally {
+      mutableDb.select = originalSelect;
+    }
+
+    const query = db
+      .select({ id: knowledgeItems.id })
+      .from(knowledgeItems)
+      .where(capturedCondition as SQL)
+      .toSQL();
+    assert.equal(query.params.includes("archived"), true);
+  });
+
+  void it("filters list results whose source document or item is archived", () => {
+    const service = makeService() as unknown as ServiceHarness;
+    const condition = service.buildListCondition("kb-1", improvementTaskListQuerySchema.parse({}));
+    const query = db
+      .select({ id: knowledgeImprovementTasks.id })
+      .from(knowledgeImprovementTasks)
+      .where(condition)
+      .toSQL();
+
+    assert.match(query.sql, /exists/i);
+    assert.match(query.sql, /documents/i);
+    assert.match(query.sql, /knowledge_items/i);
+    assert.equal(query.params.includes("archived"), true);
+    assert.equal(query.params.includes(true), true);
+  });
+
+  void it("rejects approval when the source document is archived", async () => {
+    const service = makeService({
+      selectRows: [[{ enabled: false }]],
+      embedTexts: () => {
+        throw new Error("embed should not be called for archived sources");
+      },
+    }) as unknown as ServiceHarness;
+    service.findTask = () =>
+      Promise.resolve(
+        makeCandidateTask({
+          sourceContext: { documentId: "00000000-0000-0000-0000-000000000200" },
+        }),
+      );
+
+    await assert.rejects(
+      () => service.approve("task-1", {}, reviewer),
+      (error) => error instanceof BadRequestException && error.message.includes("来源文档已归档"),
+    );
+  });
+
+  void it("rejects approval when the source knowledge item is archived", async () => {
+    const service = makeService({
+      selectRows: [[{ status: "archived", enabled: false }]],
+      embedTexts: () => {
+        throw new Error("embed should not be called for archived sources");
+      },
+    }) as unknown as ServiceHarness;
+    service.findTask = () =>
+      Promise.resolve(
+        makeCandidateTask({
+          triggerType: "item_dislike",
+          sourceContext: { knowledgeItemId: "00000000-0000-0000-0000-000000000300" },
+        }),
+      );
+
+    await assert.rejects(
+      () => service.approve("task-1", {}, reviewer),
+      (error) =>
+        error instanceof BadRequestException && error.message.includes("来源知识条目已归档"),
+    );
+  });
+});
 
 void describe("KnowledgeImprovementService.generateCandidate", () => {
   void it("writes the first document draft to the source task and queues remaining drafts", async () => {
@@ -104,14 +245,7 @@ void describe("KnowledgeImprovementService.generateCandidate", () => {
     });
 
     try {
-      const service = new KnowledgeImprovementService(
-        ({ canManage: () => Promise.resolve(true) } as unknown) as ConstructorParameters<
-          typeof KnowledgeImprovementService
-        >[0],
-        ({ embedTexts: () => Promise.resolve([]) } as unknown) as ConstructorParameters<
-          typeof KnowledgeImprovementService
-        >[1],
-      ) as unknown as ServiceHarness;
+      const service = makeService() as unknown as ServiceHarness;
       service.findTask = () => Promise.resolve(updateCalls.length >= 2 ? finalTask : documentTask);
       service.findRelatedItems = () => Promise.resolve([]);
       service.generateDrafts = () => Promise.resolve(drafts);
@@ -145,3 +279,74 @@ void describe("KnowledgeImprovementService.generateCandidate", () => {
     }
   });
 });
+
+function makeService(
+  options: {
+    selectRows?: unknown[][];
+    embedTexts?: (texts: string[]) => Promise<number[][]>;
+  } = {},
+): KnowledgeImprovementService {
+  const mutableDb = db as unknown as MutableDb;
+  const originalSelect = mutableDb.select;
+  const selectRows = [...(options.selectRows ?? [])];
+  if (options.selectRows !== undefined) {
+    mutableDb.select = () => {
+      const chain: SelectChain = {
+        from() {
+          return chain;
+        },
+        innerJoin() {
+          return chain;
+        },
+        where() {
+          return chain;
+        },
+        orderBy() {
+          return chain;
+        },
+        limit() {
+          return Promise.resolve(selectRows.shift() ?? []);
+        },
+      };
+      return chain;
+    };
+  }
+
+  const service = new KnowledgeImprovementService(
+    { canManage: () => Promise.resolve(true) } as unknown as ConstructorParameters<
+      typeof KnowledgeImprovementService
+    >[0],
+    {
+      embedTexts: options.embedTexts ?? (() => Promise.resolve([])),
+    } as unknown as ConstructorParameters<typeof KnowledgeImprovementService>[1],
+  );
+
+  if (options.selectRows !== undefined) {
+    const originalApprove = service.approve.bind(service);
+    service.approve = async (...args) => {
+      try {
+        return await originalApprove(...args);
+      } finally {
+        mutableDb.select = originalSelect;
+      }
+    };
+  }
+
+  return service;
+}
+
+function makeCandidateTask(overrides: Partial<TaskRow> = {}): TaskRow {
+  return {
+    id: "task-1",
+    status: "candidate_ready",
+    knowledgeBaseId: "kb-1",
+    triggerType: "document_extraction",
+    sourceQuestion: "Question",
+    sourceContext: {},
+    candidateTitle: "Candidate title",
+    candidateContent: "Candidate content",
+    candidateSummary: null,
+    candidateMetadata: {},
+    ...overrides,
+  };
+}

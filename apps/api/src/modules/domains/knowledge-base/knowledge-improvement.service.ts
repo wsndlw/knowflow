@@ -36,6 +36,7 @@ import {
   count,
   desc,
   eq,
+  exists,
   gt,
   ilike,
   inArray,
@@ -329,6 +330,7 @@ export class KnowledgeImprovementService {
     if (title === null || content === null) {
       throw new BadRequestException("Candidate title and content are required");
     }
+    await this.ensureTaskSourceActive(task);
     const sourceDocumentId = this.taskSourceDocumentId(task);
     const shouldVerify = task.triggerType !== DOCUMENT_EXTRACTION_TRIGGER_TYPE;
     const metadata = buildPublishedKnowledgeMetadata({
@@ -685,6 +687,7 @@ export class KnowledgeImprovementService {
     const conditions: SQL[] = [
       eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId),
       eq(knowledgeItemFeedback.rating, "dislike"),
+      ne(knowledgeItems.status, "archived"),
     ];
     this.pushCursorCondition(
       conditions,
@@ -841,6 +844,7 @@ export class KnowledgeImprovementService {
         and(
           eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId),
           eq(knowledgeItemFeedback.rating, "dislike"),
+          ne(knowledgeItems.status, "archived"),
         ),
       )
       .orderBy(desc(knowledgeItemFeedback.createdAt))
@@ -1345,7 +1349,45 @@ export class KnowledgeImprovementService {
     if (query.triggerType !== undefined) {
       conditions.push(eq(knowledgeImprovementTasks.triggerType, query.triggerType));
     }
+    conditions.push(this.activeSourceCondition());
     return and(...conditions);
+  }
+
+  private activeSourceCondition(): SQL {
+    const condition = and(
+      or(
+        sql`${knowledgeImprovementTasks.sourceContext}->>'documentId' is null`,
+        exists(
+          db
+            .select({ id: documents.id })
+            .from(documents)
+            .where(
+              and(
+                sql`${documents.id}::text = ${knowledgeImprovementTasks.sourceContext}->>'documentId'`,
+                eq(documents.enabled, true),
+              ),
+            ),
+        ),
+      ),
+      or(
+        sql`${knowledgeImprovementTasks.sourceContext}->>'knowledgeItemId' is null`,
+        exists(
+          db
+            .select({ id: knowledgeItems.id })
+            .from(knowledgeItems)
+            .where(
+              and(
+                sql`${knowledgeItems.id}::text = ${knowledgeImprovementTasks.sourceContext}->>'knowledgeItemId'`,
+                ne(knowledgeItems.status, "archived"),
+              ),
+            ),
+        ),
+      ),
+    );
+    if (condition === undefined) {
+      throw new Error("Active source condition is required");
+    }
+    return condition;
   }
 
   private async findTask(taskId: string): Promise<TaskRow> {
@@ -1363,6 +1405,42 @@ export class KnowledgeImprovementService {
       return;
     }
     throw new ForbiddenException("Cannot manage improvement tasks in this knowledge base");
+  }
+
+  private async ensureTaskSourceActive(task: TaskRow): Promise<void> {
+    const sourceDocumentId = this.taskSourceDocumentId(task);
+    if (sourceDocumentId !== null) {
+      const [document] = await db
+        .select({ enabled: documents.enabled })
+        .from(documents)
+        .where(
+          and(
+            eq(documents.id, sourceDocumentId),
+            eq(documents.knowledgeBaseId, task.knowledgeBaseId),
+          ),
+        )
+        .limit(1);
+      if (document?.enabled !== true) {
+        throw new BadRequestException("来源文档已归档，无法发布该改进");
+      }
+    }
+
+    const sourceKnowledgeItemId = this.taskSourceKnowledgeItemId(task);
+    if (sourceKnowledgeItemId !== null) {
+      const [item] = await db
+        .select({ status: knowledgeItems.status, enabled: knowledgeItems.enabled })
+        .from(knowledgeItems)
+        .where(
+          and(
+            eq(knowledgeItems.id, sourceKnowledgeItemId),
+            eq(knowledgeItems.knowledgeBaseId, task.knowledgeBaseId),
+          ),
+        )
+        .limit(1);
+      if (item === undefined || item.status === "archived" || !item.enabled) {
+        throw new BadRequestException("来源知识条目已归档，无法发布该改进");
+      }
+    }
   }
 
   private async enqueueGenerate(taskIds: string[]): Promise<void> {
@@ -1448,6 +1526,12 @@ export class KnowledgeImprovementService {
     const sourceContext = this.record(task.sourceContext);
     const documentId = sourceContext["documentId"];
     return typeof documentId === "string" ? documentId : null;
+  }
+
+  private taskSourceKnowledgeItemId(task: TaskRow): string | null {
+    const sourceContext = this.record(task.sourceContext);
+    const knowledgeItemId = sourceContext["knowledgeItemId"];
+    return typeof knowledgeItemId === "string" ? knowledgeItemId : null;
   }
 
   private normalizeQuestion(question: string): string {

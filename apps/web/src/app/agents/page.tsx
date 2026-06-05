@@ -26,11 +26,13 @@ import {
   ShieldAlert,
   AlertCircle,
   FileText,
-  ArrowRight,
 } from "lucide-react";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import rehypeHighlight from "rehype-highlight";
 
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
@@ -47,7 +49,6 @@ type DraftAssistantMessage = {
   noAnswerType: NoAnswerType | null;
   citations: Citation[];
   recommendedQuestions: string[];
-  relatedDocuments: ConversationMessage["relatedDocuments"];
   createdAt: string;
 };
 
@@ -246,7 +247,6 @@ export default function ChatPage() {
         noAnswerType: null,
         citations: [],
         recommendedQuestions: [],
-        relatedDocuments: [],
         createdAt: now,
       };
       const draft: DraftAssistantMessage = {
@@ -258,7 +258,6 @@ export default function ChatPage() {
         noAnswerType: null,
         citations: [],
         recommendedQuestions: [],
-        relatedDocuments: [],
         createdAt: now,
       };
       setMessages((current) => [...current, userMessage, draft]);
@@ -563,7 +562,8 @@ function AssistantBubble({
           ) : (
             <div className="text-base leading-relaxed text-ink">
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex, rehypeHighlight]}
                 components={{
                   p: (props) => {
                     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -704,36 +704,7 @@ function AssistantBubble({
             </div>
           ) : null}
 
-          {/* 相关文档区块 */}
-          {!showSkeleton && message.relatedDocuments.length > 0 ? (
-            <div className="mt-4 border-t border-dashed border-border pt-3">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted mb-2">
-                <FileText className="size-3.5 text-ink-subtle" />
-                <span>相关文档</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {message.relatedDocuments.map((doc) => (
-                  <a
-                    key={doc.id}
-                    href={`/knowledge-bases/${doc.knowledgeBaseId}`}
-                    className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface p-2.5 shadow-xs hover:border-brand-300 hover:bg-brand-50 transition-all group"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-ink group-hover:text-brand-700 transition-colors line-clamp-1">
-                        {doc.title}
-                      </span>
-                      {doc.knowledgeBaseName ? (
-                        <span className="block text-xs text-ink-subtle mt-0.5 line-clamp-1">
-                          知识库: {doc.knowledgeBaseName}
-                        </span>
-                      ) : null}
-                    </div>
-                    <ArrowRight className="size-4 shrink-0 self-center text-ink-subtle opacity-0 group-hover:opacity-100 group-hover:text-brand-600 transition-all" />
-                  </a>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          {/* 相关文档区块已移除 */}
 
           {/* 操作按钮 */}
           {!message.id.startsWith("draft-") ? (

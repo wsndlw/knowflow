@@ -172,13 +172,13 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
           description="点击「一键生成」基于知识库内容自动创建,或手动创建。"
         />
       ) : (
-        <div className="grid gap-3">
+        <div className="flex flex-col gap-3">
           {agents.map((agent) => (
             <Card key={agent.id} className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-medium text-ink truncate">{agent.name}</h4>
+                    <h4 className="text-sm font-medium text-ink truncate min-w-0">{agent.name}</h4>
                     <Badge tone={statusTone[agent.status] ?? "neutral"}>
                       {statusLabels[agent.status] ?? agent.status}
                     </Badge>

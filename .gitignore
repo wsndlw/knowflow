@@ -5,6 +5,8 @@
 .codex/
 # 共用的 trellis-* skills 与其他 agent 资产
 .agents/
+# AI skills 锁文件（脚手架，不进仓库）
+skills-lock.json
 # grill-with-docs skill
 grill-with-docs/
 # Claude Code 指针文件（仅指向 AGENTS.md，本地用）

@@ -10,6 +10,7 @@ import { HealthModule } from "./domains/health/health.module.js";
 import { KnowledgeBaseModule } from "./domains/knowledge-base/knowledge-base.module.js";
 import { ModelModule } from "./domains/model/model.module.js";
 import { RetrievalModule } from "./domains/retrieval/retrieval.module.js";
+import { UserModule } from "./domains/user/user.module.js";
 import { AuditLogInterceptor } from "../shared/audit/audit-log.interceptor.js";
 import { AuditLogService } from "../shared/audit/audit-log.service.js";
 
@@ -24,6 +25,7 @@ import { AuditLogService } from "../shared/audit/audit-log.service.js";
     AgentModule,
     RetrievalModule,
     ModelModule,
+    UserModule,
   ],
   providers: [
     AuditLogService,

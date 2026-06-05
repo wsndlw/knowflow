@@ -66,6 +66,11 @@ export const ACTION_LABELS: Record<string, string> = {
   "user.login": "用户登录",
   "user.logout": "用户登出",
   "user.department.assign": "设置用户部门",
+  "user.create": "创建用户",
+  "user.role.update": "修改用户角色",
+  "user.password.reset": "重置用户密码",
+  "user.disable": "停用用户",
+  "user.enable": "启用用户",
   "department.create": "创建部门",
   "department.update": "更新部门",
   "department.delete": "删除部门",
@@ -159,6 +164,8 @@ export const KNOWLEDGE_ITEM_STATUSES = [
 export const KNOWLEDGE_ITEM_FEEDBACK_RATINGS = ["like", "dislike"] as const;
 
 export const PLATFORM_ROLES = ["super_admin", "department_admin", "user"] as const;
+
+export const USER_STATUSES = ["active", "disabled"] as const;
 
 export const DOCUMENT_PROCESS_STATUSES = [
   "pending",

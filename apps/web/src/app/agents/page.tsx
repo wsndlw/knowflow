@@ -136,6 +136,7 @@ export default function ChatPage() {
   const streamingRef = useRef(false);
 
   const [conversationView, setConversationView] = useState<"active" | "archived">("active");
+  const [processingId, setProcessingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "danger" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -155,7 +156,11 @@ export default function ChatPage() {
         agentResponse.items.find((agent: Agent) => agent.type === "global") ??
         agentResponse.items.find((agent: Agent) => agent.isDefault) ??
         agentResponse.items[0];
-      setGlobalAgentId(globalAgent?.id ?? "");
+      const newAgentId = globalAgent?.id ?? "";
+      setGlobalAgentId(newAgentId);
+      if (newAgentId === "") {
+        setIsLoading(false);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "加载失败");
       setIsLoading(false);
@@ -213,7 +218,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (globalAgentId !== "") {
       setIsLoading(true);
-      refreshConversations(conversationView).finally(() => setIsLoading(false));
+      void refreshConversations(conversationView).finally(() => setIsLoading(false));
     }
   }, [conversationView, globalAgentId, refreshConversations]);
 
@@ -237,6 +242,8 @@ export default function ChatPage() {
 
   async function handleArchive(e: React.MouseEvent, id: string) {
     e.stopPropagation();
+    if (processingId !== null) return;
+    setProcessingId(id);
     try {
       await apiRequest(`/conversations/${id}/archive`, conversationSchema, { method: "POST" });
       if (selectedConversationId === id) {
@@ -247,17 +254,23 @@ export default function ChatPage() {
       showToast("会话已归档");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "归档失败", "danger");
+    } finally {
+      setProcessingId(null);
     }
   }
 
   async function handleRestore(e: React.MouseEvent, id: string) {
     e.stopPropagation();
+    if (processingId !== null) return;
+    setProcessingId(id);
     try {
       await apiRequest(`/conversations/${id}/restore`, conversationSchema, { method: "POST" });
       await refreshConversations(conversationView);
       showToast("会话已恢复");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "恢复失败", "danger");
+    } finally {
+      setProcessingId(null);
     }
   }
 
@@ -484,25 +497,27 @@ export default function ChatPage() {
                     <button
                       type="button"
                       title="归档"
+                      disabled={processingId !== null}
                       onClick={(e) => void handleArchive(e, c.id)}
                       className={cn(
-                        "opacity-0 transition-opacity p-1 rounded-sm group-hover:opacity-100 hover:bg-neutral-200/60",
+                        "opacity-0 transition-opacity p-1 rounded-sm group-hover:opacity-100 hover:bg-neutral-200/60 disabled:opacity-50 disabled:cursor-not-allowed",
                         c.id === selectedConversationId ? "hover:bg-brand-100" : ""
                       )}
                     >
-                      <Archive className="size-3.5" />
+                      <Archive className={cn("size-3.5", processingId === c.id ? "animate-pulse" : "")} />
                     </button>
                   ) : (
                     <button
                       type="button"
                       title="恢复"
+                      disabled={processingId !== null}
                       onClick={(e) => void handleRestore(e, c.id)}
                       className={cn(
-                        "opacity-0 transition-opacity p-1 rounded-sm group-hover:opacity-100 hover:bg-neutral-200/60",
+                        "opacity-0 transition-opacity p-1 rounded-sm group-hover:opacity-100 hover:bg-neutral-200/60 disabled:opacity-50 disabled:cursor-not-allowed",
                         c.id === selectedConversationId ? "hover:bg-brand-100" : ""
                       )}
                     >
-                      <RotateCcw className="size-3.5" />
+                      <RotateCcw className={cn("size-3.5", processingId === c.id ? "animate-spin" : "")} />
                     </button>
                   )}
                 </div>

@@ -37,7 +37,7 @@ export function TagBadge({
         style={{ backgroundColor: tag.color }}
         aria-hidden
       />
-      <span className="truncate">{tag.name}</span>
+      <span className="truncate min-w-0">{tag.name}</span>
       {onRemove ? (
         <button
           type="button"

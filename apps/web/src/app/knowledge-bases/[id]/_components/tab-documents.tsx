@@ -72,9 +72,12 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
   const [isUploading, setIsUploading] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
+  const [archivedMode, setArchivedMode] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<{ ids: string[] } | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<{ ids: string[] } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ ids: string[] } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [deleting, setDeleting] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [previewTarget, setPreviewTarget] = useState<KnowledgeDocument | null>(null);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -100,6 +103,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
       if (keyword.trim()) params.set("keyword", keyword.trim());
       if (status) params.set("status", status);
       if (tagFilter.queryValue) params.set("tagIds", tagFilter.queryValue);
+      params.set("archived", archivedMode ? "true" : "false");
       const response = await apiRequest(
         `/knowledge-bases/${knowledgeBaseId}/documents?${params.toString()}`,
         documentListResponseSchema,
@@ -112,7 +116,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     } finally {
       setLoading(false);
     }
-  }, [knowledgeBaseId, page, keyword, status, tagFilter.queryValue]);
+  }, [knowledgeBaseId, page, keyword, status, tagFilter.queryValue, archivedMode]);
 
   useEffect(() => {
     void loadDocuments();
@@ -179,22 +183,85 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     }
   }
 
+  async function handleConfirmArchive() {
+    if (!archiveTarget) return;
+    setActionLoading(true);
+    setActionError(null);
+    
+    const results = await Promise.allSettled(
+      archiveTarget.ids.map((docId) =>
+        apiRequest(`/documents/${docId}/archive`, emptyObjectSchema, { method: "POST" })
+      )
+    );
+    
+    const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+    const rejected = results.filter((r) => r.status === "rejected").length;
+
+    setArchiveTarget(null);
+    setSelectedIds(new Set());
+    await loadDocuments();
+    
+    if (rejected > 0) {
+      setActionError(`归档完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+    } else {
+      setActionSuccess(`成功归档 ${String(fulfilled)} 个文档`);
+      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("成功归档") ? null : prev)), 3000);
+    }
+    setActionLoading(false);
+  }
+
+  async function handleConfirmRestore() {
+    if (!restoreTarget) return;
+    setActionLoading(true);
+    setActionError(null);
+    
+    const results = await Promise.allSettled(
+      restoreTarget.ids.map((docId) =>
+        apiRequest(`/documents/${docId}/restore`, emptyObjectSchema, { method: "POST" })
+      )
+    );
+    
+    const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+    const rejected = results.filter((r) => r.status === "rejected").length;
+
+    setRestoreTarget(null);
+    setSelectedIds(new Set());
+    await loadDocuments();
+    
+    if (rejected > 0) {
+      setActionError(`恢复完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+    } else {
+      setActionSuccess(`成功恢复 ${String(fulfilled)} 个文档`);
+      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("成功恢复") ? null : prev)), 3000);
+    }
+    setActionLoading(false);
+  }
+
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
-    setDeleting(true);
+    setActionLoading(true);
     setActionError(null);
-    try {
-      for (const docId of deleteTarget.ids) {
-        await apiRequest(`/documents/${docId}`, emptyObjectSchema, { method: "DELETE" });
-      }
-      setDeleteTarget(null);
-      setSelectedIds(new Set());
-      await loadDocuments();
-    } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "删除失败");
-    } finally {
-      setDeleting(false);
+    
+    const results = await Promise.allSettled(
+      deleteTarget.ids.map((docId) =>
+        apiRequest(`/documents/${docId}`, emptyObjectSchema, { method: "DELETE" })
+      )
+    );
+    
+    const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+    const rejected = results.filter((r) => r.status === "rejected").length;
+
+    setDeleteTarget(null);
+    setSelectedIds(new Set());
+    await loadDocuments();
+    
+    if (rejected > 0) {
+      setActionError(`删除完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+    } else {
+      setActionSuccess(`成功彻底删除 ${String(fulfilled)} 个文档`);
+      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("成功彻底删除") ? null : prev)), 3000);
     }
+    setActionLoading(false);
   }
 
   function toggleSelect(docId: string) {
@@ -271,6 +338,18 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </Select>
+          <Select
+            value={archivedMode ? "archived" : "in-use"}
+            onChange={(e) => {
+              setArchivedMode(e.target.value === "archived");
+              setPage(1);
+              setSelectedIds(new Set());
+            }}
+            className="w-32"
+          >
+            <option value="in-use">在用</option>
+            <option value="archived">已归档</option>
+          </Select>
           <TagFilterPopover
             allTags={allTags}
             selectedTagIds={tagFilter.selectedTagIds}
@@ -306,13 +385,32 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               <span className="text-sm text-ink-muted">
                 已选 <span className="font-medium text-ink tabular-nums">{selectedIds.size}</span>
               </span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setDeleteTarget({ ids: [...selectedIds] })}
-              >
-                批量删除
-              </Button>
+              {!archivedMode ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setArchiveTarget({ ids: [...selectedIds] })}
+                >
+                  批量归档
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRestoreTarget({ ids: [...selectedIds] })}
+                  >
+                    批量恢复
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setDeleteTarget({ ids: [...selectedIds] })}
+                  >
+                    批量彻底删除
+                  </Button>
+                </>
+              )}
             </>
           ) : null}
         </div>
@@ -336,8 +434,8 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
         </div>
       ) : documents.length === 0 ? (
         <EmptyState
-          title={tagFilter.selectedTagIds.length > 0 ? "没有符合标签筛选的文档" : "暂无文档"}
-          description={tagFilter.selectedTagIds.length > 0 ? "尝试减少所选标签。" : "上传文档后将在此显示。"}
+          title={tagFilter.selectedTagIds.length > 0 ? "没有符合标签筛选的文档" : (archivedMode ? "暂无已归档文档" : "暂无文档")}
+          description={tagFilter.selectedTagIds.length > 0 ? "尝试减少所选标签。" : (archivedMode ? "归档的文档将在此显示。" : "上传文档后将在此显示。")}
         />
       ) : (
         <div className="flex flex-col gap-2">
@@ -351,7 +449,10 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               selected={selectedIds.has(doc.id)}
               onToggleSelect={() => toggleSelect(doc.id)}
               onReprocess={() => void handleReprocess(doc.id)}
-              onDelete={() => setDeleteTarget({ ids: [doc.id] })}
+              onArchive={() => setArchiveTarget({ ids: [doc.id] })}
+              onRestore={() => setRestoreTarget({ ids: [doc.id] })}
+              onHardDelete={() => setDeleteTarget({ ids: [doc.id] })}
+              archivedMode={archivedMode}
               onReplaceTags={handleReplaceDocTags}
               onPreview={() => setPreviewTarget(doc)}
               onExtract={(docId) => void handleExtract(docId)}
@@ -364,12 +465,52 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
       <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
 
       <Dialog
+        open={archiveTarget !== null}
+        onClose={() => setArchiveTarget(null)}
+        title="确认归档"
+        description={
+          archiveTarget
+            ? `归档后默认列表隐藏，可在『已归档』视图恢复或彻底删除。确定归档选中的 ${String(archiveTarget.ids.length)} 个文档吗？`
+            : ""
+        }
+      >
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="secondary" onClick={() => setArchiveTarget(null)}>
+            取消
+          </Button>
+          <Button loading={actionLoading} onClick={() => void handleConfirmArchive()}>
+            确认归档
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={restoreTarget !== null}
+        onClose={() => setRestoreTarget(null)}
+        title="确认恢复"
+        description={
+          restoreTarget
+            ? `确定恢复选中的 ${String(restoreTarget.ids.length)} 个文档吗？`
+            : ""
+        }
+      >
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="secondary" onClick={() => setRestoreTarget(null)}>
+            取消
+          </Button>
+          <Button loading={actionLoading} onClick={() => void handleConfirmRestore()}>
+            确认恢复
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        title="确认删除"
+        title="确认彻底删除"
         description={
           deleteTarget
-            ? `删除后文档数据无法恢复，确定删除选中的 ${String(deleteTarget.ids.length)} 个文档吗？`
+            ? `删除后将级联删除该文档的所有解析切分数据及原文件，数据不可恢复！确定彻底删除选中的 ${String(deleteTarget.ids.length)} 个文档吗？`
             : ""
         }
       >
@@ -377,8 +518,8 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
           <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
             取消
           </Button>
-          <Button variant="destructive" loading={deleting} onClick={() => void handleConfirmDelete()}>
-            确认删除
+          <Button variant="destructive" loading={actionLoading} onClick={() => void handleConfirmDelete()}>
+            彻底删除
           </Button>
         </div>
       </Dialog>
@@ -436,7 +577,10 @@ function DocumentRow({
   selected,
   onToggleSelect,
   onReprocess,
-  onDelete,
+  onArchive,
+  onRestore,
+  onHardDelete,
+  archivedMode,
   onReplaceTags,
   onPreview,
   onExtract,
@@ -449,7 +593,10 @@ function DocumentRow({
   selected: boolean;
   onToggleSelect: () => void;
   onReprocess: () => void;
-  onDelete: () => void;
+  onArchive: () => void;
+  onRestore: () => void;
+  onHardDelete: () => void;
+  archivedMode: boolean;
   onReplaceTags: (docId: string, tagIds: string[]) => Promise<void>;
   onPreview: () => void;
   onExtract: (docId: string) => void;
@@ -547,7 +694,7 @@ function DocumentRow({
             重试
           </Button>
         ) : null}
-        {canManage ? (
+        {canManage && !archivedMode ? (
           <Button
             variant="outline"
             size="sm"
@@ -559,10 +706,20 @@ function DocumentRow({
             AI 提炼条目
           </Button>
         ) : null}
-        {canManage ? (
-          <Button variant="ghost" size="sm" onClick={onDelete}>
-            删除
+        {canManage && !archivedMode ? (
+          <Button variant="ghost" size="sm" onClick={onArchive}>
+            归档
           </Button>
+        ) : null}
+        {canManage && archivedMode ? (
+          <>
+            <Button variant="outline" size="sm" onClick={onRestore}>
+              恢复
+            </Button>
+            <Button variant="ghost" size="sm" className="text-danger hover:text-danger hover:bg-danger-bg" onClick={onHardDelete}>
+              彻底删除
+            </Button>
+          </>
         ) : null}
       </div>
     </div>

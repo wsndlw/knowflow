@@ -187,60 +187,81 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     if (!archiveTarget) return;
     setActionLoading(true);
     setActionError(null);
-    try {
-      for (const docId of archiveTarget.ids) {
-        await apiRequest(`/documents/${docId}/archive`, emptyObjectSchema, { method: "POST" });
-      }
-      setArchiveTarget(null);
-      setSelectedIds(new Set());
-      await loadDocuments();
-      setActionSuccess("归档成功");
-      setTimeout(() => setActionSuccess((prev) => (prev === "归档成功" ? null : prev)), 3000);
-    } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "归档失败");
-    } finally {
-      setActionLoading(false);
+    
+    const results = await Promise.allSettled(
+      archiveTarget.ids.map((docId) =>
+        apiRequest(`/documents/${docId}/archive`, emptyObjectSchema, { method: "POST" })
+      )
+    );
+    
+    const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+    const rejected = results.filter((r) => r.status === "rejected").length;
+
+    setArchiveTarget(null);
+    setSelectedIds(new Set());
+    await loadDocuments();
+    
+    if (rejected > 0) {
+      setActionError(`归档完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+    } else {
+      setActionSuccess(`成功归档 ${String(fulfilled)} 个文档`);
+      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("成功归档") ? null : prev)), 3000);
     }
+    setActionLoading(false);
   }
 
   async function handleConfirmRestore() {
     if (!restoreTarget) return;
     setActionLoading(true);
     setActionError(null);
-    try {
-      for (const docId of restoreTarget.ids) {
-        await apiRequest(`/documents/${docId}/restore`, emptyObjectSchema, { method: "POST" });
-      }
-      setRestoreTarget(null);
-      setSelectedIds(new Set());
-      await loadDocuments();
-      setActionSuccess("恢复成功");
-      setTimeout(() => setActionSuccess((prev) => (prev === "恢复成功" ? null : prev)), 3000);
-    } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "恢复失败");
-    } finally {
-      setActionLoading(false);
+    
+    const results = await Promise.allSettled(
+      restoreTarget.ids.map((docId) =>
+        apiRequest(`/documents/${docId}/restore`, emptyObjectSchema, { method: "POST" })
+      )
+    );
+    
+    const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+    const rejected = results.filter((r) => r.status === "rejected").length;
+
+    setRestoreTarget(null);
+    setSelectedIds(new Set());
+    await loadDocuments();
+    
+    if (rejected > 0) {
+      setActionError(`恢复完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+    } else {
+      setActionSuccess(`成功恢复 ${String(fulfilled)} 个文档`);
+      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("成功恢复") ? null : prev)), 3000);
     }
+    setActionLoading(false);
   }
 
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
     setActionLoading(true);
     setActionError(null);
-    try {
-      for (const docId of deleteTarget.ids) {
-        await apiRequest(`/documents/${docId}`, emptyObjectSchema, { method: "DELETE" });
-      }
-      setDeleteTarget(null);
-      setSelectedIds(new Set());
-      await loadDocuments();
-      setActionSuccess("彻底删除成功");
-      setTimeout(() => setActionSuccess((prev) => (prev === "彻底删除成功" ? null : prev)), 3000);
-    } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "彻底删除失败");
-    } finally {
-      setActionLoading(false);
+    
+    const results = await Promise.allSettled(
+      deleteTarget.ids.map((docId) =>
+        apiRequest(`/documents/${docId}`, emptyObjectSchema, { method: "DELETE" })
+      )
+    );
+    
+    const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+    const rejected = results.filter((r) => r.status === "rejected").length;
+
+    setDeleteTarget(null);
+    setSelectedIds(new Set());
+    await loadDocuments();
+    
+    if (rejected > 0) {
+      setActionError(`删除完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+    } else {
+      setActionSuccess(`成功彻底删除 ${String(fulfilled)} 个文档`);
+      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("成功彻底删除") ? null : prev)), 3000);
     }
+    setActionLoading(false);
   }
 
   function toggleSelect(docId: string) {
@@ -413,8 +434,8 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
         </div>
       ) : documents.length === 0 ? (
         <EmptyState
-          title={tagFilter.selectedTagIds.length > 0 ? "没有符合标签筛选的文档" : "暂无文档"}
-          description={tagFilter.selectedTagIds.length > 0 ? "尝试减少所选标签。" : "上传文档后将在此显示。"}
+          title={tagFilter.selectedTagIds.length > 0 ? "没有符合标签筛选的文档" : (archivedMode ? "暂无已归档文档" : "暂无文档")}
+          description={tagFilter.selectedTagIds.length > 0 ? "尝试减少所选标签。" : (archivedMode ? "归档的文档将在此显示。" : "上传文档后将在此显示。")}
         />
       ) : (
         <div className="flex flex-col gap-2">

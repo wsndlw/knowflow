@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { UserOption, PlatformRole, CreateUserRequest } from "@knowflow/shared";
 import {
   adminUserListResponseSchema,
@@ -60,6 +60,15 @@ function UsersPageContent() {
   const [resetPwdUser, setResetPwdUser] = useState<UserOption | null>(null);
   const [roleUser, setRoleUser] = useState<UserOption | null>(null);
 
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "danger" } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const showToast = useCallback((message: string, tone: "success" | "danger" = "success") => {
+    setToast({ message, tone });
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
+  }, []);
+
   const loadUsers = useCallback(async () => {
     setLoading(true);
     setLoadError("");
@@ -83,14 +92,14 @@ function UsersPageContent() {
         method: "POST",
         body: JSON.stringify(data),
       });
-      // no need for alert, UI will update naturally, but handoff asks for toast, alert is fine.
-      alert("创建成功");
+      // UI will update naturally, show toast as feedback
+      showToast("创建成功", "success");
       await loadUsers();
     } catch (err) {
       if (err instanceof ApiError && err.status === 400) {
-        alert(err.message || "创建失败，请检查输入参数（如用户名是否重复）");
+        showToast(err.message || "创建失败，请检查输入参数（如用户名是否重复）", "danger");
       } else {
-        alert(err instanceof Error ? err.message : "创建失败");
+        showToast(err instanceof Error ? err.message : "创建失败", "danger");
       }
       throw err;
     }
@@ -104,12 +113,12 @@ function UsersPageContent() {
         body: JSON.stringify({ platformRole }),
       });
       setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
-      alert("角色已更新");
+      showToast("角色已更新", "success");
     } catch (err) {
       if (err instanceof ApiError && err.status === 400) {
-        alert(err.message || "更新角色失败");
+        showToast(err.message || "更新角色失败", "danger");
       } else {
-        alert(err instanceof Error ? err.message : "更新角色失败");
+        showToast(err instanceof Error ? err.message : "更新角色失败", "danger");
       }
       throw err;
     }
@@ -122,9 +131,9 @@ function UsersPageContent() {
         method: "PATCH",
         body: JSON.stringify({ password }),
       });
-      alert("已重置，该用户需重新登录");
+      showToast("已重置，该用户需重新登录", "success");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "重置密码失败");
+      showToast(err instanceof Error ? err.message : "重置密码失败", "danger");
       throw err;
     }
   };
@@ -145,9 +154,9 @@ function UsersPageContent() {
       setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     } catch (err) {
       if (err instanceof ApiError && err.status === 400) {
-        alert(err.message || "操作失败");
+        showToast(err.message || "操作失败", "danger");
       } else {
-        alert(err instanceof Error ? err.message : "操作失败");
+        showToast(err instanceof Error ? err.message : "操作失败", "danger");
       }
     }
   };
@@ -270,6 +279,17 @@ function UsersPageContent() {
         user={roleUser}
         onSubmit={handleUpdateRole}
       />
+
+      {toast ? (
+        <div
+          className={`fixed top-6 left-1/2 -translate-x-1/2 rounded-full px-4 py-2 text-sm font-medium text-white shadow-lg z-[var(--z-toast)] ${
+            toast.tone === "success" ? "bg-success" : "bg-danger"
+          }`}
+          role="alert"
+        >
+          {toast.message}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -66,8 +66,6 @@ async function fetchMe(): Promise<CurrentUser | null> {
   return meResponseSchema.parse(body).data;
 }
 
-
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<CurrentUser | null>(null);

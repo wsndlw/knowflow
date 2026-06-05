@@ -131,13 +131,11 @@ export async function apiRequest<TData>(
       if (isStateChangingMethod(init?.method)) {
         headers.set(CSRF_HEADER_NAME, getCsrfToken());
       }
-      if (!isFormData) {
-        response = await fetch(apiUrl(path), {
-          ...init,
-          credentials: "include",
-          headers,
-        });
-      }
+      response = await fetch(apiUrl(path), {
+        ...init,
+        credentials: "include",
+        headers,
+      });
     } else {
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {
         window.location.href = "/login";

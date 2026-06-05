@@ -144,6 +144,16 @@ void describe("AgentService conversation archive semantics", () => {
     }
   });
 
+  void it("returns 404 before restoring when the user does not own the conversation", async () => {
+    const service = makeService();
+    const { restore } = captureConversationSelect([]);
+    try {
+      await assert.rejects(() => service.restoreConversation(conversationId, user), NotFoundException);
+    } finally {
+      restore();
+    }
+  });
+
   void it("filters conversation lists to active conversations by default", async () => {
     const { params } = await buildListSql({});
 

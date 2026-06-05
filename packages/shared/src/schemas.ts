@@ -900,6 +900,10 @@ export const conversationListResponseSchema = z.object({
   items: z.array(conversationSchema),
 });
 
+export const conversationListQuerySchema = z.object({
+  status: z.enum(["active", "archived"]).optional(),
+});
+
 export const createConversationRequestSchema = z.object({
   agentId: z.uuid(),
   title: z.string().trim().min(1).max(255).optional(),
@@ -1354,6 +1358,7 @@ export type UpdateManagedAgentRequest = z.infer<typeof updateManagedAgentRequest
 export type ManagedAgentListResponse = z.infer<typeof managedAgentListResponseSchema>;
 export type GenerateManagedAgentResponse = z.infer<typeof generateManagedAgentResponseSchema>;
 export type Conversation = z.infer<typeof conversationSchema>;
+export type ConversationListQuery = z.infer<typeof conversationListQuerySchema>;
 export type ConversationListResponse = z.infer<typeof conversationListResponseSchema>;
 export type CreateConversationRequest = z.infer<typeof createConversationRequestSchema>;
 export type Citation = z.infer<typeof citationSchema>;

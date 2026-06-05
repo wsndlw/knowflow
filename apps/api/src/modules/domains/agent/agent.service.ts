@@ -29,7 +29,6 @@ import type {
   ConversationMessage,
   ConversationMessagesResponse,
   CreateConversationRequest,
-  RelatedDocument,
 } from "@knowflow/shared";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { and, asc, desc, eq, exists, inArray, or, sql, type SQL } from "drizzle-orm";
@@ -972,7 +971,6 @@ export class AgentService {
       noAnswerType: row.noAnswerType,
       citations,
       recommendedQuestions,
-      relatedDocuments: this.toRelatedDocuments(citations),
       createdAt: row.createdAt.toISOString(),
     };
   }
@@ -1027,22 +1025,7 @@ export class AgentService {
     }));
   }
 
-  private toRelatedDocuments(citations: Citation[]): RelatedDocument[] {
-    const byDocumentId = new Map<string, RelatedDocument>();
-    for (const citation of citations) {
-      if (citation.documentId === null) {
-        continue;
-      }
-      byDocumentId.set(citation.documentId, {
-        id: citation.documentId,
-        knowledgeBaseId: citation.knowledgeBaseId ?? "",
-        knowledgeBaseName: citation.knowledgeBaseName,
-        title: citation.title,
-      });
-    }
 
-    return [...byDocumentId.values()].filter((document) => document.knowledgeBaseId.length > 0);
-  }
 
   private toStateSnapshot(state: AgentState) {
     return {

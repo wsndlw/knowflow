@@ -900,13 +900,6 @@ export const citationSchema = z.object({
   pageOrSection: z.string().nullable(),
 });
 
-export const relatedDocumentSchema = z.object({
-  id: z.uuid(),
-  knowledgeBaseId: z.uuid(),
-  knowledgeBaseName: z.string().nullable(),
-  title: z.string(),
-});
-
 export const conversationMessageSchema = z.object({
   id: z.uuid(),
   conversationId: z.uuid(),
@@ -916,7 +909,6 @@ export const conversationMessageSchema = z.object({
   noAnswerType: noAnswerTypeSchema.nullable(),
   citations: z.array(citationSchema),
   recommendedQuestions: z.array(z.string()),
-  relatedDocuments: z.array(relatedDocumentSchema),
   createdAt: z.iso.datetime(),
 });
 
@@ -1342,7 +1334,7 @@ export type Conversation = z.infer<typeof conversationSchema>;
 export type ConversationListResponse = z.infer<typeof conversationListResponseSchema>;
 export type CreateConversationRequest = z.infer<typeof createConversationRequestSchema>;
 export type Citation = z.infer<typeof citationSchema>;
-export type RelatedDocument = z.infer<typeof relatedDocumentSchema>;
+
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
 export type ConversationMessagesResponse = z.infer<typeof conversationMessagesResponseSchema>;
 export type AskMessageRequest = z.infer<typeof askMessageRequestSchema>;

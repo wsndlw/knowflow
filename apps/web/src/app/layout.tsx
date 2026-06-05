@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { AppShell } from "../components/app-shell";
 import { TooltipProvider } from "../components/ui/tooltip";
 import "./globals.css";
+import "katex/dist/katex.min.css";
+import "highlight.js/styles/github.css";
 
 export const metadata: Metadata = {
   title: "knowflow 企业知识库",

@@ -5,6 +5,7 @@ import {
   ShieldAlert,
   AlertCircle,
   FileText,
+  Bot,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -95,8 +96,8 @@ export const noAnswerMeta: Record<
 
 export function UserBubble({ content }: { content: string }) {
   return (
-    <div className="flex justify-end">
-      <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-brand-600 px-4 py-2.5 text-base whitespace-pre-wrap text-white">
+    <div className="flex justify-end animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out fill-mode-both">
+      <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-brand-600 px-4 py-2.5 text-base whitespace-pre-wrap text-white shadow-sm shadow-brand-500/20">
         {content}
       </div>
     </div>
@@ -124,11 +125,11 @@ export function AssistantBubble({
 }) {
   const showSkeleton = isStreaming && message.content === "";
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-brand-50 text-xs font-semibold text-brand-700">
-          AI
-        </span>
+    <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out fill-mode-both">
+      <div className="flex items-start gap-3">
+        <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 ring-1 ring-brand-500/20 shadow-sm">
+          <Bot className="size-4.5" />
+        </div>
         <div className="min-w-0 flex-1">
           {/* noAnswerType 提示 */}
           {!showSkeleton && message.noAnswerType ? (
@@ -154,9 +155,9 @@ export function AssistantBubble({
           {showSkeleton ? (
             <p className="flex items-center gap-2 text-sm text-ink-muted">
               <span className="inline-flex gap-1" aria-hidden>
-                <span className="size-1.5 animate-bounce rounded-full bg-brand-400 [animation-delay:-0.3s]" />
-                <span className="size-1.5 animate-bounce rounded-full bg-brand-400 [animation-delay:-0.15s]" />
-                <span className="size-1.5 animate-bounce rounded-full bg-brand-400" />
+                <span className="size-1.5 animate-pulse rounded-full bg-brand-400" />
+                <span className="size-1.5 animate-pulse rounded-full bg-brand-400 [animation-delay:0.2s]" />
+                <span className="size-1.5 animate-pulse rounded-full bg-brand-400 [animation-delay:0.4s]" />
               </span>
               {statusText || "思考中"}
             </p>
@@ -207,25 +208,21 @@ export function AssistantBubble({
                     return <h4 className="mb-2 mt-3 text-sm font-semibold text-ink" {..._rest} />;
                   },
                   a: (props) => {
-                    
                     const { node: _node, ..._rest } = props; void _node;
-                    return <a className="text-brand-600 underline hover:text-brand-700" target="_blank" rel="noopener noreferrer" {..._rest} />;
+                    return <a className="font-medium text-brand-600 underline underline-offset-4 transition-colors hover:text-brand-700" target="_blank" rel="noopener noreferrer" {..._rest} />;
                   },
                   strong: (props) => {
-                    
                     const { node: _node, ..._rest } = props; void _node;
                     return <strong className="font-bold text-ink" {..._rest} />;
                   },
                   pre: (props) => {
-                    
                     const { node: _node, ..._rest } = props; void _node;
-                    return <pre className="my-3 overflow-x-auto rounded-md bg-neutral-100 p-3 text-sm" {..._rest} />;
+                    return <pre className="my-4 overflow-x-auto rounded-xl border border-border/80 bg-neutral-50 p-4 text-sm shadow-sm" {..._rest} />;
                   },
                   code: (props) => {
-                    
                     const { node: _node, className, children, ..._rest } = props; void _node;
                     return !className ? (
-                      <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-sm text-brand-700" {..._rest}>
+                      <code className="rounded-md border border-border/50 bg-neutral-100/80 px-1.5 py-0.5 font-mono text-sm text-brand-700" {..._rest}>
                         {children}
                       </code>
                     ) : (
@@ -243,12 +240,12 @@ export function AssistantBubble({
 
           {/* 引用展示区 */}
           {!showSkeleton && message.citations.length > 0 ? (
-            <div className="mt-4 border-t border-dashed border-border pt-3">
-              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
+            <div className="mt-5 rounded-xl border border-border/60 bg-neutral-50/50 p-4">
+              <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
                 <FileText className="size-3.5 text-ink-subtle" />
-                <span>引用来源</span>
+                <span>参考来源</span>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                 {(() => {
                   // 后端 contexts 已按分数降序排列（retrieval.service.ts），直接取前 3 条
                   return message.citations.slice(0, 3).map((citation, idx) => {
@@ -270,7 +267,7 @@ export function AssistantBubble({
                         <a
                           key={citation.id ?? idx}
                           href={`/knowledge-bases/${citation.knowledgeBaseId}`}
-                          className="group flex flex-col gap-0.5 rounded-lg border border-border bg-surface p-2.5 shadow-xs transition-all hover:border-brand-300 hover:bg-brand-50"
+                          className="group flex flex-col gap-1 rounded-lg border border-border bg-surface p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:bg-brand-50 hover:shadow-md"
                         >
                           {content}
                         </a>

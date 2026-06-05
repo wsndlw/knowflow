@@ -144,7 +144,7 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
       </Card>
 
       {/* 工具栏 */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between px-4">
         <h3 className="text-md font-medium text-ink">
           Agent 列表
           <span className="ml-1.5 text-sm font-normal text-ink-muted tabular-nums">{agents.length}</span>

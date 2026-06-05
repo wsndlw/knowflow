@@ -30,7 +30,7 @@ const TAB_DEFS: (TabItem & { value: TabValue; manageOnly?: boolean })[] = [
   { value: "relations", label: "知识关系" },
   { value: "retrieval-test", label: "检索测试", manageOnly: true },
   { value: "settings", label: "设置", manageOnly: true },
-  { value: "improvement", label: "审核台", manageOnly: true },
+  { value: "improvement", label: "知识改进", manageOnly: true },
   { value: "audit-log", label: "操作日志", manageOnly: true },
 ];
 

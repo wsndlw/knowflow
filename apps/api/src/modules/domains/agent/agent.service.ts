@@ -25,6 +25,7 @@ import type {
   Citation,
   ConfidenceLevel,
   Conversation,
+  ConversationListQuery,
   ConversationListResponse,
   ConversationMessage,
   ConversationMessagesResponse,
@@ -114,13 +115,42 @@ export class AgentService {
     return this.toConversation(created);
   }
 
-  async listConversations(user: AuthenticatedUser): Promise<ConversationListResponse> {
+  async listConversations(
+    user: AuthenticatedUser,
+    query: ConversationListQuery = {},
+  ): Promise<ConversationListResponse> {
     const rows = await db
       .select()
       .from(conversations)
-      .where(eq(conversations.userId, user.id))
+      .where(and(eq(conversations.userId, user.id), eq(conversations.status, query.status ?? "active")))
       .orderBy(desc(conversations.updatedAt));
     return { items: rows.map((row) => this.toConversation(row)) };
+  }
+
+  async archiveConversation(conversationId: string, user: AuthenticatedUser): Promise<Conversation> {
+    await this.findConversationForUser(conversationId, user);
+    const [updated] = await db
+      .update(conversations)
+      .set({ status: "archived", updatedAt: new Date() })
+      .where(eq(conversations.id, conversationId))
+      .returning();
+    if (updated === undefined) {
+      throw new BadRequestException("Failed to archive conversation");
+    }
+    return this.toConversation(updated);
+  }
+
+  async restoreConversation(conversationId: string, user: AuthenticatedUser): Promise<Conversation> {
+    await this.findConversationForUser(conversationId, user);
+    const [updated] = await db
+      .update(conversations)
+      .set({ status: "active", updatedAt: new Date() })
+      .where(eq(conversations.id, conversationId))
+      .returning();
+    if (updated === undefined) {
+      throw new BadRequestException("Failed to restore conversation");
+    }
+    return this.toConversation(updated);
   }
 
   async listMessages(

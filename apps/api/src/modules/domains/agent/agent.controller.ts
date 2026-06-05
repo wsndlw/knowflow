@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
   Param,
   Post,
+  Query,
   Req,
   Res,
 } from "@nestjs/common";
@@ -13,6 +14,7 @@ import {
   agentListResponseSchema,
   answerFeedbackRequestSchema,
   askMessageRequestSchema,
+  conversationListQuerySchema,
   conversationListResponseSchema,
   conversationMessagesResponseSchema,
   conversationSchema,
@@ -67,10 +69,32 @@ export class AgentController {
 
   @Get("conversations")
   async listConversations(
+    @Query() query: unknown,
     @Req() request: AuthenticatedRequest,
   ): Promise<ApiSuccess<ConversationListResponse>> {
-    const data = await this.agentService.listConversations(this.requireUser(request));
+    const input = conversationListQuerySchema.parse(query);
+    const data = await this.agentService.listConversations(this.requireUser(request), input);
     return { ok: true, data: conversationListResponseSchema.parse(data) };
+  }
+
+  @Post("conversations/:id/archive")
+  async archiveConversation(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ApiSuccess<Conversation>> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.agentService.archiveConversation(id, this.requireUser(request));
+    return { ok: true, data: conversationSchema.parse(data) };
+  }
+
+  @Post("conversations/:id/restore")
+  async restoreConversation(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ApiSuccess<Conversation>> {
+    const { id } = uuidParamSchema.parse(params);
+    const data = await this.agentService.restoreConversation(id, this.requireUser(request));
+    return { ok: true, data: conversationSchema.parse(data) };
   }
 
   @Get("conversations/:id/messages")

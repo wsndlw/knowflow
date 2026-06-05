@@ -11,6 +11,7 @@ import { DetailHeader } from "./_components/detail-header";
 import { TabOverview } from "./_components/tab-overview";
 import { TabDocuments } from "./_components/tab-documents";
 import { TabKnowledgeItems } from "./_components/tab-knowledge-items";
+import { TabChat } from "./_components/tab-chat";
 import { TabAgents } from "./_components/tab-agents";
 import { TabMembers } from "./_components/tab-members";
 import { TabAnalytics } from "./_components/tab-analytics";
@@ -24,6 +25,7 @@ const TAB_DEFS: (TabItem & { value: TabValue; manageOnly?: boolean })[] = [
   { value: "overview", label: "概览" },
   { value: "documents", label: "文档" },
   { value: "knowledge-items", label: "知识条目" },
+  { value: "chat", label: "对话", manageOnly: false },
   { value: "agents", label: "专家 Agent", manageOnly: true },
   { value: "members", label: "成员权限", manageOnly: true },
   { value: "analytics", label: "统计分析" },
@@ -96,6 +98,9 @@ function KnowledgeBaseDetailContent() {
         ) : null}
         {activeTab === "knowledge-items" ? (
           <TabKnowledgeItems knowledgeBaseId={knowledgeBaseId} canManage={canManage} />
+        ) : null}
+        {activeTab === "chat" ? (
+          <TabChat knowledgeBaseId={knowledgeBaseId} />
         ) : null}
         {activeTab === "agents" ? (
           <TabAgents knowledgeBaseId={knowledgeBaseId} />

@@ -7,6 +7,7 @@ export type TabValue =
   | "overview"
   | "documents"
   | "knowledge-items"
+  | "chat"
   | "agents"
   | "members"
   | "analytics"

@@ -831,6 +831,8 @@ export const conversations = pgTable(
     status: conversationStatusEnum("status").default("active").notNull(),
     pinned: boolean("pinned").default(false).notNull(),
     favorited: boolean("favorited").default(false).notNull(),
+    rollingSummary: text("rolling_summary"),
+    summarizedMessageCount: integer("summarized_message_count").default(0).notNull(),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     ...timestamps(),
   },

@@ -5,6 +5,14 @@ import { requireModelApiKeyEncryptionKey } from "@knowflow/db";
 import { NestFactory } from "@nestjs/core";
 
 import { AppModule } from "./modules/app.module.js";
+import { AliyunLlmService } from "./shared/llm/aliyun-llm.js";
+import {
+  CONVERSATION_SUMMARY_QUEUE_NAME,
+  type ConversationSummaryJob,
+  type ConversationSummaryJobName,
+  type ConversationSummaryJobResult,
+} from "./modules/domains/agent/conversation-summary-queue.js";
+import { processConversationSummary } from "./modules/domains/agent/conversation-summary-processor.js";
 import {
   DOCUMENT_QUEUE_NAME,
   type DocumentProcessJob,
@@ -36,6 +44,7 @@ import { getRedisConnectionOptions } from "./shared/redis/redis-connection.js";
 requireModelApiKeyEncryptionKey();
 
 const app = await NestFactory.createApplicationContext(AppModule);
+const llm = app.get(AliyunLlmService);
 const improvementService = app.get(KnowledgeImprovementService);
 
 const documentWorker = new Worker<DocumentQueueJob, DocumentQueueResult, DocumentJobName>(
@@ -92,6 +101,18 @@ const improvementWorker = new Worker<ImprovementJob, ImprovementJobResult, Impro
   },
 );
 
+const conversationSummaryWorker = new Worker<
+  ConversationSummaryJob,
+  ConversationSummaryJobResult,
+  ConversationSummaryJobName
+>(
+  CONVERSATION_SUMMARY_QUEUE_NAME,
+  (job) => processConversationSummary(llm, job.data.conversationId),
+  {
+    connection: getRedisConnectionOptions(),
+  },
+);
+
 documentWorker.on("completed", (job) => {
   console.log(`completed ${job.queueName}/${job.name}/${job.id ?? "unknown"}`);
 });
@@ -108,14 +129,31 @@ improvementWorker.on("failed", (job, error) => {
   console.error(`failed ${job?.queueName ?? IMPROVEMENT_QUEUE_NAME}/${job?.id ?? "unknown"}`, error);
 });
 
-process.on("SIGTERM", () => {
-  void Promise.all([documentWorker.close(), improvementWorker.close(), app.close()]).then(() =>
-    process.exit(0),
+conversationSummaryWorker.on("completed", (job) => {
+  console.log(`completed ${job.queueName}/${job.name}/${job.id ?? "unknown"}`);
+});
+
+conversationSummaryWorker.on("failed", (job, error) => {
+  console.error(
+    `failed ${job?.queueName ?? CONVERSATION_SUMMARY_QUEUE_NAME}/${job?.id ?? "unknown"}`,
+    error,
   );
 });
 
+process.on("SIGTERM", () => {
+  void Promise.all([
+    documentWorker.close(),
+    improvementWorker.close(),
+    conversationSummaryWorker.close(),
+    app.close(),
+  ]).then(() => process.exit(0));
+});
+
 process.on("SIGINT", () => {
-  void Promise.all([documentWorker.close(), improvementWorker.close(), app.close()]).then(() =>
-    process.exit(0),
-  );
+  void Promise.all([
+    documentWorker.close(),
+    improvementWorker.close(),
+    conversationSummaryWorker.close(),
+    app.close(),
+  ]).then(() => process.exit(0));
 });

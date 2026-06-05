@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import {
@@ -32,7 +33,7 @@ import type {
   CreateConversationRequest,
 } from "@knowflow/shared";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
-import { and, asc, desc, eq, exists, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 
 import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import { AnalyticsEventService } from "../analytics/analytics-event.service.js";
@@ -46,6 +47,19 @@ import {
   isKnowledgeScopeQuestion,
   type AccessibleKnowledgeBase,
 } from "./agent-scope.js";
+import {
+  RECENT_MESSAGES_GUARDRAIL,
+  SHORT_TERM_MAX_MESSAGES,
+  buildConversationSummarySystemMessage,
+  hasConversationMemory,
+  normalizeRecentMessages,
+  shouldEnqueueConversationSummary,
+} from "./agent-memory.js";
+import {
+  CONVERSATION_SUMMARY_JOB_NAME,
+  buildConversationSummaryJobOptions,
+  createConversationSummaryQueue,
+} from "./conversation-summary-queue.js";
 import type { AgentState, RuntimeAgent, SseEmitter } from "./agent.types.js";
 
 const GRAPH_VERSION = "p0-retrieval-chat-13-node-v1";
@@ -66,6 +80,8 @@ const AgentStateAnnotation = Annotation.Root({
 
 @Injectable()
 export class AgentService {
+  private readonly logger = new Logger(AgentService.name);
+
   constructor(
     @Inject(AliyunLlmService)
     private readonly llm: AliyunLlmService,
@@ -219,6 +235,8 @@ export class AgentService {
       agent: null,
       knowledgeScope: [],
       accessibleKnowledgeBases: [],
+      recentMessages: [],
+      conversationSummary: null,
       rewrittenQueries: [],
       retrieval: null,
       promptSnapshot: null,
@@ -312,7 +330,7 @@ export class AgentService {
         this.runStep(
           input.state,
           "parse_conversation_attachments",
-          (state) => Promise.resolve(this.parseConversationAttachments(state)),
+          (state) => this.parseConversationAttachments(state),
         ),
       )
       .addNode("retrieve_knowledge", (input) =>
@@ -448,8 +466,36 @@ export class AgentService {
     };
   }
 
-  private parseConversationAttachments(state: AgentState): AgentState {
-    return state;
+  private async parseConversationAttachments(state: AgentState): Promise<AgentState> {
+    const [conversation] = await db
+      .select({
+        rollingSummary: conversations.rollingSummary,
+      })
+      .from(conversations)
+      .where(eq(conversations.id, state.conversation.id))
+      .limit(1);
+    const recentRows = await db
+      .select({
+        role: conversationMessages.role,
+        content: conversationMessages.content,
+      })
+      .from(conversationMessages)
+      .where(
+        and(
+          eq(conversationMessages.conversationId, state.conversation.id),
+          ne(conversationMessages.id, state.userMessageId),
+          inArray(conversationMessages.role, ["user", "assistant"]),
+        ),
+      )
+      .orderBy(desc(conversationMessages.createdAt))
+      .limit(SHORT_TERM_MAX_MESSAGES);
+    const recentMessages = normalizeRecentMessages(recentRows.reverse());
+
+    return {
+      ...state,
+      recentMessages,
+      conversationSummary: conversation?.rollingSummary ?? null,
+    };
   }
 
   private async retrieveKnowledge(state: AgentState): Promise<AgentState> {
@@ -508,7 +554,8 @@ export class AgentService {
     }
 
     const contexts = state.retrieval?.contexts ?? [];
-    if (contexts.length === 0) {
+    const hasMemory = hasConversationMemory(state.conversationSummary, state.recentMessages);
+    if (contexts.length === 0 && !hasMemory) {
       await state.emit({ type: "agent.answer.delta", delta: FALLBACK_ANSWER });
       return {
         ...state,
@@ -518,7 +565,11 @@ export class AgentService {
       };
     }
 
-    if (this.bestContextScore(contexts) < MIN_CONTEXT_RERANK_SCORE) {
+    if (
+      contexts.length > 0 &&
+      this.bestContextScore(contexts) < MIN_CONTEXT_RERANK_SCORE &&
+      !hasMemory
+    ) {
       await state.emit({ type: "agent.answer.delta", delta: FALLBACK_ANSWER });
       return {
         ...state,
@@ -533,12 +584,11 @@ export class AgentService {
       throw new InternalServerErrorException("Prompt was not built");
     }
 
+    const messages = this.buildAnswerMessages(state, prompt);
+
     let answer = "";
     for await (const chunk of this.llm.streamChat({
-      messages: [
-        { role: "system", content: prompt },
-        { role: "user", content: state.query },
-      ],
+      messages,
       usageType: "chat",
     })) {
       answer += chunk.delta;
@@ -709,6 +759,8 @@ export class AgentService {
 
       return [message];
     });
+
+    void this.enqueueConversationSummaryIfNeeded(state.conversation.id);
 
     const assistant = this.toMessage(
       assistantMessage,
@@ -1083,5 +1135,78 @@ export class AgentService {
 
   private bestContextScore(contexts: RetrievalContextItem[]): number {
     return Math.max(0, ...contexts.map((item) => item.rerankScore ?? item.initialScore));
+  }
+
+  private async enqueueConversationSummaryIfNeeded(conversationId: string): Promise<void> {
+    try {
+      const [conversation] = await db
+        .select({
+          summarizedMessageCount: conversations.summarizedMessageCount,
+        })
+        .from(conversations)
+        .where(eq(conversations.id, conversationId))
+        .limit(1);
+      if (conversation === undefined) {
+        return;
+      }
+
+      const [messageCount] = await db
+        .select({ value: count() })
+        .from(conversationMessages)
+        .where(
+          and(
+            eq(conversationMessages.conversationId, conversationId),
+            inArray(conversationMessages.role, ["user", "assistant"]),
+          ),
+        );
+      const totalCount = messageCount?.value ?? 0;
+      if (!shouldEnqueueConversationSummary(totalCount, conversation.summarizedMessageCount)) {
+        return;
+      }
+
+      const queue = createConversationSummaryQueue();
+      try {
+        await queue.add(
+          CONVERSATION_SUMMARY_JOB_NAME,
+          { conversationId },
+          buildConversationSummaryJobOptions(conversationId),
+        );
+      } finally {
+        await queue.close();
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to enqueue conversation summary for ${conversationId}: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+      return;
+    }
+  }
+
+  private buildAnswerMessages(
+    state: AgentState,
+    prompt: string,
+  ): Parameters<AliyunLlmService["streamChat"]>[0]["messages"] {
+    const messages: Parameters<AliyunLlmService["streamChat"]>[0]["messages"] = [
+      { role: "system", content: prompt },
+    ];
+    if (state.conversationSummary !== null && state.conversationSummary.trim().length > 0) {
+      messages.push({
+        role: "system",
+        content: buildConversationSummarySystemMessage(state.conversationSummary),
+      });
+    }
+    if (state.recentMessages.length > 0) {
+      messages.push({
+        role: "system",
+        content: RECENT_MESSAGES_GUARDRAIL,
+      });
+      for (const message of state.recentMessages) {
+        messages.push(message);
+      }
+    }
+    messages.push({ role: "user", content: state.query });
+    return messages;
   }
 }

@@ -425,7 +425,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-dvh">
+    <div className="flex h-full">
       {/* 左:会话列表 */}
       <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-neutral-50">
         <div className="flex items-center justify-between px-4 py-4">
@@ -480,12 +480,19 @@ export default function ChatPage() {
             </p>
           ) : (
             conversations.map((c) => (
-              <button
+              <div
                 key={c.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => setSelectedConversationId(c.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedConversationId(c.id);
+                  }
+                }}
                 className={cn(
-                  "group mb-0.5 flex w-full flex-col items-start rounded-md px-3 py-2 text-left transition-colors duration-150",
+                  "group mb-0.5 flex w-full flex-col items-start rounded-md px-3 py-2 text-left transition-colors duration-150 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
                   c.id === selectedConversationId
                     ? "bg-brand-50 text-brand-700"
                     : "text-ink hover:bg-neutral-100",
@@ -522,7 +529,7 @@ export default function ChatPage() {
                   )}
                 </div>
                 <span className="text-xs text-ink-subtle">{formatDate(c.updatedAt)}</span>
-              </button>
+              </div>
             ))
           )}
         </div>

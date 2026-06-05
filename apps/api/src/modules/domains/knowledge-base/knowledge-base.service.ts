@@ -317,6 +317,7 @@ export class KnowledgeBaseService {
         username: users.username,
         name: users.name,
         platformRole: users.platformRole,
+        status: users.status,
         departmentId: users.departmentId,
         departmentName: departments.name,
       })

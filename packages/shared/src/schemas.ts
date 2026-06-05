@@ -32,12 +32,14 @@ import {
   MODEL_TYPES,
   NO_ANSWER_TYPES,
   PLATFORM_ROLES,
+  USER_STATUSES,
   ANALYTICS_EVENT_TYPES,
   ANALYTICS_TARGET_TYPES,
   VERIFICATION_STATUSES,
 } from "./constants";
 
 export const platformRoleSchema = z.enum(PLATFORM_ROLES);
+export const userStatusSchema = z.enum(USER_STATUSES);
 export const knowledgeBaseVisibilitySchema = z.enum(KNOWLEDGE_BASE_VISIBILITIES);
 export const knowledgeBaseStatusSchema = z.enum(KNOWLEDGE_BASE_STATUSES);
 export const knowledgeBaseIndexStatusSchema = z.enum(KNOWLEDGE_BASE_INDEX_STATUSES);
@@ -221,6 +223,7 @@ export const userOptionSchema = z.object({
   username: z.string(),
   name: z.string(),
   platformRole: platformRoleSchema,
+  status: userStatusSchema,
   departmentId: z.uuid(),
   departmentName: z.string(),
 });
@@ -260,6 +263,22 @@ export const addDepartmentMemberRequestSchema = z.object({
 
 export const assignUserDepartmentRequestSchema = z.object({
   departmentId: z.uuid(),
+});
+
+export const createUserRequestSchema = z.object({
+  username: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(120),
+  password: z.string().min(1).max(256),
+  departmentId: z.uuid(),
+  platformRole: platformRoleSchema,
+});
+
+export const updateUserRoleRequestSchema = z.object({
+  platformRole: platformRoleSchema,
+});
+
+export const resetUserPasswordRequestSchema = z.object({
+  password: z.string().min(8).max(256),
 });
 
 export const adminUserListResponseSchema = z.object({
@@ -1248,6 +1267,7 @@ export type LoginRequest = z.infer<typeof loginRequestSchema>;
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
 export type CurrentUser = z.infer<typeof currentUserSchema>;
 export type PlatformRole = z.infer<typeof platformRoleSchema>;
+export type UserStatus = z.infer<typeof userStatusSchema>;
 export type KnowledgeBaseVisibility = z.infer<typeof knowledgeBaseVisibilitySchema>;
 export type KnowledgeBaseStatus = z.infer<typeof knowledgeBaseStatusSchema>;
 export type KnowledgeBaseIndexStatus = z.infer<typeof knowledgeBaseIndexStatusSchema>;
@@ -1272,6 +1292,9 @@ export type UpdateDepartmentRequest = z.infer<typeof updateDepartmentRequestSche
 export type DepartmentMembersResponse = z.infer<typeof departmentMembersResponseSchema>;
 export type AddDepartmentMemberRequest = z.infer<typeof addDepartmentMemberRequestSchema>;
 export type AssignUserDepartmentRequest = z.infer<typeof assignUserDepartmentRequestSchema>;
+export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
+export type UpdateUserRoleRequest = z.infer<typeof updateUserRoleRequestSchema>;
+export type ResetUserPasswordRequest = z.infer<typeof resetUserPasswordRequestSchema>;
 export type AdminUserListResponse = z.infer<typeof adminUserListResponseSchema>;
 export type KnowledgeTag = z.infer<typeof tagSchema>;
 export type TagListResponse = z.infer<typeof tagListResponseSchema>;

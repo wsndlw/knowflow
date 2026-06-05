@@ -33,6 +33,7 @@ type AdminUserRow = {
   username: string;
   name: string;
   platformRole: UserOption["platformRole"];
+  status: UserOption["status"];
   departmentId: string;
   departmentName: string;
 };
@@ -135,6 +136,7 @@ export class DepartmentService {
         username: users.username,
         name: users.name,
         platformRole: users.platformRole,
+        status: users.status,
         departmentId: users.departmentId,
         departmentName: departments.name,
       })
@@ -196,6 +198,7 @@ export class DepartmentService {
         username: users.username,
         name: users.name,
         platformRole: users.platformRole,
+        status: users.status,
         departmentId: users.departmentId,
         departmentName: departments.name,
       })
@@ -314,6 +317,7 @@ export class DepartmentService {
         username: users.username,
         name: users.name,
         platformRole: users.platformRole,
+        status: users.status,
         departmentId: users.departmentId,
         departmentName: departments.name,
       })
@@ -367,6 +371,7 @@ export class DepartmentService {
       username: row.username,
       name: row.name,
       platformRole: row.platformRole,
+      status: row.status,
       departmentId: row.departmentId,
       departmentName: row.departmentName,
     };

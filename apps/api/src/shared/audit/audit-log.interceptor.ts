@@ -189,6 +189,7 @@ export class AuditLogInterceptor implements NestInterceptor {
       targetType === AuditTargetType.KNOWLEDGE_BASE ||
       targetType === AuditTargetType.RETRIEVAL_SETTINGS ||
       targetType === AuditTargetType.MIND_MAP ||
+      targetType === AuditTargetType.USER ||
       targetType === AuditTargetType.DOCUMENT ||
       targetType === AuditTargetType.KNOWLEDGE_ITEM ||
       targetType === AuditTargetType.AGENT ||

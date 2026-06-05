@@ -34,6 +34,7 @@ type AdminUserRow = {
   username: string;
   name: string;
   platformRole: "super_admin" | "department_admin" | "user";
+  status: "active" | "disabled";
   departmentId: string;
   departmentName: string;
 };
@@ -269,6 +270,7 @@ function makeUserRow(overrides: Partial<AdminUserRow> = {}): AdminUserRow {
     username: "member",
     name: "Member",
     platformRole: "user",
+    status: "active",
     departmentId: "00000000-0000-0000-0000-000000000010",
     departmentName: "Default",
     ...overrides,

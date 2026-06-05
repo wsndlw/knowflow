@@ -133,4 +133,31 @@ void describe("AuditLogInterceptor", () => {
     assert.match(JSON.stringify(record.detail["error"]), /Error/);
     assert.equal(JSON.stringify(record.detail).includes("private body"), false);
   });
+
+  void it("uses route ids for user audit targets without logging passwords", async () => {
+    const auditLogService = new FakeAuditLogService();
+    const interceptor = new AuditLogInterceptor(
+      reflector({ action: "user.password.reset", targetType: AuditTargetType.USER }),
+      auditLogService,
+    );
+
+    await firstValueFrom(
+      interceptor.intercept(
+        context({
+          user: { id: "admin-1" },
+          params: { id: "user-1" },
+          body: { password: "new-password-123" },
+          headers: {},
+          ip: "127.0.0.1",
+        }),
+        handler({ ok: true, data: {} }),
+      ),
+    );
+
+    const record = auditLogService.records[0];
+    assert.ok(record);
+    assert.equal(record.targetId, "user-1");
+    assert.equal(JSON.stringify(record.detail).includes("new-password-123"), false);
+    assert.equal(record.detail["body"], undefined);
+  });
 });

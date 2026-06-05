@@ -834,6 +834,10 @@ export const agentListResponseSchema = z.object({
   items: z.array(agentSchema),
 });
 
+export const agentListQuerySchema = z.object({
+  knowledgeBaseId: z.uuid().optional(),
+});
+
 export const managedAgentSchema = agentSchema.extend({
   knowledgeBaseIds: z.array(z.uuid()),
   systemPrompt: z.string().nullable(),
@@ -1352,6 +1356,7 @@ export type ModelProviderType = z.infer<typeof modelProviderTypeSchema>;
 export type ModelType = z.infer<typeof modelTypeSchema>;
 export type Agent = z.infer<typeof agentSchema>;
 export type AgentListResponse = z.infer<typeof agentListResponseSchema>;
+export type AgentListQuery = z.infer<typeof agentListQuerySchema>;
 export type ManagedAgent = z.infer<typeof managedAgentSchema>;
 export type CreateManagedAgentRequest = z.infer<typeof createManagedAgentRequestSchema>;
 export type UpdateManagedAgentRequest = z.infer<typeof updateManagedAgentRequestSchema>;

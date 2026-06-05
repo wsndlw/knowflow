@@ -12,6 +12,10 @@ import type { AgentState } from "./agent.types.js";
 
 type AgentServiceInternals = {
   buildAgentAccessCondition: (user: AuthenticatedUser) => SQL | undefined;
+  buildAgentBoundToKnowledgeBaseExists: (
+    knowledgeBaseId: string,
+    user: AuthenticatedUser,
+  ) => SQL;
   buildAgentKnowledgeBaseScopeCondition: (
     agentId: string,
     user: AuthenticatedUser,
@@ -238,6 +242,45 @@ void describe("AgentService SQL access filters", () => {
     assert.match(sql, /"knowledge_bases"\."status" =/);
     assert.doesNotMatch(sql, /"knowledge_bases"\."visibility" =/);
     assert.deepEqual(params, ["agent-1", "active"]);
+  });
+
+  void it("scopes the usable-agent list to a knowledge base the user can access", () => {
+    const service = serviceWithAccessCondition();
+    const condition = service.buildAgentBoundToKnowledgeBaseExists(
+      "00000000-0000-0000-0000-0000000004cb",
+      user,
+    );
+    const { sql, params } = db
+      .select({ id: agents.id })
+      .from(agents)
+      .where(and(eq(agents.status, "published"), condition))
+      .toSQL();
+
+    assert.match(sql, /exists \(select/);
+    assert.match(sql, /"agent_knowledge_bases"\."agent_id" =/);
+    assert.match(sql, /"agent_knowledge_bases"\."knowledge_base_id" =/);
+    assert.match(sql, /"knowledge_bases"\."status" =/);
+    // 普通用户：可见性条件随 buildAccessCondition 一并下推
+    assert.match(sql, /"knowledge_bases"\."visibility" =/);
+    assert.equal(params.includes("active"), true);
+    assert.equal(params.includes("published"), true);
+  });
+
+  void it("drops the visibility filter for super admins but keeps the knowledge-base binding", () => {
+    const service = serviceWithoutAccessCondition();
+    const condition = service.buildAgentBoundToKnowledgeBaseExists(
+      "00000000-0000-0000-0000-0000000004cb",
+      superAdmin,
+    );
+    const { sql } = db
+      .select({ id: agents.id })
+      .from(agents)
+      .where(and(eq(agents.status, "published"), condition))
+      .toSQL();
+
+    assert.match(sql, /"agent_knowledge_bases"\."knowledge_base_id" =/);
+    assert.match(sql, /"knowledge_bases"\."status" =/);
+    assert.doesNotMatch(sql, /"knowledge_bases"\."visibility" =/);
   });
 });
 

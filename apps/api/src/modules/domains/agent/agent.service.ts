@@ -21,6 +21,7 @@ import {
 } from "@knowflow/db";
 import type {
   Agent,
+  AgentListQuery,
   AgentListResponse,
   AnswerFeedbackRequest,
   Citation,
@@ -93,16 +94,22 @@ export class AgentService {
     private readonly analytics: AnalyticsEventService,
   ) {}
 
-  async listAgents(user: AuthenticatedUser): Promise<AgentListResponse> {
+  async listAgents(
+    user: AuthenticatedUser,
+    query: AgentListQuery = {},
+  ): Promise<AgentListResponse> {
     const accessCondition = this.buildAgentAccessCondition(user);
+    const conditions: SQL[] = [eq(agents.status, "published")];
+    if (accessCondition !== undefined) {
+      conditions.push(accessCondition);
+    }
+    if (query.knowledgeBaseId !== undefined) {
+      conditions.push(this.buildAgentBoundToKnowledgeBaseExists(query.knowledgeBaseId, user));
+    }
     const rows = await db
       .select()
       .from(agents)
-      .where(
-        accessCondition === undefined
-          ? eq(agents.status, "published")
-          : and(eq(agents.status, "published"), accessCondition),
-      )
+      .where(and(...conditions))
       .orderBy(desc(agents.isDefault), asc(agents.name));
 
     return { items: rows.map((row) => this.toAgent(row)) };
@@ -910,6 +917,28 @@ export class AgentService {
         eq(agents.visibility, "knowledge_base_members"),
         this.buildAgentKnowledgeBaseAccessExists(user),
       ),
+    );
+  }
+
+  private buildAgentBoundToKnowledgeBaseExists(
+    knowledgeBaseId: string,
+    user: AuthenticatedUser,
+  ): SQL {
+    const accessCondition = this.accessService.buildAccessCondition(user);
+    const baseConditions: SQL[] = [
+      eq(agentKnowledgeBases.agentId, agents.id),
+      eq(agentKnowledgeBases.knowledgeBaseId, knowledgeBaseId),
+      eq(knowledgeBases.status, "active"),
+    ];
+    if (accessCondition !== undefined) {
+      baseConditions.push(accessCondition);
+    }
+    return exists(
+      db
+        .select({ id: agentKnowledgeBases.id })
+        .from(agentKnowledgeBases)
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, agentKnowledgeBases.knowledgeBaseId))
+        .where(and(...baseConditions)),
     );
   }
 

@@ -11,6 +11,7 @@ import {
   Res,
 } from "@nestjs/common";
 import {
+  agentListQuerySchema,
   agentListResponseSchema,
   answerFeedbackRequestSchema,
   askMessageRequestSchema,
@@ -52,8 +53,12 @@ export class AgentController {
   ) {}
 
   @Get("agents")
-  async listAgents(@Req() request: AuthenticatedRequest): Promise<ApiSuccess<AgentListResponse>> {
-    const data = await this.agentService.listAgents(this.requireUser(request));
+  async listAgents(
+    @Query() query: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ApiSuccess<AgentListResponse>> {
+    const input = agentListQuerySchema.parse(query);
+    const data = await this.agentService.listAgents(this.requireUser(request), input);
     return { ok: true, data: agentListResponseSchema.parse(data) };
   }
 

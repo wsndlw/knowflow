@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  knowledgeItemFeedbackRequestSchema,
   knowledgeItemListResponseSchema,
   knowledgeItemSchema,
   type KnowledgeItem,
 } from "@knowflow/shared";
+import { ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { Badge } from "../../../../components/ui/badge";
 import { Button } from "../../../../components/ui/button";
@@ -169,6 +171,38 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
       });
     } catch (caught) {
       setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, enabled: item.enabled } : i)));
+      setActionError(caught instanceof Error ? caught.message : "操作失败");
+    }
+  }
+
+  async function handleToggleFeedback(item: KnowledgeItem, rating: "like" | "dislike") {
+    const newRating = item.userFeedback === rating ? null : rating;
+    const payload = knowledgeItemFeedbackRequestSchema.parse({ rating: newRating });
+    const prev = item;
+
+    setItems((prevItems) =>
+      prevItems.map((i) => {
+        if (i.id === item.id) {
+          let newLikeCount = i.likeCount;
+          let newDislikeCount = i.dislikeCount;
+          if (i.userFeedback === "like") newLikeCount--;
+          if (i.userFeedback === "dislike") newDislikeCount--;
+          if (newRating === "like") newLikeCount++;
+          if (newRating === "dislike") newDislikeCount++;
+          return { ...i, userFeedback: newRating, likeCount: newLikeCount, dislikeCount: newDislikeCount };
+        }
+        return i;
+      }),
+    );
+    setActionError(null);
+    try {
+      const updated = await apiRequest(`/knowledge-items/${item.id}/feedback`, knowledgeItemSchema, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setItems((prevItems) => prevItems.map((i) => (i.id === item.id ? updated : i)));
+    } catch (caught) {
+      setItems((prevItems) => prevItems.map((i) => (i.id === item.id ? prev : i)));
       setActionError(caught instanceof Error ? caught.message : "操作失败");
     }
   }
@@ -346,6 +380,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
               <TableHeaderCell>状态</TableHeaderCell>
               <TableHeaderCell>启用</TableHeaderCell>
               <TableHeaderCell>引用</TableHeaderCell>
+              <TableHeaderCell>反馈</TableHeaderCell>
               <TableHeaderCell>更新时间</TableHeaderCell>
               {canManage ? <TableHeaderCell className="text-right">操作</TableHeaderCell> : null}
             </TableRow>
@@ -426,6 +461,36 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
                   )}
                 </TableCell>
                 <TableCell className="text-ink-muted tabular-nums">{item.citeCount}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleFeedback(item, "like")}
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors duration-150 ${
+                        item.userFeedback === "like"
+                          ? "bg-brand-50 text-brand-700"
+                          : "text-ink-subtle hover:bg-neutral-100 hover:text-ink"
+                      }`}
+                      aria-label="赞"
+                    >
+                      <ThumbsUp className="size-3.5" />
+                      <span className="tabular-nums font-medium">{item.likeCount}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleFeedback(item, "dislike")}
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors duration-150 ${
+                        item.userFeedback === "dislike"
+                          ? "bg-brand-50 text-brand-700"
+                          : "text-ink-subtle hover:bg-neutral-100 hover:text-ink"
+                      }`}
+                      aria-label="踩"
+                    >
+                      <ThumbsDown className="size-3.5" />
+                      <span className="tabular-nums font-medium">{item.dislikeCount}</span>
+                    </button>
+                  </div>
+                </TableCell>
                 <TableCell className="text-ink-muted text-xs tabular-nums">{formatDate(item.updatedAt)}</TableCell>
                 {canManage ? (
                   <TableCell className="text-right">

@@ -26,6 +26,8 @@ import {
   ShieldAlert,
   AlertCircle,
   FileText,
+  Archive,
+  RotateCcw,
 } from "lucide-react";
 
 import ReactMarkdown from "react-markdown";
@@ -133,28 +135,29 @@ export default function ChatPage() {
   // 流式进行中标记:避免 ensureConversation 切换 conversationId 触发 loadMessages 覆盖本地 draft
   const streamingRef = useRef(false);
 
+  const [conversationView, setConversationView] = useState<"active" | "archived">("active");
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "danger" } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const showToast = useCallback((message: string, tone: "success" | "danger" = "success") => {
+    setToast({ message, tone });
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
+  }, []);
+
   // 选全局 AI 助手(type=global);无 Agent 切换
   const loadInitialData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [agentResponse, conversationResponse] = await Promise.all([
-        apiRequest("/agents", agentListResponseSchema, { cache: "no-store" }),
-        apiRequest("/conversations", conversationListResponseSchema, { cache: "no-store" }),
-      ]);
+      const agentResponse = await apiRequest("/agents", agentListResponseSchema, { cache: "no-store" });
       const globalAgent =
         agentResponse.items.find((agent: Agent) => agent.type === "global") ??
         agentResponse.items.find((agent: Agent) => agent.isDefault) ??
         agentResponse.items[0];
       setGlobalAgentId(globalAgent?.id ?? "");
-      const globalConversations = conversationResponse.items.filter(
-        (c) => c.agentId === globalAgent?.id,
-      );
-      setConversations(globalConversations);
-      setSelectedConversationId("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "加载失败");
-    } finally {
       setIsLoading(false);
     }
   }, []);
@@ -192,14 +195,27 @@ export default function ChatPage() {
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function refreshConversations(): Promise<Conversation[]> {
-    const response = await apiRequest("/conversations", conversationListResponseSchema, {
-      cache: "no-store",
-    });
-    const list = response.items.filter((c) => c.agentId === globalAgentId);
-    setConversations(list);
-    return list;
-  }
+  const refreshConversations = useCallback(async (status: "active" | "archived") => {
+    if (globalAgentId === "") return [];
+    try {
+      const response = await apiRequest(`/conversations?status=${status}`, conversationListResponseSchema, {
+        cache: "no-store",
+      });
+      const list = response.items.filter((c) => c.agentId === globalAgentId);
+      setConversations(list);
+      return list;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "加载会话列表失败");
+      return [];
+    }
+  }, [globalAgentId]);
+
+  useEffect(() => {
+    if (globalAgentId !== "") {
+      setIsLoading(true);
+      refreshConversations(conversationView).finally(() => setIsLoading(false));
+    }
+  }, [conversationView, globalAgentId, refreshConversations]);
 
   async function ensureConversation(): Promise<string> {
     if (selectedConversationId !== "") {
@@ -210,9 +226,39 @@ export default function ChatPage() {
       method: "POST",
       body: JSON.stringify(input),
     });
-    await refreshConversations();
+    if (conversationView === "archived") {
+      setConversationView("active");
+    } else {
+      await refreshConversations("active");
+    }
     setSelectedConversationId(created.id);
     return created.id;
+  }
+
+  async function handleArchive(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    try {
+      await apiRequest(`/conversations/${id}/archive`, conversationSchema, { method: "POST" });
+      if (selectedConversationId === id) {
+        setSelectedConversationId("");
+        setMessages([]);
+      }
+      await refreshConversations(conversationView);
+      showToast("会话已归档");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "归档失败", "danger");
+    }
+  }
+
+  async function handleRestore(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    try {
+      await apiRequest(`/conversations/${id}/restore`, conversationSchema, { method: "POST" });
+      await refreshConversations(conversationView);
+      showToast("会话已恢复");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "恢复失败", "danger");
+    }
   }
 
   function handleNewConversation() {
@@ -262,7 +308,7 @@ export default function ChatPage() {
       };
       setMessages((current) => [...current, userMessage, draft]);
       await streamAnswer(conversationId, trimmed, draft.id);
-      await refreshConversations();
+      await refreshConversations("active");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "提问失败");
     } finally {
@@ -376,6 +422,39 @@ export default function ChatPage() {
           </Button>
         </div>
         <p className="px-4 pb-2 text-xs text-ink-subtle">全局助手 · 检索你有权访问的全部知识库</p>
+
+        {/* 视图切换 */}
+        <div className="px-4 pb-2">
+          <div className="flex rounded-md bg-neutral-200/50 p-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                setConversationView("active");
+                setSelectedConversationId("");
+              }}
+              className={cn(
+                "flex-1 rounded text-xs font-medium py-1 text-center transition-colors",
+                conversationView === "active" ? "bg-white text-ink shadow-sm" : "text-ink-subtle hover:text-ink"
+              )}
+            >
+              进行中
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConversationView("archived");
+                setSelectedConversationId("");
+              }}
+              className={cn(
+                "flex-1 rounded text-xs font-medium py-1 text-center transition-colors",
+                conversationView === "archived" ? "bg-white text-ink shadow-sm" : "text-ink-subtle hover:text-ink"
+              )}
+            >
+              已归档
+            </button>
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto px-2 py-1">
           {isLoading ? (
             <div className="flex flex-col gap-1.5 px-2">
@@ -383,7 +462,9 @@ export default function ChatPage() {
               <Skeleton className="h-12" />
             </div>
           ) : conversations.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-ink-subtle">还没有对话</p>
+            <p className="px-3 py-6 text-center text-sm text-ink-subtle">
+              {conversationView === "active" ? "还没有对话" : "没有已归档对话"}
+            </p>
           ) : (
             conversations.map((c) => (
               <button
@@ -391,13 +472,40 @@ export default function ChatPage() {
                 type="button"
                 onClick={() => setSelectedConversationId(c.id)}
                 className={cn(
-                  "mb-0.5 block w-full rounded-md px-3 py-2 text-left transition-colors duration-150",
+                  "group mb-0.5 flex w-full flex-col items-start rounded-md px-3 py-2 text-left transition-colors duration-150",
                   c.id === selectedConversationId
                     ? "bg-brand-50 text-brand-700"
                     : "text-ink hover:bg-neutral-100",
                 )}
               >
-                <span className="line-clamp-1 text-base font-medium">{c.title}</span>
+                <div className="flex w-full items-center justify-between">
+                  <span className="line-clamp-1 text-base font-medium flex-1 mr-2">{c.title}</span>
+                  {conversationView === "active" ? (
+                    <button
+                      type="button"
+                      title="归档"
+                      onClick={(e) => void handleArchive(e, c.id)}
+                      className={cn(
+                        "opacity-0 transition-opacity p-1 rounded-sm group-hover:opacity-100 hover:bg-neutral-200/60",
+                        c.id === selectedConversationId ? "hover:bg-brand-100" : ""
+                      )}
+                    >
+                      <Archive className="size-3.5" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      title="恢复"
+                      onClick={(e) => void handleRestore(e, c.id)}
+                      className={cn(
+                        "opacity-0 transition-opacity p-1 rounded-sm group-hover:opacity-100 hover:bg-neutral-200/60",
+                        c.id === selectedConversationId ? "hover:bg-brand-100" : ""
+                      )}
+                    >
+                      <RotateCcw className="size-3.5" />
+                    </button>
+                  )}
+                </div>
                 <span className="text-xs text-ink-subtle">{formatDate(c.updatedAt)}</span>
               </button>
             ))
@@ -488,6 +596,19 @@ export default function ChatPage() {
           }
         }}
       />
+
+      {/* Toast */}
+      {toast ? (
+        <div
+          className={cn(
+            "fixed top-6 left-1/2 -translate-x-1/2 rounded-full px-4 py-2 text-sm font-medium text-white shadow-lg z-[var(--z-toast,9999)]",
+            toast.tone === "success" ? "bg-success" : "bg-danger"
+          )}
+          role="status"
+        >
+          {toast.message}
+        </div>
+      ) : null}
     </div>
   );
 }

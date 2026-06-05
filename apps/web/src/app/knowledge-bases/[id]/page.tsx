@@ -25,8 +25,8 @@ const TAB_DEFS: (TabItem & { value: TabValue; manageOnly?: boolean })[] = [
   { value: "overview", label: "概览" },
   { value: "documents", label: "文档" },
   { value: "knowledge-items", label: "知识条目" },
-  { value: "chat", label: "对话", manageOnly: false },
-  { value: "agents", label: "专家 Agent", manageOnly: true },
+  { value: "chat", label: "专家 Agent", manageOnly: false },
+  { value: "agents", label: "专家 Agent 管理", manageOnly: true },
   { value: "members", label: "成员权限", manageOnly: true },
   { value: "analytics", label: "统计分析" },
   { value: "relations", label: "知识关系" },
@@ -88,7 +88,7 @@ function KnowledgeBaseDetailContent() {
         role="tabpanel"
         id={`tabpanel-${activeTab}`}
         aria-labelledby={`tab-${activeTab}`}
-        className="min-h-[300px]"
+        className="min-h-[calc(100vh-16rem)] flex flex-col"
       >
         {activeTab === "overview" && overview ? (
           <TabOverview kb={kb} overview={overview} />

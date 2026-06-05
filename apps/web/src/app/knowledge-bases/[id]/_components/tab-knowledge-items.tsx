@@ -36,6 +36,7 @@ const STATUS_OPTIONS = [
   { value: "pending_review", label: "待审核" },
   { value: "published", label: "已发布" },
   { value: "unpublished", label: "已下架" },
+  { value: "archived", label: "已归档" },
   { value: "expired", label: "已过期" },
 ];
 
@@ -44,6 +45,7 @@ const statusTone: Record<string, "neutral" | "info" | "success" | "warning" | "d
   pending_review: "info",
   published: "success",
   unpublished: "warning",
+  archived: "neutral",
   expired: "danger",
 };
 
@@ -52,6 +54,7 @@ const statusLabels: Record<string, string> = {
   pending_review: "待审核",
   published: "已发布",
   unpublished: "已下架",
+  archived: "已归档",
   expired: "已过期",
 };
 
@@ -69,8 +72,8 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
   const [editing, setEditing] = useState<KnowledgeItem | null>(null);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [deleteTarget, setDeleteTarget] = useState<{ ids: string[] } | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [actionTarget, setActionTarget] = useState<{ ids: string[], type: "archive" | "delete" } | null>(null);
+  const [actioning, setActioning] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pageSize = 20;
 
@@ -170,21 +173,53 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
     }
   }
 
-  async function handleConfirmDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
+  async function handleArchive(id: string) {
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, status: "archived" } : i)));
     setActionError(null);
     try {
-      for (const id of deleteTarget.ids) {
-        await apiRequest(`/knowledge-items/${id}`, emptyObjectSchema, { method: "DELETE" });
+      await apiRequest(`/knowledge-items/${id}/archive`, knowledgeItemSchema, { method: "POST" });
+      await loadItems();
+    } catch (caught) {
+      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, status: item.status } : i)));
+      setActionError(caught instanceof Error ? caught.message : "操作失败");
+    }
+  }
+
+  async function handleRestore(id: string) {
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, status: "unpublished" } : i)));
+    setActionError(null);
+    try {
+      await apiRequest(`/knowledge-items/${id}/restore`, knowledgeItemSchema, { method: "POST" });
+      await loadItems();
+    } catch (caught) {
+      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, status: item.status } : i)));
+      setActionError(caught instanceof Error ? caught.message : "操作失败");
+    }
+  }
+
+  async function handleConfirmAction() {
+    if (!actionTarget) return;
+    setActioning(true);
+    setActionError(null);
+    try {
+      for (const id of actionTarget.ids) {
+        if (actionTarget.type === "archive") {
+          await apiRequest(`/knowledge-items/${id}/archive`, knowledgeItemSchema, { method: "POST" });
+        } else {
+          await apiRequest(`/knowledge-items/${id}`, emptyObjectSchema, { method: "DELETE" });
+        }
       }
-      setDeleteTarget(null);
+      setActionTarget(null);
       setSelected(new Set());
       await loadItems();
     } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "删除失败");
+      setActionError(caught instanceof Error ? caught.message : "操作失败");
     } finally {
-      setDeleting(false);
+      setActioning(false);
     }
   }
 
@@ -261,9 +296,15 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
             <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
               取消选择
             </Button>
-            <Button variant="destructive" size="sm" onClick={() => setDeleteTarget({ ids: [...selected] })}>
-              批量删除
-            </Button>
+            {status === "archived" ? (
+              <Button variant="destructive" size="sm" onClick={() => setActionTarget({ ids: [...selected], type: "delete" })}>
+                批量删除
+              </Button>
+            ) : (
+              <Button variant="destructive" size="sm" onClick={() => setActionTarget({ ids: [...selected], type: "archive" })}>
+                批量归档
+              </Button>
+            )}
           </div>
         </div>
       ) : null}
@@ -389,15 +430,28 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
                 {canManage ? (
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => { setEditing(item); setDialogOpen(true); }}>
-                        编辑
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => void handleToggleStatus(item)}>
-                        {item.status === "published" ? "下架" : "发布"}
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ ids: [item.id] })}>
-                        删除
-                      </Button>
+                      {item.status === "archived" ? (
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => void handleRestore(item.id)}>
+                            恢复
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setActionTarget({ ids: [item.id], type: "delete" })}>
+                            彻底删除
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => { setEditing(item); setDialogOpen(true); }}>
+                            编辑
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => void handleToggleStatus(item)}>
+                            {item.status === "published" ? "下架" : "发布"}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => void handleArchive(item.id)}>
+                            归档
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 ) : null}
@@ -434,21 +488,23 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
       />
 
       <Dialog
-        open={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
-        title="确认删除"
+        open={actionTarget !== null}
+        onClose={() => setActionTarget(null)}
+        title={actionTarget?.type === "archive" ? "确认归档" : "确认删除"}
         description={
-          deleteTarget
-            ? `确定删除选中的 ${String(deleteTarget.ids.length)} 条知识条目吗？删除后无法恢复。`
+          actionTarget
+            ? actionTarget.type === "archive"
+              ? `确定归档选中的 ${String(actionTarget.ids.length)} 条知识条目吗？归档后默认隐藏，可在『已归档』恢复或彻底删除。`
+              : `确定彻底删除选中的 ${String(actionTarget.ids.length)} 条知识条目吗？删除后无法恢复。`
             : ""
         }
       >
         <div className="flex justify-end gap-2 pt-4">
-          <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
+          <Button variant="secondary" onClick={() => setActionTarget(null)}>
             取消
           </Button>
-          <Button variant="destructive" loading={deleting} onClick={() => void handleConfirmDelete()}>
-            确认删除
+          <Button variant="destructive" loading={actioning} onClick={() => void handleConfirmAction()}>
+            {actionTarget?.type === "archive" ? "确认归档" : "确认删除"}
           </Button>
         </div>
       </Dialog>

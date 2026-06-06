@@ -84,8 +84,22 @@ export function ModelDialog({ open, onClose, model, onSubmit }: ModelDialogProps
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={isEdit ? "编辑模型" : "新增模型"}>
-      <form onSubmit={(e) => { void handleSubmit(e); }} className="flex flex-col gap-4">
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      title={isEdit ? "编辑模型" : "新增模型"}
+      footer={
+        <div className="flex justify-end gap-3 w-full">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+            取消
+          </Button>
+          <Button type="submit" form="model-form" disabled={loading}>
+            {loading ? "保存中..." : "保存"}
+          </Button>
+        </div>
+      }
+    >
+      <form id="model-form" onSubmit={(e) => { void handleSubmit(e); }} className="flex flex-col gap-4">
         <div>
           <label htmlFor="modelName" className="mb-1.5 block text-sm font-medium text-ink">
             模型名称 <span className="text-danger">*</span>
@@ -174,14 +188,6 @@ export function ModelDialog({ open, onClose, model, onSubmit }: ModelDialogProps
           </p>
         ) : null}
 
-        <div className="flex justify-end gap-3 border-t border-border pt-4">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
-            取消
-          </Button>
-          <Button type="submit" disabled={loading}>
-            {loading ? "保存中..." : "保存"}
-          </Button>
-        </div>
       </form>
     </Dialog>
   );

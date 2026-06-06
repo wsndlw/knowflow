@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { useParams } from "next/navigation";
-
+import { cn } from "../../../lib/cn";
 import { Skeleton } from "../../../components/ui/feedback";
 import { TabList, type TabItem } from "../../../components/ui/tabs";
 import { useKbDetail } from "./_hooks/use-kb-detail";
@@ -88,7 +88,10 @@ function KnowledgeBaseDetailContent() {
         role="tabpanel"
         id={`tabpanel-${activeTab}`}
         aria-labelledby={`tab-${activeTab}`}
-        className="min-h-[calc(100vh-16rem)] flex flex-col"
+        className={cn(
+          "flex flex-col",
+          activeTab === "chat" ? "h-[calc(100vh-16rem)]" : "min-h-[calc(100vh-16rem)]"
+        )}
       >
         {activeTab === "overview" && overview ? (
           <TabOverview kb={kb} overview={overview} />

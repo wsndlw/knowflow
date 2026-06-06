@@ -83,11 +83,22 @@ export function AgentDialog({ open, onClose, onSubmit, editing }: AgentDialogPro
       onClose={onClose}
       title={isEdit ? "编辑专家 Agent" : "创建专家 Agent"}
       className="max-w-lg"
+      footer={
+        <div className="flex justify-end gap-2 pt-2 w-full">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="submit" form="agent-form" loading={submitting}>
+            {isEdit ? "保存" : "创建"}
+          </Button>
+        </div>
+      }
     >
       <form
+        id="agent-form"
         key={editing?.id ?? "new"}
         onSubmit={(e) => void handleSubmit(e)}
-        className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto"
+        className="flex flex-col gap-4"
       >
         {error ? (
           <p className="text-sm text-danger bg-danger-bg px-3 py-2 rounded-md">{error}</p>
@@ -157,14 +168,6 @@ export function AgentDialog({ open, onClose, onSubmit, editing }: AgentDialogPro
               + 添加推荐问题
             </Button>
           ) : null}
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            取消
-          </Button>
-          <Button type="submit" loading={submitting}>
-            {isEdit ? "保存" : "创建"}
-          </Button>
         </div>
       </form>
     </Dialog>

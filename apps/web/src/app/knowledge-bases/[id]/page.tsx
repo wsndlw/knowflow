@@ -66,31 +66,34 @@ function KnowledgeBaseDetailContent() {
 
   if (error || !kb) {
     return (
+      <div className="flex-1 overflow-y-auto bg-background">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <p className="rounded-md bg-danger-bg px-4 py-3 text-sm text-danger">
           {error ?? "知识库不存在"}
         </p>
       </div>
+    </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
-      <DetailHeader kb={kb} />
-
-      <TabList
-        items={tabItems}
-        value={activeTab}
-        onValueChange={(v) => setActiveTab(v as TabValue)}
-      />
+    <div className="flex flex-col h-full overflow-hidden bg-background">
+      <div className="shrink-0 px-6 pt-6 mx-auto w-full max-w-5xl flex flex-col gap-6">
+        <DetailHeader kb={kb} />
+        <TabList
+          items={tabItems}
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as TabValue)}
+        />
+      </div>
 
       <div
         role="tabpanel"
         id={`tabpanel-${activeTab}`}
         aria-labelledby={`tab-${activeTab}`}
         className={cn(
-          "flex flex-col",
-          activeTab === "chat" ? "h-[calc(100vh-16rem)]" : "min-h-[calc(100vh-16rem)]"
+          "flex-1 flex flex-col min-h-0 mx-auto w-full max-w-5xl px-6 pb-6 mt-6",
+          activeTab === "chat" ? "" : "overflow-y-auto"
         )}
       >
         {activeTab === "overview" && overview ? (
@@ -145,16 +148,18 @@ function KnowledgeBaseDetailContent() {
 
 function PageSkeleton() {
   return (
-    <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
-      <Skeleton className="h-8 w-48" />
-      <Skeleton className="h-10 w-full" />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
+    <div className="flex-1 overflow-y-auto bg-background">
+      <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-10 w-full" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+        </div>
+        <Skeleton className="h-48" />
       </div>
-      <Skeleton className="h-48" />
     </div>
   );
 }

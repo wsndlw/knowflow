@@ -95,8 +95,9 @@ export default function HomePage() {
   }, [canViewOverview]);
 
   return (
-    <div className="mx-auto max-w-6xl px-8 py-7">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-6xl px-8 py-7">
+        <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-ink">
             {user !== null ? `你好，${user.name}` : "工作台"}
@@ -225,6 +226,7 @@ export default function HomePage() {
           )}
         </Section>
       </div>
+    </div>
     </div>
   );
 }

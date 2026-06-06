@@ -98,8 +98,9 @@ function ModelsPageContent() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="flex-1 overflow-y-auto bg-background">
+      <div className="mx-auto max-w-5xl px-6 py-6">
+        <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">模型配置</h1>
         <Button onClick={openCreateDialog}>新增供应商</Button>
       </div>
@@ -142,6 +143,7 @@ function ModelsPageContent() {
         </div>
       )}
 
+      </div>
       <ProviderDialog
         open={dialogOpen}
         onClose={closeDialog}

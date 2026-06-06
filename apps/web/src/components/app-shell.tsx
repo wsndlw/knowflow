@@ -73,7 +73,7 @@ function Sidebar() {
         <span className="text-md font-semibold tracking-tight">knowflow</span>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-2">
+      <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
         {navGroups.map((group, groupIndex) => {
           const visibleItems = group.items.filter((item) => canSee(item, role));
           if (visibleItems.length === 0) {

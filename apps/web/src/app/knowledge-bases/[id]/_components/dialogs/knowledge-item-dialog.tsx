@@ -51,8 +51,19 @@ export function KnowledgeItemDialog({ open, onClose, onSubmit, editing }: Knowle
       open={open}
       onClose={onClose}
       title={isEdit ? "编辑知识条目" : "新建知识条目"}
+      footer={
+        <div className="flex justify-end gap-2 pt-2 w-full">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="submit" form="knowledge-item-form" loading={submitting}>
+            {isEdit ? "保存" : "创建"}
+          </Button>
+        </div>
+      }
     >
       <form
+        id="knowledge-item-form"
         key={editing?.id ?? "new"}
         onSubmit={(e) => void handleSubmit(e)}
         className="flex flex-col gap-4"
@@ -92,14 +103,6 @@ export function KnowledgeItemDialog({ open, onClose, onSubmit, editing }: Knowle
             className="min-h-16"
           />
         </label>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            取消
-          </Button>
-          <Button type="submit" loading={submitting}>
-            {isEdit ? "保存" : "创建"}
-          </Button>
-        </div>
       </form>
     </Dialog>
   );

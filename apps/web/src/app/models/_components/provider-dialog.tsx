@@ -125,8 +125,22 @@ export function ProviderDialog({ open, onClose, provider, onSubmit }: ProviderDi
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={isEdit ? "编辑供应商" : "新增供应商"}>
-      <form onSubmit={(e) => { void handleSubmit(e); }} className="flex flex-col gap-4">
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      title={isEdit ? "编辑供应商" : "新增供应商"}
+      footer={
+        <div className="flex justify-end gap-3 w-full">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+            取消
+          </Button>
+          <Button type="submit" form="provider-form" disabled={loading}>
+            {loading ? "保存中..." : "保存"}
+          </Button>
+        </div>
+      }
+    >
+      <form id="provider-form" onSubmit={(e) => { void handleSubmit(e); }} className="flex flex-col gap-4">
         <div>
           <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-ink">
             名称 <span className="text-danger">*</span>
@@ -304,14 +318,6 @@ export function ProviderDialog({ open, onClose, provider, onSubmit }: ProviderDi
           </p>
         ) : null}
 
-        <div className="flex justify-end gap-3 border-t border-border pt-4">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
-            取消
-          </Button>
-          <Button type="submit" disabled={loading}>
-            {loading ? "保存中..." : "保存"}
-          </Button>
-        </div>
       </form>
     </Dialog>
   );

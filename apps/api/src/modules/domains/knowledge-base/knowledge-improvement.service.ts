@@ -189,6 +189,94 @@ export class KnowledgeImprovementService {
     return { created: tasks.length, enqueued: tasks.length };
   }
 
+  async triggerFromAnswerFeedback(feedbackId: string): Promise<void> {
+    const [row] = await db
+      .select({
+        id: answerFeedback.id,
+        knowledgeBaseId: answerFeedback.knowledgeBaseId,
+        messageId: answerFeedback.messageId,
+        conversationId: answerFeedback.conversationId,
+        rating: answerFeedback.rating,
+        reason: answerFeedback.reason,
+        correctionContent: answerFeedback.correctionContent,
+        suggestedSource: answerFeedback.suggestedSource,
+        messageContent: conversationMessages.content,
+        usedContext: conversationMessages.usedContext,
+      })
+      .from(answerFeedback)
+      .innerJoin(conversationMessages, eq(conversationMessages.id, answerFeedback.messageId))
+      .where(eq(answerFeedback.id, feedbackId))
+      .limit(1);
+
+    if (row?.knowledgeBaseId === null || row?.knowledgeBaseId === undefined) {
+      return;
+    }
+
+    const triggerType =
+      row.rating === "not_useful"
+        ? "answer_dislike"
+        : row.rating === "correction" && row.correctionContent !== null
+          ? "user_correction"
+          : null;
+    if (triggerType === null) {
+      return;
+    }
+
+    await this.createOrFindTaskAndEnqueue({
+      knowledgeBaseId: row.knowledgeBaseId,
+      triggerType,
+      sourceMessageId: row.messageId,
+      sourceFeedbackId: row.id,
+      sourceQuestion: await this.findPreviousUserQuestion(
+        row.conversationId,
+        row.messageId,
+        row.messageContent,
+      ),
+      dedupKey: this.immediateFeedbackDedupKey(row.knowledgeBaseId, triggerType, row.id),
+      sourceContext: {
+        reason: row.reason,
+        correctionContent: row.correctionContent,
+        suggestedSource: row.suggestedSource,
+        answerContent: row.messageContent,
+        usedContext: row.usedContext,
+      },
+    });
+  }
+
+  async triggerFromItemFeedback(feedbackId: string): Promise<void> {
+    const [row] = await db
+      .select({
+        id: knowledgeItemFeedback.id,
+        knowledgeBaseId: knowledgeItems.knowledgeBaseId,
+        knowledgeItemId: knowledgeItemFeedback.knowledgeItemId,
+        rating: knowledgeItemFeedback.rating,
+        title: knowledgeItems.title,
+        content: knowledgeItems.content,
+        status: knowledgeItems.status,
+      })
+      .from(knowledgeItemFeedback)
+      .innerJoin(knowledgeItems, eq(knowledgeItems.id, knowledgeItemFeedback.knowledgeItemId))
+      .where(eq(knowledgeItemFeedback.id, feedbackId))
+      .limit(1);
+
+    if (row?.rating !== "dislike" || row.status === "archived") {
+      return;
+    }
+
+    await this.createOrFindTaskAndEnqueue({
+      knowledgeBaseId: row.knowledgeBaseId,
+      triggerType: "item_dislike",
+      sourceMessageId: null,
+      sourceFeedbackId: row.id,
+      sourceQuestion: row.title,
+      dedupKey: this.immediateFeedbackDedupKey(row.knowledgeBaseId, "item_dislike", row.id),
+      sourceContext: {
+        knowledgeItemId: row.knowledgeItemId,
+        content: row.content.slice(0, 2000),
+      },
+    });
+  }
+
   async scanKnowledgeBaseWithCursors(knowledgeBaseId: string): Promise<ScanBatchResult> {
     const result: ScanBatchResult = { created: [], enqueued: 0 };
     for (const sourceType of SCAN_SOURCE_TYPES) {
@@ -952,6 +1040,23 @@ export class KnowledgeImprovementService {
   private async createTaskFromSignal(signal: Signal): Promise<TaskRow | null> {
     const resolved = await this.createOrFindTaskFromSignal(signal);
     return resolved.created ? resolved.task : null;
+  }
+
+  private async createOrFindTaskAndEnqueue(signal: Signal): Promise<void> {
+    const resolved = await this.createOrFindTaskFromSignal(signal);
+    if (resolved.task.status === "pending" || resolved.task.status === "failed") {
+      await this.enqueueGenerate([resolved.task.id]);
+    }
+  }
+
+  private immediateFeedbackDedupKey(
+    knowledgeBaseId: string,
+    triggerType: ImprovementTriggerType,
+    feedbackId: string,
+  ): string {
+    return createHash("sha256")
+      .update(`${knowledgeBaseId}:${triggerType}:${feedbackId}`)
+      .digest("hex");
   }
 
   private async createOrFindTaskFromSignal(signal: Signal): Promise<ResolvedTask> {

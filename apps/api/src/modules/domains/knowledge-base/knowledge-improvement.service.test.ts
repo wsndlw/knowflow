@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 
 import { BadRequestException } from "@nestjs/common";
@@ -62,6 +63,17 @@ type ServiceHarness = {
     drafts: CandidateDraft[],
   ) => Promise<void>;
   toTask: (row: TaskRow) => TaskRow;
+};
+
+type ImmediateFeedbackHarness = {
+  triggerFromAnswerFeedback: (feedbackId: string) => Promise<void>;
+  triggerFromItemFeedback: (feedbackId: string) => Promise<void>;
+  createOrFindTaskAndEnqueue: (signal: unknown) => Promise<void>;
+  findPreviousUserQuestion: (
+    conversationId: string,
+    beforeMessageId: string,
+    fallback: string,
+  ) => Promise<string>;
 };
 
 type AuthenticatedUserFixture = {
@@ -280,6 +292,117 @@ void describe("KnowledgeImprovementService.generateCandidate", () => {
   });
 });
 
+void describe("KnowledgeImprovementService immediate feedback triggers", () => {
+  void it("turns answer dislike feedback into an answer_dislike task signal", async () => {
+    const service = makeServiceWithSelectRows([
+      [
+        {
+          id: "feedback-1",
+          knowledgeBaseId: "kb-1",
+          messageId: "message-1",
+          conversationId: "conversation-1",
+          rating: "not_useful",
+          reason: "wrong",
+          correctionContent: null,
+          suggestedSource: null,
+          messageContent: "Old answer",
+          usedContext: [{ title: "Policy" }],
+        },
+      ],
+    ]) as unknown as ImmediateFeedbackHarness;
+    const signals: unknown[] = [];
+    service.findPreviousUserQuestion = () => Promise.resolve("How do I request leave?");
+    service.createOrFindTaskAndEnqueue = (signal) => {
+      signals.push(signal);
+      return Promise.resolve();
+    };
+
+    await service.triggerFromAnswerFeedback("feedback-1");
+
+    assert.equal(signals.length, 1);
+    assert.deepEqual(signals[0], {
+      knowledgeBaseId: "kb-1",
+      triggerType: "answer_dislike",
+      sourceMessageId: "message-1",
+      sourceFeedbackId: "feedback-1",
+      sourceQuestion: "How do I request leave?",
+      dedupKey: immediateFeedbackDedupKey("kb-1", "answer_dislike", "feedback-1"),
+      sourceContext: {
+        reason: "wrong",
+        correctionContent: null,
+        suggestedSource: null,
+        answerContent: "Old answer",
+        usedContext: [{ title: "Policy" }],
+      },
+    });
+  });
+
+  void it("ignores answer correction feedback without correction content", async () => {
+    const service = makeServiceWithSelectRows([
+      [
+        {
+          id: "feedback-1",
+          knowledgeBaseId: "kb-1",
+          messageId: "message-1",
+          conversationId: "conversation-1",
+          rating: "correction",
+          reason: null,
+          correctionContent: null,
+          suggestedSource: null,
+          messageContent: "Old answer",
+          usedContext: [],
+        },
+      ],
+    ]) as unknown as ImmediateFeedbackHarness;
+    let called = false;
+    service.createOrFindTaskAndEnqueue = () => {
+      called = true;
+      return Promise.resolve();
+    };
+
+    await service.triggerFromAnswerFeedback("feedback-1");
+
+    assert.equal(called, false);
+  });
+
+  void it("turns knowledge item dislikes into an item_dislike task signal", async () => {
+    const service = makeServiceWithSelectRows([
+      [
+        {
+          id: "feedback-2",
+          knowledgeBaseId: "kb-1",
+          knowledgeItemId: "item-1",
+          rating: "dislike",
+          title: "Leave policy",
+          content: "Employees must submit leave requests in the HR system.",
+          status: "published",
+        },
+      ],
+    ]) as unknown as ImmediateFeedbackHarness;
+    const signals: unknown[] = [];
+    service.createOrFindTaskAndEnqueue = (signal) => {
+      signals.push(signal);
+      return Promise.resolve();
+    };
+
+    await service.triggerFromItemFeedback("feedback-2");
+
+    assert.equal(signals.length, 1);
+    assert.deepEqual(signals[0], {
+      knowledgeBaseId: "kb-1",
+      triggerType: "item_dislike",
+      sourceMessageId: null,
+      sourceFeedbackId: "feedback-2",
+      sourceQuestion: "Leave policy",
+      dedupKey: immediateFeedbackDedupKey("kb-1", "item_dislike", "feedback-2"),
+      sourceContext: {
+        knowledgeItemId: "item-1",
+        content: "Employees must submit leave requests in the HR system.",
+      },
+    });
+  });
+});
+
 function makeService(
   options: {
     selectRows?: unknown[][];
@@ -333,6 +456,44 @@ function makeService(
   }
 
   return service;
+}
+
+function makeServiceWithSelectRows(selectRows: unknown[][]): KnowledgeImprovementService {
+  const mutableDb = db as unknown as MutableDb;
+  const originalSelect = mutableDb.select;
+  const service = makeService({ selectRows });
+
+  const restore = () => {
+    mutableDb.select = originalSelect;
+  };
+  const originalAnswerTrigger = service.triggerFromAnswerFeedback.bind(service);
+  service.triggerFromAnswerFeedback = async (...args) => {
+    try {
+      return await originalAnswerTrigger(...args);
+    } finally {
+      restore();
+    }
+  };
+  const originalItemTrigger = service.triggerFromItemFeedback.bind(service);
+  service.triggerFromItemFeedback = async (...args) => {
+    try {
+      return await originalItemTrigger(...args);
+    } finally {
+      restore();
+    }
+  };
+
+  return service;
+}
+
+function immediateFeedbackDedupKey(
+  knowledgeBaseId: string,
+  triggerType: string,
+  feedbackId: string,
+): string {
+  return createHash("sha256")
+    .update(`${knowledgeBaseId}:${triggerType}:${feedbackId}`)
+    .digest("hex");
 }
 
 function makeCandidateTask(overrides: Partial<TaskRow> = {}): TaskRow {

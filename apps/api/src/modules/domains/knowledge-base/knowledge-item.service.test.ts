@@ -10,6 +10,7 @@ import type { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import type { AnalyticsEventService } from "../analytics/analytics-event.service.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import type { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
+import type { KnowledgeImprovementService } from "./knowledge-improvement.service.js";
 import { KnowledgeItemService } from "./knowledge-item.service.js";
 
 type AccessStub = Pick<KnowledgeBaseAccessService, "canAccess" | "canManage"> & {
@@ -21,6 +22,22 @@ type LlmStub = Pick<AliyunLlmService, "embedTexts">;
 
 type AnalyticsStub = Pick<AnalyticsEventService, "recordSafe">;
 
+type InsertChain = {
+  values: (values: Record<string, unknown>) => {
+    returning: (selection: unknown) => Promise<unknown[]>;
+  };
+};
+
+type DeleteChain = {
+  where: (condition: unknown) => Promise<unknown[]>;
+};
+
+type TransactionClient = {
+  delete: (table: unknown) => DeleteChain;
+  insert: (table: unknown) => InsertChain;
+  update: (table: unknown) => UpdateChain;
+};
+
 type UpdateChain = {
   set: (values: Record<string, unknown>) => {
     where: (condition: unknown) => Promise<unknown[]>;
@@ -28,7 +45,12 @@ type UpdateChain = {
 };
 
 type MutableDb = {
+  transaction: <T>(callback: (tx: TransactionClient) => Promise<T>) => Promise<T>;
   update: (table: unknown) => UpdateChain;
+};
+
+type ImprovementStub = Pick<KnowledgeImprovementService, "triggerFromItemFeedback"> & {
+  calls: string[];
 };
 
 type KnowledgeItemMutationInternals = {
@@ -164,6 +186,78 @@ void describe("KnowledgeItemService archive semantics", () => {
   });
 });
 
+void describe("KnowledgeItemService feedback immediate improvement", () => {
+  void it("triggers immediate improvement for new dislikes", async () => {
+    const improvement = makeImprovementStub();
+    const row = makeKnowledgeItemRow({ userFeedback: null });
+    const service = makeServiceHarness(makeAccessStub(), row, { improvement });
+    const { inserts, restore } = captureFeedbackTransaction({
+      createdFeedbackId: "00000000-0000-0000-0000-000000000700",
+    });
+
+    try {
+      const result = await service.setFeedback(row.id, { rating: "dislike" }, user);
+
+      assert.equal(result.id, row.id);
+      assert.equal(improvement.calls.length, 1);
+      assert.equal(improvement.calls[0], "00000000-0000-0000-0000-000000000700");
+      assert.equal(inserts[0]?.["rating"], "dislike");
+    } finally {
+      restore();
+    }
+  });
+
+  void it("does not trigger immediate improvement for likes or repeated dislikes", async () => {
+    const likeImprovement = makeImprovementStub();
+    const likeRow = makeKnowledgeItemRow({ userFeedback: null });
+    const likeService = makeServiceHarness(makeAccessStub(), likeRow, {
+      improvement: likeImprovement,
+    });
+    const likeDb = captureFeedbackTransaction({
+      createdFeedbackId: "00000000-0000-0000-0000-000000000701",
+    });
+    try {
+      await likeService.setFeedback(likeRow.id, { rating: "like" }, user);
+      assert.equal(likeImprovement.calls.length, 0);
+    } finally {
+      likeDb.restore();
+    }
+
+    const repeatedDislikeImprovement = makeImprovementStub();
+    const repeatedDislikeRow = makeKnowledgeItemRow({ userFeedback: "dislike" });
+    const repeatedDislikeService = makeServiceHarness(makeAccessStub(), repeatedDislikeRow, {
+      improvement: repeatedDislikeImprovement,
+    });
+    const repeatedDislikeDb = captureFeedbackTransaction({
+      createdFeedbackId: "00000000-0000-0000-0000-000000000702",
+    });
+    try {
+      await repeatedDislikeService.setFeedback(repeatedDislikeRow.id, { rating: "dislike" }, user);
+      assert.equal(repeatedDislikeImprovement.calls.length, 0);
+    } finally {
+      repeatedDislikeDb.restore();
+    }
+  });
+
+  void it("does not fail feedback submission when immediate improvement enqueue fails", async () => {
+    const improvement = makeImprovementStub(new Error("queue unavailable"));
+    const row = makeKnowledgeItemRow({ userFeedback: null });
+    const service = makeServiceHarness(makeAccessStub(), row, { improvement });
+    const { restore } = captureFeedbackTransaction({
+      createdFeedbackId: "00000000-0000-0000-0000-000000000703",
+    });
+
+    try {
+      const result = await service.setFeedback(row.id, { rating: "dislike" }, user);
+
+      assert.equal(result.id, row.id);
+      assert.equal(improvement.calls.length, 1);
+    } finally {
+      restore();
+    }
+  });
+});
+
 function buildListConditionSql(
   query: Parameters<KnowledgeItemService["listByKnowledgeBase"]>[1],
   canManage: boolean,
@@ -204,20 +298,88 @@ async function captureUpdateValues(
   return updateValues;
 }
 
-function makeServiceHarness(access: AccessStub, row: KnowledgeItemRow): KnowledgeItemService {
-  const service = makeService(access);
+function makeServiceHarness(
+  access: AccessStub,
+  row: KnowledgeItemRow,
+  options: { improvement?: ImprovementStub } = {},
+): KnowledgeItemService {
+  const service = makeService(access, options);
   const internals = service as unknown as KnowledgeItemMutationInternals;
   internals.findRow = () => Promise.resolve(row);
   internals.get = () => Promise.resolve(makeKnowledgeItem(row));
   return service;
 }
 
-function makeService(access: AccessStub): KnowledgeItemService {
+function makeService(
+  access: AccessStub,
+  options: { improvement?: ImprovementStub } = {},
+): KnowledgeItemService {
   return new KnowledgeItemService(
     access as unknown as KnowledgeBaseAccessService,
     makeLlmStub() as unknown as AliyunLlmService,
     makeAnalyticsStub() as unknown as AnalyticsEventService,
+    (options.improvement ?? {}) as KnowledgeImprovementService,
   );
+}
+
+function captureFeedbackTransaction(options: { createdFeedbackId: string }) {
+  const mutableDb = db as unknown as MutableDb;
+  const originalTransaction = mutableDb.transaction;
+  const inserts: Record<string, unknown>[] = [];
+
+  mutableDb.transaction = async (callback) => {
+    const tx: TransactionClient = {
+      delete() {
+        return {
+          where() {
+            return Promise.resolve([]);
+          },
+        };
+      },
+      insert() {
+        return {
+          values(values: Record<string, unknown>) {
+            inserts.push(values);
+            return {
+              returning() {
+                return Promise.resolve([{ id: options.createdFeedbackId }]);
+              },
+            };
+          },
+        };
+      },
+      update() {
+        return {
+          set() {
+            return {
+              where() {
+                return Promise.resolve([]);
+              },
+            };
+          },
+        };
+      },
+    };
+    return callback(tx);
+  };
+
+  return {
+    inserts,
+    restore: () => {
+      mutableDb.transaction = originalTransaction;
+    },
+  };
+}
+
+function makeImprovementStub(error?: Error): ImprovementStub {
+  const calls: string[] = [];
+  return {
+    calls,
+    triggerFromItemFeedback: (feedbackId: string) => {
+      calls.push(feedbackId);
+      return error === undefined ? Promise.resolve() : Promise.reject(error);
+    },
+  };
 }
 
 function makeAccessStub(options: { canAccess?: boolean; canManage?: boolean } = {}): AccessStub {

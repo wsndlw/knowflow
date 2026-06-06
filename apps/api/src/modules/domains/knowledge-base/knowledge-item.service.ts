@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import {
@@ -51,6 +52,7 @@ import {
 import { AnalyticsEventService } from "../analytics/analytics-event.service.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
+import { KnowledgeImprovementService } from "./knowledge-improvement.service.js";
 
 type UploadedFile = Express.Multer.File;
 
@@ -89,6 +91,8 @@ type TagRow = {
 
 @Injectable()
 export class KnowledgeItemService {
+  private readonly logger = new Logger(KnowledgeItemService.name);
+
   constructor(
     @Inject(KnowledgeBaseAccessService)
     private readonly accessService: KnowledgeBaseAccessService,
@@ -96,6 +100,8 @@ export class KnowledgeItemService {
     private readonly llm: AliyunLlmService,
     @Inject(AnalyticsEventService)
     private readonly analytics: AnalyticsEventService,
+    @Inject(KnowledgeImprovementService)
+    private readonly improvementService: KnowledgeImprovementService,
   ) {}
 
   async listByKnowledgeBase(
@@ -439,8 +445,9 @@ export class KnowledgeItemService {
     }
     await this.ensureCanReadRow(row, user);
 
-    await db.transaction(async (tx) => {
+    const feedbackIdToImprove = await db.transaction(async (tx): Promise<string | null> => {
       const previousRating = row.userFeedback;
+      let createdDislikeFeedbackId: string | null = null;
       if (previousRating !== null) {
         await tx
           .delete(knowledgeItemFeedback)
@@ -453,11 +460,17 @@ export class KnowledgeItemService {
       }
 
       if (input.rating !== null) {
-        await tx.insert(knowledgeItemFeedback).values({
-          knowledgeItemId: id,
-          userId: user.id,
-          rating: input.rating,
-        });
+        const [createdFeedback] = await tx
+          .insert(knowledgeItemFeedback)
+          .values({
+            knowledgeItemId: id,
+            userId: user.id,
+            rating: input.rating,
+          })
+          .returning({ id: knowledgeItemFeedback.id });
+        if (input.rating === "dislike" && previousRating !== "dislike") {
+          createdDislikeFeedbackId = createdFeedback?.id ?? null;
+        }
       }
 
       const likeDelta = (input.rating === "like" ? 1 : 0) - (previousRating === "like" ? 1 : 0);
@@ -473,6 +486,8 @@ export class KnowledgeItemService {
           })
           .where(eq(knowledgeItems.id, id));
       }
+
+      return createdDislikeFeedbackId;
     });
 
     await this.analytics.recordSafe({
@@ -486,7 +501,23 @@ export class KnowledgeItemService {
       },
     });
 
+    if (feedbackIdToImprove !== null) {
+      await this.triggerImmediateImprovement(feedbackIdToImprove, id);
+    }
+
     return this.get(id, user, { incrementView: false });
+  }
+
+  private async triggerImmediateImprovement(feedbackId: string, knowledgeItemId: string): Promise<void> {
+    try {
+      await this.improvementService.triggerFromItemFeedback(feedbackId);
+    } catch (error) {
+      this.logger.warn(
+        `Knowledge item ${knowledgeItemId} disliked, but immediate improvement enqueue failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private buildListCondition(

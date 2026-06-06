@@ -220,24 +220,29 @@ void describe("DepartmentService", () => {
     }
   });
 
-  void it("limits department admins to users already in their own department", async () => {
+  void it("lets department admins add users from other departments into their own", async () => {
     const service = makeService({
       ensureDepartmentExists: () => Promise.resolve(),
+      // 目标用户当前属于其他部门（...030），部门管理员管辖的是 ...020。
       findUser: () =>
         Promise.resolve(
           makeUserRow({ departmentId: "00000000-0000-0000-0000-000000000030" }),
         ),
     });
+    const { updates, restore } = captureUserUpdates();
 
-    await assert.rejects(
-      () =>
-        service.assignUserDepartment(
-          "00000000-0000-0000-0000-000000000030",
-          { departmentId: departmentAdmin.departmentId },
-          departmentAdmin,
-        ),
-      ForbiddenException,
-    );
+    try {
+      await service.addMember(
+        departmentAdmin.departmentId,
+        "00000000-0000-0000-0000-000000000040",
+        departmentAdmin,
+      );
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0]?.["departmentId"], departmentAdmin.departmentId);
+    } finally {
+      restore();
+    }
   });
 
   void it("rejects department admins managing other departments", async () => {

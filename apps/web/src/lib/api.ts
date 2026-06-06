@@ -72,7 +72,16 @@ export async function parseApiError(response: Response): Promise<string> {
   }
 }
 
+// 刷新「单飞 + 短期成功缓存」：
+// - 单飞：并发的 401 共用同一个在途刷新 Promise。
+// - 短期成功缓存：一次刷新成功后的 REFRESH_SUCCESS_TTL_MS 窗口内，后续 401 直接复用上次成功结果，
+//   不再发起新的 /auth/refresh。后端的 refresh token 轮换 + 复用检测会因「顺序双刷新」用到已轮换的旧 token 而吊销整条会话；
+//   深层页冷加载是「第1波请求→刷新成功→清锁→第2波请求稍后才 401→第二次刷新带旧 token」的顺序模式，故必跳登录。
+//   缓存成功结果可消除这次多余的第二次刷新。失败不缓存（要让下一次 401 真正重试刷新）。
+const REFRESH_SUCCESS_TTL_MS = 5000;
+
 let refreshPromise: Promise<boolean> | null = null;
+let lastRefreshSuccessAt = 0;
 
 async function doRefreshAccess(): Promise<boolean> {
   try {
@@ -87,13 +96,29 @@ async function doRefreshAccess(): Promise<boolean> {
 }
 
 export async function refreshAccess(): Promise<boolean> {
+  // 窗口内刚成功刷新过 → 复用成功结果，不再发 /auth/refresh（避免顺序双刷新触发后端复用检测）。
+  if (lastRefreshSuccessAt > 0 && Date.now() - lastRefreshSuccessAt < REFRESH_SUCCESS_TTL_MS) {
+    return true;
+  }
   if (refreshPromise) {
     return refreshPromise;
   }
-  refreshPromise = doRefreshAccess().finally(() => {
-    refreshPromise = null;
-  });
+  refreshPromise = doRefreshAccess()
+    .then((ok) => {
+      // 仅缓存成功；失败不记时间戳，让后续 401 仍能真正重试。
+      lastRefreshSuccessAt = ok ? Date.now() : 0;
+      return ok;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
   return refreshPromise;
+}
+
+// 登出 / 鉴权失败时调用：清掉成功缓存，避免登出后窗口内的 401 被误判为「已刷新」。
+export function resetRefreshState(): void {
+  lastRefreshSuccessAt = 0;
+  refreshPromise = null;
 }
 
 export class ApiError extends Error {

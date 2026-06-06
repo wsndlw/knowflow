@@ -47,8 +47,10 @@ export default function AnalyticsPage() {
   // 守卫之后不得再调用 Hooks —— 真正的页面逻辑放在 AnalyticsContent 内。
   if (user?.platformRole !== "super_admin") {
     return (
-      <div className="mx-auto max-w-5xl px-6 py-8">
+      <div className="flex-1 min-h-0 overflow-y-auto w-full bg-background">
+        <div className="mx-auto max-w-5xl px-6 py-8">
         <EmptyState title="无权访问" description="此页面仅超级管理员可见。" />
+      </div>
       </div>
     );
   }
@@ -116,7 +118,8 @@ function AnalyticsContent() {
 
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-6">
+    <div className="flex-1 min-h-0 overflow-y-auto w-full bg-background">
+      <div className="mx-auto max-w-5xl px-6 py-6">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-ink">系统统计</h1>
         <div className="w-full sm:w-80">
@@ -320,6 +323,7 @@ function AnalyticsContent() {
 
         </div>
       )}
+    </div>
     </div>
   );
 }

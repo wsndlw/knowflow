@@ -95,7 +95,7 @@ export default function HomePage() {
   }, [canViewOverview]);
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 min-h-0 overflow-y-auto w-full bg-background">
       <div className="mx-auto max-w-6xl px-8 py-7">
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>

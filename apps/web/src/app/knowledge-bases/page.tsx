@@ -389,7 +389,7 @@ function CardView({ items, onRefresh, showToast }: { items: KnowledgeBaseListIte
                 <Link href={`/knowledge-bases/${item.id}?tab=knowledge-items`}>知识条目</Link>
               </Button>
               {item.canManage ? (
-                <Button asChild variant="outline" size="xs" className="ml-auto">
+                <Button asChild variant="primary" size="xs" className="ml-auto">
                   <Link href={`/knowledge-bases/${item.id}?mode=manage`}>管理</Link>
                 </Button>
               ) : null}

@@ -63,9 +63,26 @@ export function useAgentChat({
     };
   }, [agentId]);
 
-  // Auto-scroll when messages change
+  // Auto-scroll when messages change —— 只滚动对话消息容器自身，
+  // 不能用 listEndRef.scrollIntoView：它会滚动所有可滚动祖先(含外层 main)，
+  // 表现为「整个布局在动」，且滚动位置残留会被常驻 main 带到其他页。
   useEffect(() => {
-    listEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const end = listEndRef.current;
+    if (end === null) {
+      return;
+    }
+    // 找到最近的可滚动祖先(对话消息区 overflow-y-auto)，只滚它到底部。
+    let container: HTMLElement | null = end.parentElement;
+    while (container !== null) {
+      const style = window.getComputedStyle(container);
+      if (style.overflowY === "auto" || style.overflowY === "scroll") {
+        break;
+      }
+      container = container.parentElement;
+    }
+    if (container !== null) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages]);
 
   const loadMessages = useCallback(async () => {

@@ -40,6 +40,7 @@ import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import { AnalyticsEventService } from "../analytics/analytics-event.service.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "../knowledge-base/knowledge-base-access.service.js";
+import { KnowledgeImprovementService } from "../knowledge-base/knowledge-improvement.service.js";
 import { RetrievalService } from "../retrieval/retrieval.service.js";
 import type { RetrievalContextItem } from "../retrieval/retrieval.types.js";
 import {
@@ -92,6 +93,8 @@ export class AgentService {
     private readonly retrievalService: RetrievalService,
     @Inject(AnalyticsEventService)
     private readonly analytics: AnalyticsEventService,
+    @Inject(KnowledgeImprovementService)
+    private readonly improvementService: KnowledgeImprovementService,
   ) {}
 
   async listAgents(
@@ -288,17 +291,20 @@ export class AgentService {
       .where(eq(messageCitations.messageId, message.id))
       .limit(1);
 
-    await db.insert(answerFeedback).values({
-      userId: user.id,
-      knowledgeBaseId: firstCitation?.knowledgeBaseId ?? null,
-      conversationId: conversation.id,
-      messageId: message.id,
-      rating: input.rating,
-      reason: input.reason ?? null,
-      correctionContent: input.correctionContent ?? null,
-      suggestedSource: input.suggestedSource ?? null,
-      suggestedIngestion: input.suggestedIngestion ?? false,
-    });
+    const [createdFeedback] = await db
+      .insert(answerFeedback)
+      .values({
+        userId: user.id,
+        knowledgeBaseId: firstCitation?.knowledgeBaseId ?? null,
+        conversationId: conversation.id,
+        messageId: message.id,
+        rating: input.rating,
+        reason: input.reason ?? null,
+        correctionContent: input.correctionContent ?? null,
+        suggestedSource: input.suggestedSource ?? null,
+        suggestedIngestion: input.suggestedIngestion ?? false,
+      })
+      .returning({ id: answerFeedback.id });
 
     await this.analytics.recordSafe({
       user,
@@ -313,6 +319,26 @@ export class AgentService {
         reason: input.reason ?? null,
       },
     });
+
+    if (createdFeedback !== undefined && this.shouldTriggerImmediateImprovement(input)) {
+      await this.triggerImmediateImprovement(createdFeedback.id, message.id);
+    }
+  }
+
+  private shouldTriggerImmediateImprovement(input: AnswerFeedbackRequest): boolean {
+    return input.rating === "not_useful" || input.rating === "correction";
+  }
+
+  private async triggerImmediateImprovement(feedbackId: string, messageId: string): Promise<void> {
+    try {
+      await this.improvementService.triggerFromAnswerFeedback(feedbackId);
+    } catch (error) {
+      this.logger.warn(
+        `Answer message ${messageId} received feedback, but immediate improvement enqueue failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private buildGraph() {

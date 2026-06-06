@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { NotFoundException } from "@nestjs/common";
-import { agentKnowledgeBases, agents, conversations, db, knowledgeBases } from "@knowflow/db";
+import {
+  agentKnowledgeBases,
+  agents,
+  conversations,
+  db,
+  knowledgeBases,
+} from "@knowflow/db";
 import type { ConversationListQuery } from "@knowflow/shared";
 import { and, eq, type SQL } from "drizzle-orm";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
+import type { KnowledgeImprovementService } from "../knowledge-base/knowledge-improvement.service.js";
 import { AgentService } from "./agent.service.js";
 import type { AgentState } from "./agent.types.js";
 
@@ -43,7 +50,14 @@ type UpdateChain = {
   };
 };
 
+type InsertChain = {
+  values: (values: Record<string, unknown>) => {
+    returning: (selection: unknown) => Promise<unknown[]>;
+  };
+};
+
 type MutableDb = {
+  insert: (table: unknown) => InsertChain;
   select: (selection?: unknown) => SelectChain;
   update: (table: unknown) => UpdateChain;
 };
@@ -68,6 +82,15 @@ type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 type LlmStub = {
   streamedMessages: ChatMessage[];
   streamChat: (input: { messages: ChatMessage[] }) => AsyncIterable<{ delta: string }>;
+};
+
+type AnalyticsStub = {
+  calls: unknown[];
+  recordSafe: (event: unknown) => Promise<void>;
+};
+
+type ImprovementStub = Pick<KnowledgeImprovementService, "triggerFromAnswerFeedback"> & {
+  calls: string[];
 };
 
 const user: AuthenticatedUser = {
@@ -96,6 +119,7 @@ function serviceWithAccessCondition(): AgentServiceInternals {
     } as unknown as ConstructorParameters<typeof AgentService>[1],
     {} as ConstructorParameters<typeof AgentService>[2],
     {} as ConstructorParameters<typeof AgentService>[3],
+    {} as KnowledgeImprovementService,
   ) as unknown as AgentServiceInternals;
 }
 
@@ -108,6 +132,7 @@ function serviceWithoutAccessCondition(): AgentServiceInternals {
     } as unknown as ConstructorParameters<typeof AgentService>[1],
     {} as ConstructorParameters<typeof AgentService>[2],
     {} as ConstructorParameters<typeof AgentService>[3],
+    {} as KnowledgeImprovementService,
   ) as unknown as AgentServiceInternals;
 }
 
@@ -377,7 +402,99 @@ function makeService(): AgentService {
     } as unknown as ConstructorParameters<typeof AgentService>[1],
     {} as ConstructorParameters<typeof AgentService>[2],
     {} as ConstructorParameters<typeof AgentService>[3],
+    {} as KnowledgeImprovementService,
   );
+}
+
+function serviceWithFeedbackDeps(
+  analytics: AnalyticsStub,
+  improvement: ImprovementStub,
+): AgentService {
+  return new AgentService(
+    {} as ConstructorParameters<typeof AgentService>[0],
+    {
+      buildAccessCondition: () => undefined,
+      canAccess: () => Promise.resolve(true),
+    } as unknown as ConstructorParameters<typeof AgentService>[1],
+    {} as ConstructorParameters<typeof AgentService>[2],
+    analytics as unknown as ConstructorParameters<typeof AgentService>[3],
+    improvement as unknown as KnowledgeImprovementService,
+  );
+}
+
+function captureAnswerFeedbackDb(options: { createdFeedbackId: string }) {
+  const mutableDb = db as unknown as MutableDb;
+  const originalSelect = mutableDb.select;
+  const originalInsert = mutableDb.insert;
+  const selectRows = [
+    [
+      {
+        id: "00000000-0000-0000-0000-000000000600",
+        conversationId,
+        role: "assistant",
+      },
+    ],
+    [{ knowledgeBaseId: "00000000-0000-0000-0000-000000000500" }],
+  ];
+  const inserts: Record<string, unknown>[] = [];
+
+  mutableDb.select = () => {
+    const chain: SelectChain = {
+      from() {
+        return chain;
+      },
+      where() {
+        return chain;
+      },
+      orderBy() {
+        return Promise.resolve(selectRows.shift() ?? []);
+      },
+      limit() {
+        return Promise.resolve(selectRows.shift() ?? []);
+      },
+    };
+    return chain;
+  };
+  mutableDb.insert = () => ({
+    values(values: Record<string, unknown>) {
+      inserts.push(values);
+      return {
+        returning() {
+          return Promise.resolve([{ id: options.createdFeedbackId }]);
+        },
+      };
+    },
+  });
+
+  return {
+    inserts,
+    restore: () => {
+      mutableDb.select = originalSelect;
+      mutableDb.insert = originalInsert;
+    },
+  };
+}
+
+function makeAnalyticsStub(): AnalyticsStub {
+  const calls: unknown[] = [];
+  return {
+    calls,
+    recordSafe: (event: unknown) => {
+      calls.push(event);
+      return Promise.resolve();
+    },
+  };
+}
+
+function makeImprovementStub(error?: Error): ImprovementStub {
+  const calls: string[] = [];
+  return {
+    calls,
+    triggerFromAnswerFeedback: (feedbackId: string) => {
+      calls.push(feedbackId);
+      return error === undefined ? Promise.resolve() : Promise.reject(error);
+    },
+  };
 }
 
 function makeConversationRow(overrides: Partial<ConversationRow> = {}): ConversationRow {
@@ -481,12 +598,107 @@ void describe("AgentService conversation summary enqueue", () => {
   });
 });
 
+void describe("AgentService answer feedback immediate improvement", () => {
+  void it("triggers immediate improvement for answer dislikes", async () => {
+    const analytics = makeAnalyticsStub();
+    const improvement = makeImprovementStub();
+    const service = serviceWithFeedbackDeps(analytics, improvement);
+    Object.assign(service as object, {
+      findConversationForUser: () => Promise.resolve(makeConversationRow()),
+    } satisfies Pick<AgentServiceInternals, "findConversationForUser">);
+    const { inserts, restore } = captureAnswerFeedbackDb({
+      createdFeedbackId: "00000000-0000-0000-0000-000000000700",
+    });
+
+    try {
+      await service.createFeedback(
+        "00000000-0000-0000-0000-000000000600",
+        { rating: "not_useful", reason: "wrong" },
+        user,
+      );
+
+      assert.equal(improvement.calls.length, 1);
+      assert.equal(improvement.calls[0], "00000000-0000-0000-0000-000000000700");
+      assert.equal(inserts[0]?.["rating"], "not_useful");
+      assert.equal(analytics.calls.length, 1);
+    } finally {
+      restore();
+    }
+  });
+
+  void it("triggers immediate improvement for corrections but not useful feedback", async () => {
+    const correctionImprovement = makeImprovementStub();
+    const correctionService = serviceWithFeedbackDeps(makeAnalyticsStub(), correctionImprovement);
+    Object.assign(correctionService as object, {
+      findConversationForUser: () => Promise.resolve(makeConversationRow()),
+    } satisfies Pick<AgentServiceInternals, "findConversationForUser">);
+    const correctionDb = captureAnswerFeedbackDb({
+      createdFeedbackId: "00000000-0000-0000-0000-000000000701",
+    });
+    try {
+      await correctionService.createFeedback(
+        "00000000-0000-0000-0000-000000000600",
+        { rating: "correction", correctionContent: "Use the HR portal." },
+        user,
+      );
+      assert.equal(correctionImprovement.calls.length, 1);
+    } finally {
+      correctionDb.restore();
+    }
+
+    const usefulImprovement = makeImprovementStub();
+    const usefulService = serviceWithFeedbackDeps(makeAnalyticsStub(), usefulImprovement);
+    Object.assign(usefulService as object, {
+      findConversationForUser: () => Promise.resolve(makeConversationRow()),
+    } satisfies Pick<AgentServiceInternals, "findConversationForUser">);
+    const usefulDb = captureAnswerFeedbackDb({
+      createdFeedbackId: "00000000-0000-0000-0000-000000000702",
+    });
+    try {
+      await usefulService.createFeedback(
+        "00000000-0000-0000-0000-000000000600",
+        { rating: "useful" },
+        user,
+      );
+      assert.equal(usefulImprovement.calls.length, 0);
+    } finally {
+      usefulDb.restore();
+    }
+  });
+
+  void it("does not fail feedback creation when immediate improvement enqueue fails", async () => {
+    const analytics = makeAnalyticsStub();
+    const improvement = makeImprovementStub(new Error("queue unavailable"));
+    const service = serviceWithFeedbackDeps(analytics, improvement);
+    Object.assign(service as object, {
+      findConversationForUser: () => Promise.resolve(makeConversationRow()),
+    } satisfies Pick<AgentServiceInternals, "findConversationForUser">);
+    const { restore } = captureAnswerFeedbackDb({
+      createdFeedbackId: "00000000-0000-0000-0000-000000000703",
+    });
+
+    try {
+      await service.createFeedback(
+        "00000000-0000-0000-0000-000000000600",
+        { rating: "not_useful" },
+        user,
+      );
+
+      assert.equal(improvement.calls.length, 1);
+      assert.equal(analytics.calls.length, 1);
+    } finally {
+      restore();
+    }
+  });
+});
+
 function serviceWithGeneration(llm: LlmStub): AgentServiceGenerationInternals {
   return new AgentService(
     llm as unknown as ConstructorParameters<typeof AgentService>[0],
     {} as ConstructorParameters<typeof AgentService>[1],
     {} as ConstructorParameters<typeof AgentService>[2],
     {} as ConstructorParameters<typeof AgentService>[3],
+    {} as KnowledgeImprovementService,
   ) as unknown as AgentServiceGenerationInternals;
 }
 
@@ -496,6 +708,7 @@ function serviceWithQueue(): AgentServiceQueueInternals {
     {} as ConstructorParameters<typeof AgentService>[1],
     {} as ConstructorParameters<typeof AgentService>[2],
     {} as ConstructorParameters<typeof AgentService>[3],
+    {} as KnowledgeImprovementService,
   ) as unknown as AgentServiceQueueInternals;
 }
 

@@ -92,8 +92,10 @@ function KnowledgeBaseDetailContent() {
         id={`tabpanel-${activeTab}`}
         aria-labelledby={`tab-${activeTab}`}
         className={cn(
-          "flex-1 flex flex-col min-h-0 mx-auto w-full max-w-5xl px-6 pb-6 mt-6",
-          activeTab === "chat" ? "" : "overflow-y-auto"
+          "flex-1 flex flex-col min-h-0 w-full",
+          activeTab === "chat"
+            ? "overflow-hidden"
+            : "mx-auto max-w-5xl px-6 pb-6 mt-6 overflow-y-auto"
         )}
       >
         {activeTab === "overview" && overview ? (

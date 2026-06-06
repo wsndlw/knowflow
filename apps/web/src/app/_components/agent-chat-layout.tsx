@@ -129,7 +129,7 @@ export function AgentChatLayout({
   }
 
   return (
-    <div className="flex flex-1 h-full min-h-0 min-w-0">
+    <div className="flex flex-1 min-h-0 min-w-0">
       {/* 左:会话列表 */}
       <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-neutral-50">
         <div className="flex items-center justify-between px-4 py-4">

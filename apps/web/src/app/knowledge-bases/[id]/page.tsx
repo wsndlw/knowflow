@@ -66,7 +66,7 @@ function KnowledgeBaseDetailContent() {
 
   if (error || !kb) {
     return (
-      <div className="flex-1 overflow-y-auto bg-background">
+      <div className="flex-1 min-h-0 overflow-y-auto bg-background w-full">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <p className="rounded-md bg-danger-bg px-4 py-3 text-sm text-danger">
           {error ?? "知识库不存在"}
@@ -77,7 +77,7 @@ function KnowledgeBaseDetailContent() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-background w-full">
       <div className="shrink-0 px-6 pt-6 mx-auto w-full max-w-5xl flex flex-col gap-6">
         <DetailHeader kb={kb} />
         <TabList
@@ -148,7 +148,7 @@ function KnowledgeBaseDetailContent() {
 
 function PageSkeleton() {
   return (
-    <div className="flex-1 overflow-y-auto bg-background">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-background w-full">
       <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-10 w-full" />

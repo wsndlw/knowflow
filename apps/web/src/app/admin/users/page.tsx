@@ -165,7 +165,7 @@ function UsersPageContent() {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto w-full bg-background">
-      <div className="mx-auto max-w-6xl px-6 py-6">
+      <div className="mx-auto max-w-5xl px-6 py-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">用户管理</h1>
         <Button onClick={() => setCreateDialogOpen(true)}>新建用户</Button>

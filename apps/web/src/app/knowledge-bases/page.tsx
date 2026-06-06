@@ -64,6 +64,7 @@ export default function KnowledgeBasesPage() {
   const [items, setItems] = useState<KnowledgeBaseListItem[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [filters, setFilters] = useState<Filters>({ visibility: "", keyword: "" });
+  const [searchKeyword, setSearchKeyword] = useState("");
   const [view, setView] = useState<ViewMode>("card");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +102,13 @@ export default function KnowledgeBasesPage() {
   useEffect(() => {
     void loadKnowledgeBases();
   }, [loadKnowledgeBases]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFilters((current) => ({ ...current, keyword: searchKeyword }));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchKeyword]);
 
   useEffect(() => {
     if (!canCreate) {
@@ -185,10 +193,8 @@ export default function KnowledgeBasesPage() {
             <Input
               aria-label="搜索知识库"
               placeholder="搜索知识库名称…"
-              value={filters.keyword}
-              onChange={(event) =>
-                setFilters((current) => ({ ...current, keyword: event.target.value }))
-              }
+              value={searchKeyword}
+              onChange={(event) => setSearchKeyword(event.target.value)}
             />
           </div>
           <div className="ml-auto flex items-center gap-1 rounded-md border border-border bg-surface p-0.5">

@@ -165,6 +165,34 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
         title="改进任务审批"
         description="审核 AI 生成的知识条目候选"
         className="max-w-2xl"
+        footer={
+          selectedTask ? (
+            <div className="flex flex-col w-full gap-3">
+              {selectedTask.status === "candidate_ready" ? (
+                <>
+                  <Input
+                    placeholder="驳回原因（驳回时必填）"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="destructive" onClick={() => void handleReject(selectedTask)} loading={isRejecting}>
+                      驳回
+                    </Button>
+                    <Button onClick={() => void handleApprove(selectedTask)} loading={isApproving}>
+                      通过并发布
+                    </Button>
+                  </div>
+                </>
+              ) : null}
+              {selectedTask.status === "rejected" ? (
+                <div className="text-sm text-danger bg-danger-bg px-3 py-2 rounded-md w-full text-left">
+                  已驳回：{selectedTask.reviewNote}
+                </div>
+              ) : null}
+            </div>
+          ) : undefined
+        }
       >
         {selectedTask ? (
           <div className="flex flex-col gap-5 mt-2">
@@ -193,29 +221,6 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
               <p className="text-sm text-ink-muted leading-relaxed">{selectedTask.aiReasoning ?? "无"}</p>
             </div>
 
-            {selectedTask.status === "candidate_ready" ? (
-              <div className="flex flex-col gap-3 pt-4 border-t border-border">
-                <Input
-                  placeholder="驳回原因（驳回时必填）"
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                />
-                <div className="flex justify-end gap-2">
-                  <Button variant="destructive" onClick={() => void handleReject(selectedTask)} loading={isRejecting}>
-                    驳回
-                  </Button>
-                  <Button onClick={() => void handleApprove(selectedTask)} loading={isApproving}>
-                    通过并发布
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
-            {selectedTask.status === "rejected" ? (
-              <div className="text-sm text-danger bg-danger-bg px-3 py-2 rounded-md">
-                已驳回：{selectedTask.reviewNote}
-              </div>
-            ) : null}
           </div>
         ) : null}
       </Dialog>

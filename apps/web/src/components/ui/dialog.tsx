@@ -31,15 +31,15 @@ function Dialog(props: React.ComponentProps<typeof DialogPrimitive.Root> | Legac
           }
         }}
       >
-        <DialogContent className={className}>
+        <DialogContent className={cn("flex flex-col", className)}>
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {description !== undefined ? (
               <DialogDescription>{description}</DialogDescription>
             ) : null}
           </DialogHeader>
-          <div>{children}</div>
-          {footer !== undefined ? <DialogFooter>{footer}</DialogFooter> : null}
+          <div className="flex-1 overflow-y-auto pr-2 -mr-2 min-h-0">{children}</div>
+          {footer !== undefined ? <DialogFooter className="shrink-0">{footer}</DialogFooter> : null}
         </DialogContent>
       </DialogPrimitive.Root>
     )
@@ -96,7 +96,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
+          "fixed top-[50%] left-[50%] z-50 flex flex-col w-full max-w-[calc(100%-2rem)] max-h-[85vh] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
           className
         )}
         {...props}

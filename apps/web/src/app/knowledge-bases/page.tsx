@@ -380,7 +380,7 @@ function CardView({ items, onRefresh, showToast }: { items: KnowledgeBaseListIte
                 </Button>
               ) : null}
               <Button asChild variant="outline" size="xs">
-                <Link href={`/knowledge-bases/${item.id}?tab=agents`}>专家 Agent</Link>
+                <Link href={`/knowledge-bases/${item.id}?tab=chat`}>专家 Agent</Link>
               </Button>
               <Button asChild variant="outline" size="xs">
                 <Link href={`/knowledge-bases/${item.id}?tab=documents`}>文档</Link>
@@ -388,6 +388,11 @@ function CardView({ items, onRefresh, showToast }: { items: KnowledgeBaseListIte
               <Button asChild variant="outline" size="xs">
                 <Link href={`/knowledge-bases/${item.id}?tab=knowledge-items`}>知识条目</Link>
               </Button>
+              {item.canManage ? (
+                <Button asChild variant="primary" size="xs" className="ml-auto">
+                  <Link href={`/knowledge-bases/${item.id}?mode=manage`}>管理</Link>
+                </Button>
+              ) : null}
             </div>
           </Card>
         );

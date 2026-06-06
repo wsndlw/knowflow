@@ -21,7 +21,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { apiUrl, getCsrfToken, refreshAccess } from "../lib/api";
+import { apiUrl, getCsrfToken, refreshAccess, resetRefreshState } from "../lib/api";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
@@ -140,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       credentials: "include",
     });
+    resetRefreshState();
     setUser(null);
     setStatus("unauthenticated");
     router.replace("/login");

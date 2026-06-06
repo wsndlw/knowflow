@@ -204,7 +204,9 @@ export class DepartmentService {
       })
       .from(users)
       .innerJoin(departments, eq(departments.id, users.departmentId))
-      .where(user.platformRole === "super_admin" ? undefined : eq(users.departmentId, user.departmentId))
+      // 管理员（含部门管理员）均可看到全部用户，以便从中挑选成员加入自己管辖的部门。
+      // 注意：能「看到」不等于能「操作」——实际能把谁加进哪个部门由
+      // ensureCanAssignUserToDepartment / ensureCanManageDepartment 把关。
       .orderBy(asc(users.name), asc(users.username));
 
     return { items: rows.map((row) => this.toUserOption(row)) };
@@ -260,17 +262,13 @@ export class DepartmentService {
     departmentId: string,
     user: AuthenticatedUser,
   ): Promise<AdminUserRow> {
+    // 目标部门必须是当前管理员可管辖的部门（超管不限；部门管理员限本部门）。
+    // 只要目标部门归他管，就允许把任意用户加入——无论该用户当前在哪个部门。
     await this.ensureCanManageDepartment(departmentId, user);
 
     const targetUser = await this.findUser(userId);
     if (targetUser === undefined) {
       throw new BadRequestException("User not found");
-    }
-    if (
-      user.platformRole === "department_admin" &&
-      targetUser.departmentId !== user.departmentId
-    ) {
-      throw new ForbiddenException("Cannot manage users outside your department");
     }
 
     return targetUser;

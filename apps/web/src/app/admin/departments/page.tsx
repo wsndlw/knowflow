@@ -42,8 +42,10 @@ export default function DepartmentsPage() {
 
   if (role !== "super_admin" && role !== "department_admin") {
     return (
-      <div className="mx-auto max-w-5xl px-6 py-8">
+      <div className="flex-1 min-h-0 overflow-y-auto w-full bg-background">
+        <div className="mx-auto max-w-5xl px-6 py-8">
         <EmptyState title="无权访问" description="此页面仅管理员可见。" />
+      </div>
       </div>
     );
   }

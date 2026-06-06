@@ -31,7 +31,10 @@ type Filters = {
 
 type ViewMode = "card" | "table";
 
-const visibilityMeta: Record<KnowledgeBaseVisibility, { label: string; tone: "info" | "neutral" | "warning" }> = {
+const visibilityMeta: Record<
+  KnowledgeBaseVisibility,
+  { label: string; tone: "info" | "neutral" | "warning" }
+> = {
   public: { label: "公开", tone: "info" },
   department: { label: "部门", tone: "neutral" },
   restricted: { label: "受限", tone: "warning" },
@@ -149,162 +152,168 @@ export default function KnowledgeBasesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-8 py-7">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-ink">知识库</h1>
-          <p className="mt-1 text-base text-ink-muted">
-            管理企业知识资产，按权限浏览与维护。
-          </p>
-        </div>
-        {canCreate ? (
-          <Button onClick={() => setDialogOpen(true)}>+ 新建知识库</Button>
-        ) : null}
-      </header>
+    <div className="min-h-0 w-full flex-1 overflow-y-auto bg-background">
+      <div className="mx-auto max-w-6xl px-8 py-7">
+        <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-ink">知识库</h1>
+            <p className="mt-1 text-base text-ink-muted">管理企业知识资产，按权限浏览与维护。</p>
+          </div>
+          {canCreate ? <Button onClick={() => setDialogOpen(true)}>+ 新建知识库</Button> : null}
+        </header>
 
-      {/* 工具栏:筛选 + 搜索 + 视图切换 */}
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="w-36">
-          <Select
-            aria-label="按可见范围筛选"
-            value={filters.visibility}
-            onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
-                visibility: event.target.value as Filters["visibility"],
-              }))
-            }
-          >
-            <option value="">全部可见范围</option>
-            <option value="public">公开</option>
-            <option value="department">部门</option>
-            <option value="restricted">受限</option>
-          </Select>
+        {/* 工具栏:筛选 + 搜索 + 视图切换 */}
+        <div className="mb-5 flex flex-wrap items-center gap-3">
+          <div className="w-36">
+            <Select
+              aria-label="按可见范围筛选"
+              value={filters.visibility}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  visibility: event.target.value as Filters["visibility"],
+                }))
+              }
+            >
+              <option value="">全部可见范围</option>
+              <option value="public">公开</option>
+              <option value="department">部门</option>
+              <option value="restricted">受限</option>
+            </Select>
+          </div>
+          <div className="min-w-48 flex-1 sm:max-w-xs">
+            <Input
+              aria-label="搜索知识库"
+              placeholder="搜索知识库名称…"
+              value={filters.keyword}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, keyword: event.target.value }))
+              }
+            />
+          </div>
+          <div className="ml-auto flex items-center gap-1 rounded-md border border-border bg-surface p-0.5">
+            <ViewToggle active={view === "card"} onClick={() => setView("card")} label="卡片">
+              <CardsIcon />
+            </ViewToggle>
+            <ViewToggle active={view === "table"} onClick={() => setView("table")} label="表格">
+              <TableIcon />
+            </ViewToggle>
+          </div>
         </div>
-        <div className="min-w-48 flex-1 sm:max-w-xs">
-          <Input
-            aria-label="搜索知识库"
-            placeholder="搜索知识库名称…"
-            value={filters.keyword}
-            onChange={(event) =>
-              setFilters((current) => ({ ...current, keyword: event.target.value }))
+
+        {error !== null ? (
+          <p className="rounded-md bg-danger-bg px-4 py-3 text-sm text-danger" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        {isLoading ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-40" />
+            ))}
+          </div>
+        ) : null}
+
+        {!isLoading && error === null && items.length === 0 ? (
+          <EmptyState
+            title="暂无知识库"
+            description={
+              canCreate
+                ? "还没有符合条件的知识库,点击右上角新建一个。"
+                : "你当前没有可访问的知识库,或没有匹配筛选条件的结果。"
+            }
+            action={
+              canCreate ? (
+                <Button onClick={() => setDialogOpen(true)}>+ 新建知识库</Button>
+              ) : undefined
             }
           />
-        </div>
-        <div className="ml-auto flex items-center gap-1 rounded-md border border-border bg-surface p-0.5">
-          <ViewToggle active={view === "card"} onClick={() => setView("card")} label="卡片">
-            <CardsIcon />
-          </ViewToggle>
-          <ViewToggle active={view === "table"} onClick={() => setView("table")} label="表格">
-            <TableIcon />
-          </ViewToggle>
-        </div>
-      </div>
+        ) : null}
 
-      {error !== null ? (
-        <p className="rounded-md bg-danger-bg px-4 py-3 text-sm text-danger" role="alert">
-          {error}
-        </p>
-      ) : null}
+        {!isLoading && error === null && items.length > 0 ? (
+          view === "card" ? (
+            <CardView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
+          ) : (
+            <TableView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
+          )
+        ) : null}
 
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-40" />
-          ))}
-        </div>
-      ) : null}
-
-      {!isLoading && error === null && items.length === 0 ? (
-        <EmptyState
-          title="暂无知识库"
-          description={
-            canCreate
-              ? "还没有符合条件的知识库,点击右上角新建一个。"
-              : "你当前没有可访问的知识库,或没有匹配筛选条件的结果。"
-          }
-          action={canCreate ? <Button onClick={() => setDialogOpen(true)}>+ 新建知识库</Button> : undefined}
-        />
-      ) : null}
-
-      {!isLoading && error === null && items.length > 0 ? (
-        view === "card" ? (
-          <CardView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
-        ) : (
-          <TableView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
-        )
-      ) : null}
-
-      {/* 创建知识库 Dialog */}
-      <Dialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        title="新建知识库"
-        description="创建后你将成为该知识库的管理员。"
-      >
-        <form id="create-kb-form" onSubmit={(event) => void handleCreate(event)} className="flex flex-col gap-4">
-          <Field label="名称">
-            <Input name="name" required maxLength={160} placeholder="如:公司制度知识库" />
-          </Field>
-          <Field label="归属部门">
-            <Select
-              name="departmentId"
-              required
-              value={selectedDepartmentId}
-              onChange={(event) => setSelectedDepartmentId(event.target.value)}
-            >
-              {departments.length === 0 ? <option value="">加载中…</option> : null}
-              {departments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="可见范围">
-            <Select name="visibility" defaultValue="department">
-              <option value="public">公开 — 全员可见</option>
-              <option value="department">部门 — 归属部门成员可见</option>
-              <option value="restricted">受限 — 仅指定成员可见</option>
-            </Select>
-          </Field>
-          <Field label="描述">
-            <textarea
-              name="description"
-              maxLength={2000}
-              rows={3}
-              placeholder="简要说明这个知识库的内容与用途"
-              className="w-full resize-y rounded-md border border-border bg-neutral-0 px-3 py-2 text-base text-ink placeholder:text-ink-subtle hover:border-neutral-300 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-            />
-          </Field>
-          {createError !== null ? (
-            <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger" role="alert">
-              {createError}
-            </p>
-          ) : null}
-          <div className="mt-1 flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setDialogOpen(false)}>
-              取消
-            </Button>
-            <Button type="submit" loading={isCreating} disabled={departments.length === 0}>
-              {isCreating ? "创建中…" : "创建知识库"}
-            </Button>
-          </div>
-        </form>
-      </Dialog>
-
-      {/* 操作反馈 toast */}
-      {toast ? (
-        <div
-          className={cn(
-            "fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg px-5 py-2.5 text-sm font-medium text-white shadow-lg transition-opacity",
-            toast.tone === "success" ? "bg-success" : "bg-danger",
-          )}
-          role="status"
+        {/* 创建知识库 Dialog */}
+        <Dialog
+          open={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+          title="新建知识库"
+          description="创建后你将成为该知识库的管理员。"
         >
-          {toast.message}
-        </div>
-      ) : null}
+          <form
+            id="create-kb-form"
+            onSubmit={(event) => void handleCreate(event)}
+            className="flex flex-col gap-4"
+          >
+            <Field label="名称">
+              <Input name="name" required maxLength={160} placeholder="如:公司制度知识库" />
+            </Field>
+            <Field label="归属部门">
+              <Select
+                name="departmentId"
+                required
+                value={selectedDepartmentId}
+                onChange={(event) => setSelectedDepartmentId(event.target.value)}
+              >
+                {departments.length === 0 ? <option value="">加载中…</option> : null}
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="可见范围">
+              <Select name="visibility" defaultValue="department">
+                <option value="public">公开 — 全员可见</option>
+                <option value="department">部门 — 归属部门成员可见</option>
+                <option value="restricted">受限 — 仅指定成员可见</option>
+              </Select>
+            </Field>
+            <Field label="描述">
+              <textarea
+                name="description"
+                maxLength={2000}
+                rows={3}
+                placeholder="简要说明这个知识库的内容与用途"
+                className="w-full resize-y rounded-md border border-border bg-neutral-0 px-3 py-2 text-base text-ink placeholder:text-ink-subtle hover:border-neutral-300 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+            </Field>
+            {createError !== null ? (
+              <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger" role="alert">
+                {createError}
+              </p>
+            ) : null}
+            <div className="mt-1 flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setDialogOpen(false)}>
+                取消
+              </Button>
+              <Button type="submit" loading={isCreating} disabled={departments.length === 0}>
+                {isCreating ? "创建中…" : "创建知识库"}
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+
+        {/* 操作反馈 toast */}
+        {toast ? (
+          <div
+            className={cn(
+              "fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg px-5 py-2.5 text-sm font-medium text-white shadow-lg transition-opacity",
+              toast.tone === "success" ? "bg-success" : "bg-danger",
+            )}
+            role="status"
+          >
+            {toast.message}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -318,7 +327,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function CardView({ items, onRefresh, showToast }: { items: KnowledgeBaseListItem[]; onRefresh: () => Promise<void>; showToast: (msg: string, tone?: "success" | "danger") => void }) {
+function CardView({
+  items,
+  onRefresh,
+  showToast,
+}: {
+  items: KnowledgeBaseListItem[];
+  onRefresh: () => Promise<void>;
+  showToast: (msg: string, tone?: "success" | "danger") => void;
+}) {
   const [enablingId, setEnablingId] = useState<string | null>(null);
 
   async function handleEnable(id: string) {
@@ -342,7 +359,13 @@ function CardView({ items, onRefresh, showToast }: { items: KnowledgeBaseListIte
         const isDisabled = item.status === "disabled";
         const meta = statusMeta[item.status];
         return (
-          <Card key={item.id} className={cn("group flex h-full flex-col p-5 transition-shadow duration-150 hover:shadow-md", isDisabled && "opacity-75")}>
+          <Card
+            key={item.id}
+            className={cn(
+              "group flex h-full flex-col p-5 transition-shadow duration-150 hover:shadow-md",
+              isDisabled && "opacity-75",
+            )}
+          >
             <div className="mb-2 flex items-start justify-between gap-2">
               <Link href={`/knowledge-bases/${item.id}`} className="min-w-0">
                 <h3 className="truncate text-md font-semibold text-ink transition-colors group-hover:text-brand-700">
@@ -350,9 +373,7 @@ function CardView({ items, onRefresh, showToast }: { items: KnowledgeBaseListIte
                 </h3>
               </Link>
               <div className="flex shrink-0 items-center gap-1.5">
-                {isDisabled && meta ? (
-                  <Badge tone={meta.tone}>{meta.label}</Badge>
-                ) : null}
+                {isDisabled && meta ? <Badge tone={meta.tone}>{meta.label}</Badge> : null}
                 <Badge tone={visibilityMeta[item.visibility].tone}>
                   {visibilityMeta[item.visibility].label}
                 </Badge>
@@ -410,7 +431,15 @@ function CountStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function TableView({ items, onRefresh, showToast }: { items: KnowledgeBaseListItem[]; onRefresh: () => Promise<void>; showToast: (msg: string, tone?: "success" | "danger") => void }) {
+function TableView({
+  items,
+  onRefresh,
+  showToast,
+}: {
+  items: KnowledgeBaseListItem[];
+  onRefresh: () => Promise<void>;
+  showToast: (msg: string, tone?: "success" | "danger") => void;
+}) {
   const [enablingId, setEnablingId] = useState<string | null>(null);
 
   async function handleEnable(id: string) {
@@ -449,19 +478,28 @@ function TableView({ items, onRefresh, showToast }: { items: KnowledgeBaseListIt
             const isDisabled = item.status === "disabled";
             const meta = statusMeta[item.status];
             return (
-              <tr key={item.id} className={cn("border-b border-border last:border-0 hover:bg-neutral-50", isDisabled && "opacity-75")}>
+              <tr
+                key={item.id}
+                className={cn(
+                  "border-b border-border last:border-0 hover:bg-neutral-50",
+                  isDisabled && "opacity-75",
+                )}
+              >
                 <td className="px-4 py-3">
-                  <Link href={`/knowledge-bases/${item.id}`} className="font-medium text-ink hover:text-brand-700">
+                  <Link
+                    href={`/knowledge-bases/${item.id}`}
+                    className="font-medium text-ink hover:text-brand-700"
+                  >
                     {item.name}
                   </Link>
                   {item.description !== null ? (
-                    <p className="mt-0.5 line-clamp-1 text-sm text-ink-subtle">{item.description}</p>
+                    <p className="mt-0.5 line-clamp-1 text-sm text-ink-subtle">
+                      {item.description}
+                    </p>
                   ) : null}
                 </td>
                 <td className="px-4 py-3">
-                  {meta ? (
-                    <Badge tone={meta.tone}>{meta.label}</Badge>
-                  ) : null}
+                  {meta ? <Badge tone={meta.tone}>{meta.label}</Badge> : null}
                 </td>
                 <td className="px-4 py-3">
                   <Badge tone={visibilityMeta[item.visibility].tone}>
@@ -535,7 +573,15 @@ function CardsIcon() {
 function TableIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" className="size-4" aria-hidden>
-      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+      <rect
+        x="1.5"
+        y="2.5"
+        width="13"
+        height="11"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
       <path d="M1.5 6.5h13M6 6.5v7" stroke="currentColor" strokeWidth="1.3" />
     </svg>
   );

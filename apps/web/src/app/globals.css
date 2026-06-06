@@ -119,6 +119,16 @@
   border-color: var(--color-border);
 }
 
+/* rigid 全屏布局:document(html/body)永不滚动,滚动一律交给各页面内部的
+   overflow-y-auto 容器。否则页面内容溢出到 document 层会让 <html> 可滚,
+   而 Next 客户端导航后的滚动/聚焦会把 <html> 顶起且 scrollTop 残留,
+   表现为切到任意页都整体漂移(只有整页刷新才复位)。 */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
   font-feature-settings: "tnum" on;

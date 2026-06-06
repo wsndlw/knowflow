@@ -36,7 +36,7 @@ export type AgentChatLayoutProps = {
   emptyStateTitle: string;
   emptyStateDescription: string;
   chatHook: ReturnType<typeof useAgentChat>;
-}
+};
 
 export function AgentChatLayout({
   disableInput,
@@ -155,7 +155,9 @@ export function AgentChatLayout({
                 }}
                 className={cn(
                   "flex-1 rounded text-xs font-medium py-1 text-center transition-colors",
-                  conversationView === "active" ? "bg-white text-ink shadow-sm" : "text-ink-subtle hover:text-ink"
+                  conversationView === "active"
+                    ? "bg-white text-ink shadow-sm"
+                    : "text-ink-subtle hover:text-ink",
                 )}
               >
                 进行中
@@ -168,7 +170,9 @@ export function AgentChatLayout({
                 }}
                 className={cn(
                   "flex-1 rounded text-xs font-medium py-1 text-center transition-colors",
-                  conversationView === "archived" ? "bg-white text-ink shadow-sm" : "text-ink-subtle hover:text-ink"
+                  conversationView === "archived"
+                    ? "bg-white text-ink shadow-sm"
+                    : "text-ink-subtle hover:text-ink",
                 )}
               >
                 已归档
@@ -209,8 +213,8 @@ export function AgentChatLayout({
               >
                 <div className="flex w-full items-center justify-between">
                   <span className="line-clamp-1 text-base font-medium flex-1 mr-2">{c.title}</span>
-                  {showArchive && (
-                    conversationView === "active" ? (
+                  {showArchive &&
+                    (conversationView === "active" ? (
                       <button
                         type="button"
                         title="归档"
@@ -218,10 +222,12 @@ export function AgentChatLayout({
                         onClick={(e) => void handleArchive(e, c.id)}
                         className={cn(
                           "opacity-0 transition-opacity p-1 rounded-sm group-hover:opacity-100 hover:bg-neutral-200/60 disabled:opacity-50 disabled:cursor-not-allowed",
-                          c.id === selectedConversationId ? "hover:bg-brand-100" : ""
+                          c.id === selectedConversationId ? "hover:bg-brand-100" : "",
                         )}
                       >
-                        <Archive className={cn("size-3.5", processingId === c.id ? "animate-pulse" : "")} />
+                        <Archive
+                          className={cn("size-3.5", processingId === c.id ? "animate-pulse" : "")}
+                        />
                       </button>
                     ) : (
                       <button
@@ -231,13 +237,14 @@ export function AgentChatLayout({
                         onClick={(e) => void handleRestore(e, c.id)}
                         className={cn(
                           "opacity-0 transition-opacity p-1 rounded-sm group-hover:opacity-100 hover:bg-neutral-200/60 disabled:opacity-50 disabled:cursor-not-allowed",
-                          c.id === selectedConversationId ? "hover:bg-brand-100" : ""
+                          c.id === selectedConversationId ? "hover:bg-brand-100" : "",
                         )}
                       >
-                        <RotateCcw className={cn("size-3.5", processingId === c.id ? "animate-spin" : "")} />
+                        <RotateCcw
+                          className={cn("size-3.5", processingId === c.id ? "animate-spin" : "")}
+                        />
                       </button>
-                    )
-                  )}
+                    ))}
                 </div>
                 <span className="text-xs text-ink-subtle">{formatDate(c.updatedAt)}</span>
               </div>
@@ -247,8 +254,8 @@ export function AgentChatLayout({
       </aside>
 
       {/* 右:对话流 */}
-      <main className="flex min-w-0 flex-1 flex-col bg-background relative">
-        <div className="flex-1 overflow-y-auto">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-background relative">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-6">
             {error !== null ? (
               <p className="rounded-md bg-danger-bg px-4 py-3 text-sm text-danger" role="alert">
@@ -322,7 +329,7 @@ export function AgentChatLayout({
           <div
             className={cn(
               "absolute top-6 left-1/2 -translate-x-1/2 rounded-full px-4 py-2 text-sm font-medium text-white shadow-lg z-50",
-              toast.tone === "success" ? "bg-success" : "bg-danger"
+              toast.tone === "success" ? "bg-success" : "bg-danger",
             )}
             role="status"
           >

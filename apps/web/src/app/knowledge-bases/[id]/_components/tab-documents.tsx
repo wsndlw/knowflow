@@ -174,7 +174,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     try {
       await apiRequest(
         `/documents/${docId}/reprocess`,
-        emptyObjectSchema,
+        documentSchema,
         { method: "POST" },
       );
       await loadDocuments();
@@ -190,7 +190,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     
     const results = await Promise.allSettled(
       archiveTarget.ids.map((docId) =>
-        apiRequest(`/documents/${docId}/archive`, emptyObjectSchema, { method: "POST" })
+        apiRequest(`/documents/${docId}/archive`, documentSchema, { method: "POST" })
       )
     );
     
@@ -202,10 +202,14 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     await loadDocuments();
     
     if (rejected > 0) {
-      setActionError(`归档完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+      if (fulfilled === 0) {
+        setActionError(`归档失败 ${String(rejected)} 个文档`);
+      } else {
+        setActionError(`归档完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+      }
     } else {
-      setActionSuccess(`成功归档 ${String(fulfilled)} 个文档`);
-      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("成功归档") ? null : prev)), 3000);
+      setActionSuccess(`归档成功 ${String(fulfilled)} 个文档`);
+      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("归档成功") ? null : prev)), 3000);
     }
     setActionLoading(false);
   }
@@ -217,7 +221,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     
     const results = await Promise.allSettled(
       restoreTarget.ids.map((docId) =>
-        apiRequest(`/documents/${docId}/restore`, emptyObjectSchema, { method: "POST" })
+        apiRequest(`/documents/${docId}/restore`, documentSchema, { method: "POST" })
       )
     );
     
@@ -229,10 +233,14 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     await loadDocuments();
     
     if (rejected > 0) {
-      setActionError(`恢复完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+      if (fulfilled === 0) {
+        setActionError(`恢复失败 ${String(rejected)} 个文档`);
+      } else {
+        setActionError(`恢复完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+      }
     } else {
-      setActionSuccess(`成功恢复 ${String(fulfilled)} 个文档`);
-      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("成功恢复") ? null : prev)), 3000);
+      setActionSuccess(`恢复成功 ${String(fulfilled)} 个文档`);
+      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("恢复成功") ? null : prev)), 3000);
     }
     setActionLoading(false);
   }
@@ -256,10 +264,14 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     await loadDocuments();
     
     if (rejected > 0) {
-      setActionError(`删除完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+      if (fulfilled === 0) {
+        setActionError(`删除失败 ${String(rejected)} 个文档`);
+      } else {
+        setActionError(`删除完成，成功 ${String(fulfilled)} 个，失败 ${String(rejected)} 个`);
+      }
     } else {
-      setActionSuccess(`成功彻底删除 ${String(fulfilled)} 个文档`);
-      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("成功彻底删除") ? null : prev)), 3000);
+      setActionSuccess(`删除成功 ${String(fulfilled)} 个文档`);
+      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("删除成功") ? null : prev)), 3000);
     }
     setActionLoading(false);
   }

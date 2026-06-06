@@ -40,28 +40,28 @@ export function TabChat({ knowledgeBaseId }: { knowledgeBaseId: string }) {
   }, [knowledgeBaseId]);
 
   const refreshConversations = useCallback(async (status: "active" | "archived") => {
-    if (agents.length === 0) return [];
+    if (selectedAgentId === "") return [];
     try {
       const response = await apiRequest(`/conversations?status=${status}`, conversationListResponseSchema, {
         cache: "no-store",
       });
-      const agentIds = new Set(agents.map(a => a.id));
-      const list = response.items.filter((c) => agentIds.has(c.agentId));
+      // 每个 agent 对应自己的会话列表：只显示当前选中 agent 的会话（与全局 /agents 页一致）
+      const list = response.items.filter((c) => c.agentId === selectedAgentId);
       setConversations(list);
       return list;
     } catch {
       return [];
     }
-  }, [agents]);
+  }, [selectedAgentId]);
 
   useEffect(() => {
-    if (!loadingAgents && agents.length > 0) {
+    if (!loadingAgents && selectedAgentId !== "") {
       setLoadingConversations(true);
       void refreshConversations(conversationView).finally(() => setLoadingConversations(false));
     } else if (!loadingAgents && agents.length === 0) {
       setLoadingConversations(false);
     }
-  }, [loadingAgents, agents.length, conversationView, refreshConversations]);
+  }, [loadingAgents, agents.length, selectedAgentId, conversationView, refreshConversations]);
 
   const chatHook = useAgentChat({
     agentId: selectedAgentId,

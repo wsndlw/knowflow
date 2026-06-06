@@ -246,8 +246,9 @@ function DepartmentsPageContent() {
 
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-6">
-      {/* ── 页面头 ── */}
+    <div className="flex-1 min-h-0 overflow-y-auto w-full bg-background">
+      <div className="mx-auto max-w-5xl px-6 py-6">
+        {/* ── 页面头 ── */}
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">部门管理</h1>
         {isSuperAdmin ? <Button onClick={openCreateDialog}>新建部门</Button> : null}
@@ -439,6 +440,7 @@ function DepartmentsPageContent() {
         departments={departments}
         onMove={handleMoveMember}
       />
+    </div>
     </div>
   );
 }

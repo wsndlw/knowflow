@@ -21,13 +21,18 @@ import { TabRetrievalTest } from "./_components/tab-retrieval-test";
 import { TabSettings } from "./_components/tab-settings";
 import { TabImprovement } from "./_components/tab-improvement";
 
-const TAB_DEFS: (TabItem & { value: TabValue; manageOnly?: boolean })[] = [
+const TAB_DEFS: (TabItem & {
+  value: TabValue;
+  manageOnly?: boolean;
+  restrictedOnly?: boolean;
+})[] = [
   { value: "overview", label: "概览" },
   { value: "documents", label: "文档" },
   { value: "knowledge-items", label: "知识条目" },
   { value: "chat", label: "专家 Agent", manageOnly: false },
   { value: "agents", label: "专家 Agent 管理", manageOnly: true },
-  { value: "members", label: "成员权限", manageOnly: true },
+  // 成员名单仅在「受限」可见范围下作为访问依据，故只有受限知识库才展示该 tab
+  { value: "members", label: "成员权限", manageOnly: true, restrictedOnly: true },
   { value: "analytics", label: "统计分析" },
   { value: "relations", label: "知识关系" },
   { value: "retrieval-test", label: "检索测试", manageOnly: true },
@@ -71,14 +76,17 @@ function KnowledgeBaseDetailContent() {
     [searchParams, router],
   );
 
-  const visibleTabs = TAB_DEFS
-    .filter((tab) => !tab.manageOnly || isManageMode)
-    .map((tab) => tab.value);
+  // 受限知识库才把成员名单作为访问依据，非受限库隐藏「成员权限」tab（详见后端 access 逻辑）
+  const isRestricted = kb?.visibility === "restricted";
+  const isTabVisible = (tab: (typeof TAB_DEFS)[number]): boolean =>
+    (!tab.manageOnly || isManageMode) && (!tab.restrictedOnly || isRestricted);
+
+  const visibleTabs = TAB_DEFS.filter(isTabVisible).map((tab) => tab.value);
 
   const tabItems: TabItem[] = TAB_DEFS.map((tab) => ({
     value: tab.value,
     label: tab.label,
-    hidden: tab.manageOnly === true && !isManageMode,
+    hidden: !isTabVisible(tab),
   }));
 
   const { activeTab, setActiveTab } = useTabState(visibleTabs);

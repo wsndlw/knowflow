@@ -18,9 +18,11 @@ import { Skeleton } from "../../../../components/ui/feedback";
 import { apiRequest, emptyObjectSchema } from "../../../../lib/api";
 
 const RETRIEVAL_MODE_LABELS: Record<string, string> = {
-  vector: "向量检索",
-  fts: "全文检索",
   hybrid: "混合检索",
+  hybrid_rerank: "混合检索 + Rerank",
+  vector_only: "仅向量检索",
+  fts_only: "仅全文检索",
+  ki_only: "仅知识条目检索",
 };
 
 export function TabSettings({

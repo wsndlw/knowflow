@@ -145,6 +145,7 @@ function ModelsPageContent() {
 
       </div>
       <ProviderDialog
+        key={editingProvider?.id ?? "new"}
         open={dialogOpen}
         onClose={closeDialog}
         provider={editingProvider}

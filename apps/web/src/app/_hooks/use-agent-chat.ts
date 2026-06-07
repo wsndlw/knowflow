@@ -9,7 +9,7 @@ import {
   type AskStreamEvent,
   type FeedbackRating,
 } from "@knowflow/shared";
-import { apiRequest, apiUrl, getCsrfToken, parseApiError } from "../../lib/api";
+import { apiRequest, apiUrl, getCsrfToken, parseApiError, refreshAccess } from "../../lib/api";
 import { type DisplayMessage, type DraftAssistantMessage } from "../_components/chat-bubbles";
 
 const emptyObjectSchema = {
@@ -41,7 +41,7 @@ export function useAgentChat({
   onConversationCreated?: (id: string) => void;
   onStreamCompleted?: () => void;
 }) {
-  const [selectedConversationId, setSelectedConversationId] = useState(initialConversationId);
+  const [selectedConversationId, setSelectedConversationIdState] = useState(initialConversationId);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [question, setQuestion] = useState("");
   const [statusText, setStatusText] = useState("");
@@ -53,15 +53,40 @@ export function useAgentChat({
   const listEndRef = useRef<HTMLDivElement>(null);
   const streamingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // 始终指向「当前选中会话」与「在途流所属会话」，供流事件归属校验与切换中断使用
+  const selectedConversationIdRef = useRef(selectedConversationId);
+  selectedConversationIdRef.current = selectedConversationId;
+  const streamConversationIdRef = useRef<string | null>(null);
+
+  // 中断在途流（切换/清空会话、切 Agent、卸载时）：清空状态以便新会话加载
+  const abortInFlightStream = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    streamingRef.current = false;
+    streamConversationIdRef.current = null;
+    setIsAsking(false);
+    setStatusText("");
+  }, []);
+
+  // 包装会话切换：切到「非在途流所属」的会话时中断旧流，避免旧流串台写入新会话
+  const setSelectedConversationId = useCallback(
+    (id: string) => {
+      if (streamingRef.current && streamConversationIdRef.current !== id) {
+        abortInFlightStream();
+      }
+      selectedConversationIdRef.current = id;
+      setSelectedConversationIdState(id);
+    },
+    [abortInFlightStream],
+  );
 
   useEffect(() => {
     return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
+      abortInFlightStream();
     };
-  }, [agentId]);
+  }, [agentId, abortInFlightStream]);
 
   // Auto-scroll when messages change —— 只滚动对话消息容器自身，
   // 不能用 listEndRef.scrollIntoView：它会滚动所有可滚动祖先(含外层 main)，
@@ -118,7 +143,8 @@ export function useAgentChat({
       method: "POST",
       body: JSON.stringify(input),
     });
-    setSelectedConversationId(created.id);
+    selectedConversationIdRef.current = created.id;
+    setSelectedConversationIdState(created.id);
     onConversationCreated?.(created.id);
     return created.id;
   }
@@ -132,6 +158,8 @@ export function useAgentChat({
     setError(null);
     setQuestion("");
     streamingRef.current = true;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     try {
       const conversationId = await ensureConversation();
       const now = new Date().toISOString();
@@ -158,8 +186,8 @@ export function useAgentChat({
         createdAt: now,
       };
       setMessages((current) => [...current, userMessage, draft]);
-      abortControllerRef.current = new AbortController();
-      await streamAnswer(conversationId, trimmed, draft.id, abortControllerRef.current.signal);
+      streamConversationIdRef.current = conversationId;
+      await streamAnswer(conversationId, trimmed, draft.id, controller.signal);
       onStreamCompleted?.();
     } catch (caught) {
       if (caught instanceof Error && caught.name === "AbortError") {
@@ -167,21 +195,38 @@ export function useAgentChat({
       }
       setError(caught instanceof Error ? caught.message : "提问失败");
     } finally {
-      setIsAsking(false);
-      setStatusText("");
-      streamingRef.current = false;
-      abortControllerRef.current = null;
+      // 仅当 abortController 仍是本次创建的那个时才复位（切换/新流会替换它，旧流 finally 不误清）
+      if (abortControllerRef.current === controller) {
+        setIsAsking(false);
+        setStatusText("");
+        streamingRef.current = false;
+        abortControllerRef.current = null;
+        streamConversationIdRef.current = null;
+      }
     }
   }
 
   async function streamAnswer(conversationId: string, content: string, draftId: string, signal: AbortSignal) {
-    const response = await fetch(apiUrl(`/conversations/${conversationId}/messages`), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", [CSRF_HEADER_NAME]: getCsrfToken() },
-      credentials: "include",
-      body: JSON.stringify({ content }),
-      signal,
-    });
+    const doFetch = () =>
+      fetch(apiUrl(`/conversations/${conversationId}/messages`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", [CSRF_HEADER_NAME]: getCsrfToken() },
+        credentials: "include",
+        body: JSON.stringify({ content }),
+        signal,
+      });
+    let response = await doFetch();
+    // 流式走裸 fetch（绕过 apiRequest），需自行处理 401：刷新后重试一次，仍失败则跳登录
+    if (response.status === 401) {
+      const refreshed = await refreshAccess();
+      if (!refreshed) {
+        if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+          window.location.href = "/login";
+        }
+        throw new Error("登录状态已失效，请重新登录");
+      }
+      response = await doFetch();
+    }
     if (!response.ok || response.body === null) {
       throw new Error(await parseApiError(response));
     }
@@ -202,7 +247,7 @@ export function useAgentChat({
         for (const part of parts) {
           const event = parseSseEvent(part);
           if (event !== null) {
-            handleStreamEvent(event, draftId);
+            handleStreamEvent(event, draftId, conversationId);
           }
         }
         result = await reader.read();
@@ -214,7 +259,11 @@ export function useAgentChat({
     }
   }
 
-  function handleStreamEvent(event: AskStreamEvent, draftId: string) {
+  function handleStreamEvent(event: AskStreamEvent, draftId: string, streamConversationId: string) {
+    // 归属校验：仅当流仍属于当前选中会话时才写入，防止切走后旧流串台
+    if (selectedConversationIdRef.current !== streamConversationId) {
+      return;
+    }
     switch (event.type) {
       case "agent.step.started": {
         const stepLabels: Record<string, string> = {
@@ -242,6 +291,8 @@ export function useAgentChat({
         setMessages((current) => current.map((m) => (m.id === draftId ? event.message : m)));
         break;
       case "agent.failed":
+        // 移除空白 draft，避免流结束后残留空气泡；错误提示统一在顶部展示
+        setMessages((current) => current.filter((m) => m.id !== draftId));
         setError(event.message);
         break;
       default:

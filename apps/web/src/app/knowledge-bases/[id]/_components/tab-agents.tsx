@@ -222,6 +222,7 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
       )}
 
       <AgentDialog
+        key={editing?.id ?? "new"}
         open={dialogOpen}
         onClose={() => { setDialogOpen(false); setEditing(null); }}
         onSubmit={editing ? handleUpdate : handleCreate}

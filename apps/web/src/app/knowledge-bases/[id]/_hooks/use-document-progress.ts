@@ -29,11 +29,13 @@ export function useDocumentProgress(
   const depsKey = activeDocumentIds.join(",");
 
   useEffect(() => {
-    if (activeDocumentIds.length === 0) return;
+    // 仅依赖稳定的 depsKey，从中派生 id；避免 activeDocumentIds 每次渲染都是新数组引用导致 SSE 反复重连
+    const ids = depsKey === "" ? [] : depsKey.split(",");
+    if (ids.length === 0) return;
 
     let hasSseError = false;
 
-    const eventSources = activeDocumentIds.map((docId) => {
+    const eventSources = ids.map((docId) => {
       const es = new EventSource(apiUrl(`/documents/${docId}/progress`), {
         withCredentials: true,
       });
@@ -70,7 +72,7 @@ export function useDocumentProgress(
       window.clearInterval(pollingId);
       eventSources.forEach((es) => es.close());
     };
-  }, [depsKey, activeDocumentIds]);
+  }, [depsKey]);
 
   return progressMap;
 }

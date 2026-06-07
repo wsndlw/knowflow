@@ -152,6 +152,7 @@ export function ModelCatalogList({ providerId, expanded }: ModelCatalogListProps
       )}
 
       <ModelDialog
+        key={editingModel?.id ?? "new"}
         open={dialogOpen}
         onClose={closeDialog}
         model={editingModel}

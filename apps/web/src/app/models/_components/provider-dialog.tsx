@@ -82,10 +82,18 @@ export function ProviderDialog({ open, onClose, provider, onSubmit }: ProviderDi
       setErrors({ providerType: "请选择供应商类型" });
       return;
     }
+    const trimmedBaseUrl = formData.baseUrl.trim();
+    let parsedBaseUrl: URL | null = null;
     try {
-      new URL(formData.baseUrl);
+      parsedBaseUrl = new URL(trimmedBaseUrl);
     } catch {
-      setErrors({ baseUrl: "请输入有效的 URL" });
+      parsedBaseUrl = null;
+    }
+    if (
+      parsedBaseUrl === null ||
+      (parsedBaseUrl.protocol !== "http:" && parsedBaseUrl.protocol !== "https:")
+    ) {
+      setErrors({ baseUrl: "请输入有效的 http(s) URL" });
       return;
     }
 
@@ -94,7 +102,7 @@ export function ProviderDialog({ open, onClose, provider, onSubmit }: ProviderDi
       const payload: CreateModelProviderRequest | UpdateModelProviderRequest = {
         name: formData.name,
         providerType: formData.providerType as ModelProviderType,
-        baseUrl: formData.baseUrl,
+        baseUrl: trimmedBaseUrl,
         enabled: formData.enabled,
         timeoutMs: formData.timeoutMs,
         retryCount: formData.retryCount,

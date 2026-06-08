@@ -48,10 +48,14 @@ export function AgentDialog({ open, onClose, onSubmit, editing }: AgentDialogPro
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
-    const name = (formData.get("name") as string).trim();
-    const description = (formData.get("description") as string).trim() || null;
-    const systemPrompt = (formData.get("systemPrompt") as string).trim();
-    const openingMessage = (formData.get("openingMessage") as string).trim() || null;
+    const readText = (key: string): string => {
+      const value = formData.get(key);
+      return typeof value === "string" ? value : "";
+    };
+    const name = readText("name").trim();
+    const description = readText("description").trim() || null;
+    const systemPrompt = readText("systemPrompt").trim();
+    const openingMessage = readText("openingMessage").trim() || null;
     const filteredQuestions = questions.filter((q) => q.trim() !== "");
 
     if (!name) {

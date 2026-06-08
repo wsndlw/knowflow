@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type ImprovementTask,
   type ImprovementTaskStats,
@@ -20,8 +20,10 @@ export function useImprovementTasks(knowledgeBaseId: string) {
   const [error, setError] = useState<string | null>(null);
 
   const pageSize = 20;
+  const loadRequestIdRef = useRef(0);
 
   const loadData = useCallback(async () => {
+    const reqId = ++loadRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -30,6 +32,7 @@ export function useImprovementTasks(knowledgeBaseId: string) {
         `/knowledge-bases/${knowledgeBaseId}/improvement-tasks/stats`,
         improvementTaskStatsSchema,
       );
+      if (reqId !== loadRequestIdRef.current) return;
       setStats(statsData);
 
       // Load tasks
@@ -41,12 +44,14 @@ export function useImprovementTasks(knowledgeBaseId: string) {
         `/knowledge-bases/${knowledgeBaseId}/improvement-tasks?${params.toString()}`,
         improvementTaskListResponseSchema,
       );
+      if (reqId !== loadRequestIdRef.current) return;
       setTasks(tasksData.items);
       setTotal(tasksData.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载数据失败");
+      if (reqId === loadRequestIdRef.current)
+        setError(err instanceof Error ? err.message : "加载数据失败");
     } finally {
-      setLoading(false);
+      if (reqId === loadRequestIdRef.current) setLoading(false);
     }
   }, [knowledgeBaseId, page, status, source]);
 

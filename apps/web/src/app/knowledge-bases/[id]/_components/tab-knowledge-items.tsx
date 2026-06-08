@@ -88,8 +88,10 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
     remove: removeTag,
   } = useTags(knowledgeBaseId);
   const tagFilter = useTagFilter();
+  const loadRequestIdRef = useRef(0);
 
   const loadItems = useCallback(async () => {
+    const reqId = ++loadRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -102,18 +104,26 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
         knowledgeItemListResponseSchema,
         { cache: "no-store" },
       );
-      setItems(response.items);
-      setTotal(response.total);
+      if (reqId === loadRequestIdRef.current) {
+        setItems(response.items);
+        setTotal(response.total);
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "加载失败");
+      if (reqId === loadRequestIdRef.current)
+        setError(caught instanceof Error ? caught.message : "加载失败");
     } finally {
-      setLoading(false);
+      if (reqId === loadRequestIdRef.current) setLoading(false);
     }
   }, [knowledgeBaseId, page, keyword, status, tagFilter.queryValue]);
 
   useEffect(() => {
     void loadItems();
   }, [loadItems]);
+
+  // 翻页时清空跨页累积的选择
+  useEffect(() => {
+    setSelected(new Set());
+  }, [page]);
 
   function handleKeywordChange(value: string) {
     if (debounceRef.current) clearTimeout(debounceRef.current);

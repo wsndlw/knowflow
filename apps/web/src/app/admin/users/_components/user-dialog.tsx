@@ -57,8 +57,12 @@ export function UserDialog({ open, onClose, onSubmit }: UserDialogProps) {
 
   const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (username.trim().length === 0 || name.trim().length === 0 || password.length === 0 || !departmentId) {
+    if (username.trim().length === 0 || name.trim().length === 0 || !departmentId) {
       alert("请填写完整信息");
+      return;
+    }
+    if (password.length < 8) {
+      alert("密码至少 8 位");
       return;
     }
     setSubmitting(true);
@@ -108,9 +112,9 @@ export function UserDialog({ open, onClose, onSubmit }: UserDialogProps) {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="密码(建议设置强密码)"
+            placeholder="密码(至少 8 位)"
             required
-            minLength={1}
+            minLength={8}
           />
         </div>
         <div className="space-y-1">

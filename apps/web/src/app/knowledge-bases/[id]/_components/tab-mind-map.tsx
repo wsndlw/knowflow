@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Edit3Icon, Loader2Icon, NetworkIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,9 @@ export function TabMindMap({ knowledgeBaseId, canManage, onJumpTab }: TabMindMap
 
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   const matchedIds = useMemo<ReadonlySet<string>>(() => {
     const keyword = search.trim().toLowerCase();
@@ -60,7 +63,8 @@ export function TabMindMap({ knowledgeBaseId, canManage, onJumpTab }: TabMindMap
 
   const showToast = useCallback((message: string) => {
     setToast(message);
-    window.setTimeout(() => setToast(null), 2600);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
   const handleGenerate = useCallback(async () => {

@@ -94,8 +94,11 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
   const tagFilter = useTagFilter();
 
   const pageSize = 20;
+  const loadRequestIdRef = useRef(0);
+  const successTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const loadDocuments = useCallback(async () => {
+    const reqId = ++loadRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -109,18 +112,28 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
         documentListResponseSchema,
         { cache: "no-store" },
       );
-      setDocuments(response.items);
-      setTotal(response.total);
+      if (reqId === loadRequestIdRef.current) {
+        setDocuments(response.items);
+        setTotal(response.total);
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "加载文档失败");
+      if (reqId === loadRequestIdRef.current)
+        setError(caught instanceof Error ? caught.message : "加载文档失败");
     } finally {
-      setLoading(false);
+      if (reqId === loadRequestIdRef.current) setLoading(false);
     }
   }, [knowledgeBaseId, page, keyword, status, tagFilter.queryValue, archivedMode]);
 
   useEffect(() => {
     void loadDocuments();
   }, [loadDocuments]);
+
+  useEffect(() => () => clearTimeout(successTimer.current), []);
+
+  // 翻页时清空跨页累积的选择，避免批量操作误作用到不可见的已选项
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page]);
 
   const progressMap = useDocumentProgress(documents, () => void loadDocuments());
 
@@ -209,7 +222,8 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
       }
     } else {
       setActionSuccess(`归档成功 ${String(fulfilled)} 个文档`);
-      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("归档成功") ? null : prev)), 3000);
+      clearTimeout(successTimer.current);
+      successTimer.current = setTimeout(() => setActionSuccess(null), 3000);
     }
     setActionLoading(false);
   }
@@ -240,7 +254,8 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
       }
     } else {
       setActionSuccess(`恢复成功 ${String(fulfilled)} 个文档`);
-      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("恢复成功") ? null : prev)), 3000);
+      clearTimeout(successTimer.current);
+      successTimer.current = setTimeout(() => setActionSuccess(null), 3000);
     }
     setActionLoading(false);
   }
@@ -271,7 +286,8 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
       }
     } else {
       setActionSuccess(`删除成功 ${String(fulfilled)} 个文档`);
-      setTimeout(() => setActionSuccess((prev) => (prev?.startsWith("删除成功") ? null : prev)), 3000);
+      clearTimeout(successTimer.current);
+      successTimer.current = setTimeout(() => setActionSuccess(null), 3000);
     }
     setActionLoading(false);
   }
@@ -310,7 +326,8 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
           ? `已生成 ${String(res.created)} 条候选条目，可在『知识改进/审核台』查看审批`
           : "未生成新候选条目（可能已提炼过），可在『知识改进/审核台』查看已有条目";
       setActionSuccess(msg);
-      setTimeout(() => setActionSuccess((prev) => (prev === msg ? null : prev)), 5000);
+      clearTimeout(successTimer.current);
+      successTimer.current = setTimeout(() => setActionSuccess(null), 5000);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "提炼失败");
     } finally {

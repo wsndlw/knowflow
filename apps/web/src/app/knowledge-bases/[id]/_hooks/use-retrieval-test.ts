@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RETRIEVAL_TEST_MODES, ZodError } from "@knowflow/shared";
 import type {
   RetrievalTestMode,
@@ -116,6 +116,7 @@ export function useRetrievalTest(knowledgeBaseId: string): UseRetrievalTest {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<RetrievalHistoryEntry[]>([]);
+  const runRequestIdRef = useRef(0);
 
   useEffect(() => {
     setHistory(loadHistory(knowledgeBaseId));
@@ -123,10 +124,12 @@ export function useRetrievalTest(knowledgeBaseId: string): UseRetrievalTest {
 
   const run = useCallback(
     async (request: RetrievalTestRequest) => {
+      const reqId = ++runRequestIdRef.current;
       setLoading(true);
       setError(null);
       try {
         const data = await retrievalTest(knowledgeBaseId, request);
+        if (reqId !== runRequestIdRef.current) return;
         setResult(data);
         const entry: RetrievalHistoryEntry = {
           id: newId(),
@@ -148,6 +151,7 @@ export function useRetrievalTest(knowledgeBaseId: string): UseRetrievalTest {
         });
       } catch (caught) {
         // 错误时保留上次结果，仅提示错误
+        if (reqId !== runRequestIdRef.current) return;
         if (caught instanceof ZodError) {
           // 响应 schema 不匹配：原始 zod 报文太长不适合直接展示，走 console，界面给友好文案
           console.error("检索响应格式校验失败", caught);
@@ -156,7 +160,7 @@ export function useRetrievalTest(knowledgeBaseId: string): UseRetrievalTest {
           setError(caught instanceof Error ? caught.message : "检索失败");
         }
       } finally {
-        setLoading(false);
+        if (reqId === runRequestIdRef.current) setLoading(false);
       }
     },
     [knowledgeBaseId],

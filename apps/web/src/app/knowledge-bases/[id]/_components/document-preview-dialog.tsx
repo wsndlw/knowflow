@@ -83,10 +83,13 @@ function TextView({ doc }: { doc: KnowledgeDocument }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let ignore = false;
     async function load() {
       if (doc.parseStatus !== "completed" && doc.parseStatus !== "chunking" && doc.parseStatus !== "embedding") {
-        setError("文档尚未完成解析，无法预览原文");
-        setLoading(false);
+        if (!ignore) {
+          setError("文档尚未完成解析，无法预览原文");
+          setLoading(false);
+        }
         return;
       }
       setLoading(true);
@@ -96,19 +99,23 @@ function TextView({ doc }: { doc: KnowledgeDocument }) {
           `/documents/${doc.id}/content`,
           documentContentResponseSchema,
         );
-        setData({ text: res.text, truncated: res.truncated });
+        if (!ignore) setData({ text: res.text, truncated: res.truncated });
       } catch (err) {
+        if (ignore) return;
         if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
           setError(err.status === 403 ? "暂无权限查看该文档内容" : "文档内容不存在");
         } else {
           setError(err instanceof Error ? err.message : "加载原文失败");
         }
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     }
     void load();
-  }, [doc]);
+    return () => {
+      ignore = true;
+    };
+  }, [doc.id, doc.parseStatus]);
 
   if (loading) {
     return (
@@ -149,10 +156,13 @@ function ChunksView({ doc }: { doc: KnowledgeDocument }) {
   const pageSize = 10;
 
   useEffect(() => {
+    let ignore = false;
     async function load() {
       if (doc.processStatus !== "completed" && doc.processStatus !== "embedding") {
-        setError("文档尚未完成切分，无法预览分块");
-        setLoading(false);
+        if (!ignore) {
+          setError("文档尚未完成切分，无法预览分块");
+          setLoading(false);
+        }
         return;
       }
       setLoading(true);
@@ -162,20 +172,26 @@ function ChunksView({ doc }: { doc: KnowledgeDocument }) {
           `/documents/${doc.id}/chunks?level=${level}&page=${String(page)}&pageSize=${String(pageSize)}`,
           documentChunksResponseSchema,
         );
-        setItems(res.items);
-        setTotal(res.total);
+        if (!ignore) {
+          setItems(res.items);
+          setTotal(res.total);
+        }
       } catch (err) {
+        if (ignore) return;
         if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
           setError(err.status === 403 ? "暂无权限查看该文档分块" : "文档分块不存在");
         } else {
           setError(err instanceof Error ? err.message : "加载分块失败");
         }
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     }
     void load();
-  }, [doc, level, page]);
+    return () => {
+      ignore = true;
+    };
+  }, [doc.id, doc.processStatus, level, page]);
 
   if (loading && items.length === 0) {
     return (

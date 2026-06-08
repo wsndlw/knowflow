@@ -74,6 +74,7 @@ export default function KnowledgeBasesPage() {
   const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
   const [toast, setToast] = useState<{ message: string; tone: "success" | "danger" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const loadRequestIdRef = useRef(0);
 
   function showToast(message: string, tone: "success" | "danger" = "success") {
     setToast({ message, tone });
@@ -85,17 +86,19 @@ export default function KnowledgeBasesPage() {
     user?.platformRole === "super_admin" || user?.platformRole === "department_admin";
 
   const loadKnowledgeBases = useCallback(async () => {
+    const reqId = ++loadRequestIdRef.current;
     setIsLoading(true);
     setError(null);
     try {
       const response = await apiRequest(buildListPath(filters), knowledgeBaseListResponseSchema, {
         cache: "no-store",
       });
-      setItems(response.items);
+      if (reqId === loadRequestIdRef.current) setItems(response.items);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "加载知识库失败");
+      if (reqId === loadRequestIdRef.current)
+        setError(caught instanceof Error ? caught.message : "加载知识库失败");
     } finally {
-      setIsLoading(false);
+      if (reqId === loadRequestIdRef.current) setIsLoading(false);
     }
   }, [filters]);
 
@@ -104,11 +107,15 @@ export default function KnowledgeBasesPage() {
   }, [loadKnowledgeBases]);
 
   useEffect(() => {
+    // 跳过首帧/无变化：searchKeyword 与 filters.keyword 相同时不重设 filters，避免一次多余的列表请求
+    if (searchKeyword === filters.keyword) {
+      return;
+    }
     const timer = setTimeout(() => {
       setFilters((current) => ({ ...current, keyword: searchKeyword }));
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchKeyword]);
+  }, [searchKeyword, filters.keyword]);
 
   useEffect(() => {
     if (!canCreate) {

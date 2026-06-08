@@ -97,7 +97,7 @@ export class UserController {
 
   private requireUser(request: AuthenticatedRequest): AuthenticatedUser {
     if (request.user === undefined) {
-      throw new InternalServerErrorException("Authenticated request is missing user");
+      throw new InternalServerErrorException("已认证请求缺少用户信息");
     }
 
     return request.user;

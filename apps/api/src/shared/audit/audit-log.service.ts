@@ -4,12 +4,13 @@ import {
   auditLogs,
   db,
   documents,
+  knowledgeBases,
   knowledgeItems,
   tags,
 } from "@knowflow/db";
 import type { AuditResult, AuditTargetTypeValue } from "@knowflow/shared";
 import { AuditTargetType } from "@knowflow/shared";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 @Injectable()
 export class AuditLogService {
@@ -57,7 +58,8 @@ export class AuditLogService {
       const [row] = await db
         .select({ knowledgeBaseId: documents.knowledgeBaseId })
         .from(documents)
-        .where(eq(documents.id, targetId))
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
+        .where(and(eq(documents.id, targetId), isNull(knowledgeBases.deletedAt)))
         .limit(1);
       return row?.knowledgeBaseId ?? null;
     }
@@ -65,7 +67,8 @@ export class AuditLogService {
       const [row] = await db
         .select({ knowledgeBaseId: knowledgeItems.knowledgeBaseId })
         .from(knowledgeItems)
-        .where(eq(knowledgeItems.id, targetId))
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
+        .where(and(eq(knowledgeItems.id, targetId), isNull(knowledgeBases.deletedAt)))
         .limit(1);
       return row?.knowledgeBaseId ?? null;
     }
@@ -73,7 +76,8 @@ export class AuditLogService {
       const [row] = await db
         .select({ knowledgeBaseId: tags.knowledgeBaseId })
         .from(tags)
-        .where(eq(tags.id, targetId))
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, tags.knowledgeBaseId))
+        .where(and(eq(tags.id, targetId), isNull(knowledgeBases.deletedAt)))
         .limit(1);
       return row?.knowledgeBaseId ?? null;
     }
@@ -81,7 +85,8 @@ export class AuditLogService {
       const [row] = await db
         .select({ knowledgeBaseId: agentKnowledgeBases.knowledgeBaseId })
         .from(agentKnowledgeBases)
-        .where(eq(agentKnowledgeBases.agentId, targetId))
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, agentKnowledgeBases.knowledgeBaseId))
+        .where(and(eq(agentKnowledgeBases.agentId, targetId), isNull(knowledgeBases.deletedAt)))
         .limit(1);
       return row?.knowledgeBaseId ?? null;
     }

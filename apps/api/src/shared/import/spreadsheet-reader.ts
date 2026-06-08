@@ -53,7 +53,7 @@ function parseCsvRows(buffer: Buffer): string[][] {
   }) as unknown;
 
   if (!Array.isArray(records)) {
-    throw new Error("CSV parse result is invalid");
+    throw new Error("CSV 解析结果无效");
   }
 
   return records

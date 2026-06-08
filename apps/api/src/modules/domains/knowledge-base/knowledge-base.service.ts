@@ -28,7 +28,20 @@ import type {
   UpdateKnowledgeBaseRequest,
   UserOptionsResponse,
 } from "@knowflow/shared";
-import { and, asc, count, desc, eq, ilike, inArray, ne, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -50,6 +63,7 @@ type KnowledgeBaseRow = {
   creatorName: string;
   embeddingModel: string;
   embeddingDimension: number;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -98,6 +112,7 @@ export class KnowledgeBaseService {
         creatorName: creator.name,
         embeddingModel: knowledgeBases.embeddingModel,
         embeddingDimension: knowledgeBases.embeddingDimension,
+        deletedAt: knowledgeBases.deletedAt,
         createdAt: knowledgeBases.createdAt,
         updatedAt: knowledgeBases.updatedAt,
       })
@@ -111,6 +126,7 @@ export class KnowledgeBaseService {
       this.listManageableIds(
         rows.map((row) => row.id),
         user,
+        { includeDeleted: query.deleted === true },
       ),
       this.listCountsByKnowledgeBaseId(rows.map((row) => row.id)),
     ]);
@@ -125,10 +141,7 @@ export class KnowledgeBaseService {
     return { items };
   }
 
-  async create(
-    input: CreateKnowledgeBaseRequest,
-    user: AuthenticatedUser,
-  ): Promise<KnowledgeBase> {
+  async create(input: CreateKnowledgeBaseRequest, user: AuthenticatedUser): Promise<KnowledgeBase> {
     await this.ensureCanCreateInDepartment(input.departmentId, user);
 
     const [created] = await db.transaction(async (tx) => {
@@ -146,7 +159,7 @@ export class KnowledgeBaseService {
         });
 
       if (knowledgeBase === undefined) {
-        throw new BadRequestException("Failed to create knowledge base");
+        throw new BadRequestException("创建知识库失败");
       }
 
       await tx.insert(knowledgeBaseAdmins).values({
@@ -163,7 +176,7 @@ export class KnowledgeBaseService {
   async get(id: string, user: AuthenticatedUser): Promise<KnowledgeBase> {
     const row = await this.findRowById(id);
     if (row === undefined) {
-      throw new NotFoundException("Knowledge base not found");
+      throw new NotFoundException("未找到知识库");
     }
     const canManage = await this.ensureCanReadRow(row, user);
 
@@ -197,9 +210,7 @@ export class KnowledgeBaseService {
       db
         .select({ value: count() })
         .from(knowledgeItems)
-        .where(
-          and(eq(knowledgeItems.knowledgeBaseId, id), eq(knowledgeItems.status, "published")),
-        ),
+        .where(and(eq(knowledgeItems.knowledgeBaseId, id), eq(knowledgeItems.status, "published"))),
       db
         .select({ value: count() })
         .from(knowledgeBaseMembers)
@@ -254,7 +265,7 @@ export class KnowledgeBaseService {
       updateValues.visibility = input.visibility;
     }
     if (input.status !== undefined) {
-      throw new BadRequestException("Use enable or disable endpoint to change status");
+      throw new BadRequestException("请使用启用或停用接口修改状态");
     }
 
     await db
@@ -266,7 +277,15 @@ export class KnowledgeBaseService {
   }
 
   async delete(id: string, user: AuthenticatedUser): Promise<void> {
-    await this.disable(id, user);
+    await this.ensureCanManage(id, user);
+    const [updated] = await db
+      .update(knowledgeBases)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(knowledgeBases.id, id), isNull(knowledgeBases.deletedAt)))
+      .returning({ id: knowledgeBases.id });
+    if (updated === undefined) {
+      throw new NotFoundException("未找到知识库");
+    }
   }
 
   async disable(id: string, user: AuthenticatedUser): Promise<void> {
@@ -287,6 +306,20 @@ export class KnowledgeBaseService {
     return this.get(id, user);
   }
 
+  async restore(id: string, user: AuthenticatedUser): Promise<KnowledgeBase> {
+    await this.ensureCanManageDeleted(id, user);
+    const [updated] = await db
+      .update(knowledgeBases)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(and(eq(knowledgeBases.id, id), isNotNull(knowledgeBases.deletedAt)))
+      .returning({ id: knowledgeBases.id });
+    if (updated === undefined) {
+      throw new NotFoundException("未找到知识库");
+    }
+
+    return this.get(id, user);
+  }
+
   async listDepartmentOptions(user: AuthenticatedUser): Promise<DepartmentOptionsResponse> {
     const rows = await db
       .select({
@@ -295,9 +328,7 @@ export class KnowledgeBaseService {
       })
       .from(departments)
       .where(
-        user.platformRole === "super_admin"
-          ? undefined
-          : eq(departments.id, user.departmentId),
+        user.platformRole === "super_admin" ? undefined : eq(departments.id, user.departmentId),
       )
       .orderBy(asc(departments.name));
 
@@ -308,7 +339,7 @@ export class KnowledgeBaseService {
     await this.ensureCanManage(id, user);
     const knowledgeBase = await this.findRowById(id);
     if (knowledgeBase === undefined) {
-      throw new NotFoundException("Knowledge base not found");
+      throw new NotFoundException("未找到知识库");
     }
 
     const rows = await db
@@ -354,10 +385,7 @@ export class KnowledgeBaseService {
       )
       .leftJoin(
         knowledgeBaseAdmins,
-        and(
-          eq(knowledgeBaseAdmins.userId, users.id),
-          eq(knowledgeBaseAdmins.knowledgeBaseId, id),
-        ),
+        and(eq(knowledgeBaseAdmins.userId, users.id), eq(knowledgeBaseAdmins.knowledgeBaseId, id)),
       )
       .where(
         or(
@@ -435,7 +463,7 @@ export class KnowledgeBaseService {
         .where(eq(knowledgeBaseAdmins.knowledgeBaseId, id));
 
       if (adminCount <= 1) {
-        throw new BadRequestException("Knowledge base must keep at least one admin");
+        throw new BadRequestException("知识库至少需要保留一名管理员");
       }
 
       await tx
@@ -454,13 +482,17 @@ export class KnowledgeBaseService {
     user: AuthenticatedUser,
   ): SQL | undefined {
     const conditions: SQL[] = [];
+    const deleted = query.deleted === true;
     const accessCondition =
-      query.status === "archived"
-        ? this.accessService.buildManageCondition(user)
+      deleted || query.status === "archived"
+        ? this.accessService.buildManageCondition(user, { includeDeleted: deleted })
         : this.accessService.buildAccessCondition(user);
     if (accessCondition !== undefined) {
       conditions.push(accessCondition);
     }
+    conditions.push(
+      deleted ? isNotNull(knowledgeBases.deletedAt) : isNull(knowledgeBases.deletedAt),
+    );
     if (query.status !== undefined) {
       conditions.push(eq(knowledgeBases.status, query.status));
     } else {
@@ -507,7 +539,7 @@ export class KnowledgeBaseService {
       },
     });
     if (department === undefined) {
-      throw new BadRequestException("Department not found");
+      throw new BadRequestException("未找到部门");
     }
 
     if (user.platformRole === "super_admin") {
@@ -518,7 +550,7 @@ export class KnowledgeBaseService {
       return;
     }
 
-    throw new ForbiddenException("Cannot create knowledge base in this department");
+    throw new ForbiddenException("无权在该部门创建知识库");
   }
 
   private async ensureUserExists(userId: string): Promise<void> {
@@ -530,35 +562,32 @@ export class KnowledgeBaseService {
     });
 
     if (user === undefined) {
-      throw new BadRequestException("User not found");
+      throw new BadRequestException("未找到用户");
     }
   }
 
   private async ensureCanAccess(id: string, user: AuthenticatedUser): Promise<void> {
     const row = await this.findRowById(id);
     if (row === undefined) {
-      throw new NotFoundException("Knowledge base not found");
+      throw new NotFoundException("未找到知识库");
     }
 
     await this.ensureCanReadRow(row, user);
   }
 
-  private async ensureCanReadRow(
-    row: KnowledgeBaseRow,
-    user: AuthenticatedUser,
-  ): Promise<boolean> {
+  private async ensureCanReadRow(row: KnowledgeBaseRow, user: AuthenticatedUser): Promise<boolean> {
     const canManage = await this.accessService.canManage(row.id, user);
     if (row.status === "archived") {
       if (canManage) {
         return true;
       }
-      throw new NotFoundException("Knowledge base not found");
+      throw new NotFoundException("未找到知识库");
     }
 
     if (canManage || (await this.accessService.canAccess(row.id, user))) {
       return canManage;
     }
-    throw new NotFoundException("Knowledge base not found");
+    throw new NotFoundException("未找到知识库");
   }
 
   private async ensureCanManage(id: string, user: AuthenticatedUser): Promise<void> {
@@ -566,10 +595,25 @@ export class KnowledgeBaseService {
       return;
     }
 
-    throw new ForbiddenException("Cannot manage this knowledge base");
+    throw new ForbiddenException("无权管理该知识库");
   }
 
-  private async findRowById(id: string): Promise<KnowledgeBaseRow | undefined> {
+  private async ensureCanManageDeleted(id: string, user: AuthenticatedUser): Promise<void> {
+    const row = await this.findRowById(id, { includeDeleted: true });
+    if (row?.deletedAt == null) {
+      throw new NotFoundException("未找到知识库");
+    }
+    if (await this.accessService.canManage(id, user, { includeDeleted: true })) {
+      return;
+    }
+
+    throw new ForbiddenException("无权管理该知识库");
+  }
+
+  private async findRowById(
+    id: string,
+    options: { includeDeleted?: boolean } = {},
+  ): Promise<KnowledgeBaseRow | undefined> {
     const [row] = await db
       .select({
         id: knowledgeBases.id,
@@ -584,13 +628,18 @@ export class KnowledgeBaseService {
         creatorName: creator.name,
         embeddingModel: knowledgeBases.embeddingModel,
         embeddingDimension: knowledgeBases.embeddingDimension,
+        deletedAt: knowledgeBases.deletedAt,
         createdAt: knowledgeBases.createdAt,
         updatedAt: knowledgeBases.updatedAt,
       })
       .from(knowledgeBases)
       .innerJoin(departments, eq(departments.id, knowledgeBases.departmentId))
       .innerJoin(creator, eq(creator.id, knowledgeBases.creatorId))
-      .where(eq(knowledgeBases.id, id))
+      .where(
+        options.includeDeleted === true
+          ? eq(knowledgeBases.id, id)
+          : and(eq(knowledgeBases.id, id), isNull(knowledgeBases.deletedAt)),
+      )
       .limit(1);
 
     return row;
@@ -599,12 +648,13 @@ export class KnowledgeBaseService {
   private async listManageableIds(
     knowledgeBaseIds: string[],
     user: AuthenticatedUser,
+    options: { includeDeleted?: boolean } = {},
   ): Promise<Set<string>> {
     if (knowledgeBaseIds.length === 0) {
       return new Set();
     }
 
-    const condition = this.accessService.buildManageCondition(user);
+    const condition = this.accessService.buildManageCondition(user, options);
     const rows = await db
       .select({ id: knowledgeBases.id })
       .from(knowledgeBases)
@@ -690,6 +740,7 @@ export class KnowledgeBaseService {
     return {
       ...row,
       canManage,
+      deletedAt: row.deletedAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

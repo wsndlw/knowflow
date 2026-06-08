@@ -50,6 +50,7 @@ type ServiceHarness = {
   collectItemFeedbackScanSignals: (knowledgeBaseId: string, cursor: null) => Promise<unknown[]>;
   generateCandidate: (taskId: string) => Promise<TaskRow>;
   findTask: (taskId: string) => Promise<TaskRow>;
+  ensureKnowledgeBaseActive: (knowledgeBaseId: string) => Promise<void>;
   findRelatedItems: (
     knowledgeBaseId: string,
     sourceQuestion: string,
@@ -259,6 +260,7 @@ void describe("KnowledgeImprovementService.generateCandidate", () => {
     try {
       const service = makeService() as unknown as ServiceHarness;
       service.findTask = () => Promise.resolve(updateCalls.length >= 2 ? finalTask : documentTask);
+      service.ensureKnowledgeBaseActive = () => Promise.resolve();
       service.findRelatedItems = () => Promise.resolve([]);
       service.generateDrafts = () => Promise.resolve(drafts);
       service.createAdditionalDocumentCandidateTasks = (_sourceTask, remainingDrafts) => {

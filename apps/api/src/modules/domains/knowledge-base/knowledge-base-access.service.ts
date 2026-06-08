@@ -6,17 +6,29 @@ import {
   knowledgeBases,
 } from "@knowflow/db";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
-import { and, eq, exists, or, type SQL } from "drizzle-orm";
+import { and, eq, exists, isNull, or, type SQL } from "drizzle-orm";
+
+type AccessConditionOptions = {
+  includeDeleted?: boolean;
+};
+
+function activeKnowledgeBaseCondition(options: AccessConditionOptions): SQL | undefined {
+  return options.includeDeleted === true ? undefined : isNull(knowledgeBases.deletedAt);
+}
 
 @Injectable()
 export class KnowledgeBaseAccessService {
-  buildAccessCondition(user: AuthenticatedUser): SQL | undefined {
+  buildAccessCondition(
+    user: AuthenticatedUser,
+    options: AccessConditionOptions = {},
+  ): SQL | undefined {
+    const activeCondition = activeKnowledgeBaseCondition(options);
     if (user.platformRole === "super_admin") {
-      return undefined;
+      return activeCondition;
     }
 
     if (user.platformRole === "department_admin") {
-      return eq(knowledgeBases.departmentId, user.departmentId);
+      return and(activeCondition, eq(knowledgeBases.departmentId, user.departmentId));
     }
 
     const adminAccess = exists(
@@ -42,7 +54,9 @@ export class KnowledgeBaseAccessService {
         ),
     );
 
-    return or(
+    return and(
+      activeCondition,
+      or(
       eq(knowledgeBases.visibility, "public"),
       adminAccess,
       and(
@@ -50,33 +64,45 @@ export class KnowledgeBaseAccessService {
         eq(knowledgeBases.departmentId, user.departmentId),
       ),
       and(eq(knowledgeBases.visibility, "restricted"), memberAccess),
+      ),
     );
   }
 
-  buildManageCondition(user: AuthenticatedUser): SQL | undefined {
+  buildManageCondition(
+    user: AuthenticatedUser,
+    options: AccessConditionOptions = {},
+  ): SQL | undefined {
+    const activeCondition = activeKnowledgeBaseCondition(options);
     if (user.platformRole === "super_admin") {
-      return undefined;
+      return activeCondition;
     }
 
     if (user.platformRole === "department_admin") {
-      return eq(knowledgeBases.departmentId, user.departmentId);
+      return and(activeCondition, eq(knowledgeBases.departmentId, user.departmentId));
     }
 
-    return exists(
-      db
-        .select({ id: knowledgeBaseAdmins.id })
-        .from(knowledgeBaseAdmins)
-        .where(
-          and(
-            eq(knowledgeBaseAdmins.knowledgeBaseId, knowledgeBases.id),
-            eq(knowledgeBaseAdmins.userId, user.id),
+    return and(
+      activeCondition,
+      exists(
+        db
+          .select({ id: knowledgeBaseAdmins.id })
+          .from(knowledgeBaseAdmins)
+          .where(
+            and(
+              eq(knowledgeBaseAdmins.knowledgeBaseId, knowledgeBases.id),
+              eq(knowledgeBaseAdmins.userId, user.id),
+            ),
           ),
-        ),
+      ),
     );
   }
 
-  async canAccess(knowledgeBaseId: string, user: AuthenticatedUser): Promise<boolean> {
-    const condition = this.buildAccessCondition(user);
+  async canAccess(
+    knowledgeBaseId: string,
+    user: AuthenticatedUser,
+    options: AccessConditionOptions = {},
+  ): Promise<boolean> {
+    const condition = this.buildAccessCondition(user, options);
     const [row] = await db
       .select({ id: knowledgeBases.id })
       .from(knowledgeBases)
@@ -90,8 +116,12 @@ export class KnowledgeBaseAccessService {
     return row !== undefined;
   }
 
-  async canManage(knowledgeBaseId: string, user: AuthenticatedUser): Promise<boolean> {
-    const condition = this.buildManageCondition(user);
+  async canManage(
+    knowledgeBaseId: string,
+    user: AuthenticatedUser,
+    options: AccessConditionOptions = {},
+  ): Promise<boolean> {
+    const condition = this.buildManageCondition(user, options);
     const [row] = await db
       .select({ id: knowledgeBases.id })
       .from(knowledgeBases)

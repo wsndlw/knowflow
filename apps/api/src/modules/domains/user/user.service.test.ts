@@ -97,7 +97,7 @@ void describe("UserService", () => {
     const service = makeService({
       ensureDepartmentExists: () => Promise.resolve(),
       ensureUsernameAvailable: () =>
-        Promise.reject(new BadRequestException("Username already exists")),
+        Promise.reject(new BadRequestException("用户名已存在")),
     });
 
     await assert.rejects(

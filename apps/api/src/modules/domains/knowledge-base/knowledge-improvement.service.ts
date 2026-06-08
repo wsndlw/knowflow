@@ -41,6 +41,7 @@ import {
   ilike,
   inArray,
   isNotNull,
+  isNull,
   lte,
   min,
   ne,
@@ -162,7 +163,10 @@ export class KnowledgeImprovementService {
   }
 
   async scanAllKnowledgeBases(): Promise<number> {
-    const rows = await db.select({ id: knowledgeBases.id }).from(knowledgeBases);
+    const rows = await db
+      .select({ id: knowledgeBases.id })
+      .from(knowledgeBases)
+      .where(isNull(knowledgeBases.deletedAt));
     let created = 0;
     for (const row of rows) {
       created += (await this.scanKnowledgeBaseWithCursors(row.id)).created.length;
@@ -205,7 +209,8 @@ export class KnowledgeImprovementService {
       })
       .from(answerFeedback)
       .innerJoin(conversationMessages, eq(conversationMessages.id, answerFeedback.messageId))
-      .where(eq(answerFeedback.id, feedbackId))
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, answerFeedback.knowledgeBaseId))
+      .where(and(eq(answerFeedback.id, feedbackId), isNull(knowledgeBases.deletedAt)))
       .limit(1);
 
     if (row?.knowledgeBaseId === null || row?.knowledgeBaseId === undefined) {
@@ -256,7 +261,8 @@ export class KnowledgeImprovementService {
       })
       .from(knowledgeItemFeedback)
       .innerJoin(knowledgeItems, eq(knowledgeItems.id, knowledgeItemFeedback.knowledgeItemId))
-      .where(eq(knowledgeItemFeedback.id, feedbackId))
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
+      .where(and(eq(knowledgeItemFeedback.id, feedbackId), isNull(knowledgeBases.deletedAt)))
       .limit(1);
 
     if (row?.rating !== "dislike" || row.status === "archived") {
@@ -320,7 +326,10 @@ export class KnowledgeImprovementService {
   }
 
   async scanAndEnqueueAllKnowledgeBases(): Promise<ScanBatchResult> {
-    const rows = await db.select({ id: knowledgeBases.id }).from(knowledgeBases);
+    const rows = await db
+      .select({ id: knowledgeBases.id })
+      .from(knowledgeBases)
+      .where(isNull(knowledgeBases.deletedAt));
     const result: ScanBatchResult = { created: [], enqueued: 0 };
     for (const row of rows) {
       const scanned = await this.scanKnowledgeBaseWithCursors(row.id);
@@ -332,6 +341,7 @@ export class KnowledgeImprovementService {
 
   async generateCandidate(taskId: string): Promise<ImprovementTask> {
     const task = await this.findTask(taskId);
+    await this.ensureKnowledgeBaseActive(task.knowledgeBaseId);
     if (task.status !== "pending" && task.status !== "failed") {
       return this.toTask(task);
     }
@@ -358,7 +368,7 @@ export class KnowledgeImprovementService {
       const drafts = await this.generateDrafts(processingTask, relatedItems);
       const draft = drafts[0];
       if (draft === undefined) {
-        throw new Error("AI generation returned no candidate drafts");
+        throw new Error("AI 未生成候选草稿");
       }
       await db
         .update(knowledgeImprovementTasks)
@@ -386,8 +396,7 @@ export class KnowledgeImprovementService {
         .update(knowledgeImprovementTasks)
         .set({
           status: "failed",
-          aiReasoning:
-            error instanceof Error ? error.message.slice(0, 2000) : "AI generation failed",
+          aiReasoning: error instanceof Error ? error.message.slice(0, 2000) : "AI 生成失败",
           updatedAt: new Date(),
         })
         .where(
@@ -409,14 +418,14 @@ export class KnowledgeImprovementService {
     const task = await this.findTask(taskId);
     await this.ensureCanManage(task.knowledgeBaseId, user);
     if (task.status !== "candidate_ready" && task.status !== "failed") {
-      throw new BadRequestException("Only candidate tasks can be approved");
+      throw new BadRequestException("仅候选任务可审批");
     }
 
     const title = input.title ?? task.candidateTitle;
     const content = input.content ?? task.candidateContent;
     const summary = input.summary !== undefined ? input.summary : task.candidateSummary;
     if (title === null || content === null) {
-      throw new BadRequestException("Candidate title and content are required");
+      throw new BadRequestException("候选标题和内容不能为空");
     }
     await this.ensureTaskSourceActive(task);
     const sourceDocumentId = this.taskSourceDocumentId(task);
@@ -432,7 +441,7 @@ export class KnowledgeImprovementService {
       this.embeddingText({ title, summary, content }),
     ]);
     if (embedding?.length !== EXPECTED_EMBEDDING_DIMENSION) {
-      throw new BadRequestException("Knowledge item embedding failed");
+      throw new BadRequestException("知识条目向量化失败");
     }
 
     const [item] = await db.transaction(async (tx) => {
@@ -456,7 +465,7 @@ export class KnowledgeImprovementService {
         })
         .returning();
       if (created === undefined) {
-        throw new BadRequestException("Failed to publish knowledge item");
+        throw new BadRequestException("发布知识条目失败");
       }
 
       await tx
@@ -491,7 +500,7 @@ export class KnowledgeImprovementService {
     const task = await this.findTask(taskId);
     await this.ensureCanManage(task.knowledgeBaseId, user);
     if (task.status === "published") {
-      throw new BadRequestException("Published tasks cannot be rejected");
+      throw new BadRequestException("已发布任务不能驳回");
     }
 
     await db
@@ -602,6 +611,7 @@ export class KnowledgeImprovementService {
   ): Promise<ScanSignal[]> {
     const conditions: SQL[] = [
       eq(documents.knowledgeBaseId, knowledgeBaseId),
+      isNull(knowledgeBases.deletedAt),
       eq(documents.processStatus, "completed"),
       eq(documents.enabled, true),
     ];
@@ -614,6 +624,7 @@ export class KnowledgeImprovementService {
         updatedAt: documents.updatedAt,
       })
       .from(documents)
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
       .where(and(...conditions))
       .orderBy(asc(documents.updatedAt), asc(documents.id))
       .limit(SCAN_LIMIT);
@@ -774,6 +785,7 @@ export class KnowledgeImprovementService {
   ): Promise<ScanSignal[]> {
     const conditions: SQL[] = [
       eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId),
+      isNull(knowledgeBases.deletedAt),
       eq(knowledgeItemFeedback.rating, "dislike"),
       ne(knowledgeItems.status, "archived"),
     ];
@@ -794,6 +806,7 @@ export class KnowledgeImprovementService {
       })
       .from(knowledgeItemFeedback)
       .innerJoin(knowledgeItems, eq(knowledgeItems.id, knowledgeItemFeedback.knowledgeItemId))
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
       .where(and(...conditions))
       .orderBy(asc(knowledgeItemFeedback.createdAt), asc(knowledgeItemFeedback.id))
       .limit(SCAN_LIMIT);
@@ -957,12 +970,12 @@ export class KnowledgeImprovementService {
   ): Promise<TaskRow[]> {
     const document = await this.findCompletedDocument(documentId);
     if (document.knowledgeBaseId !== knowledgeBaseId) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
 
     const chunks = await this.findDocumentSourceChunks(documentId);
     if (chunks.length === 0) {
-      throw new BadRequestException("Document has no parsed text to extract");
+      throw new BadRequestException("文档没有可提取的解析文本");
     }
 
     const created: TaskRow[] = [];
@@ -1006,16 +1019,18 @@ export class KnowledgeImprovementService {
         title: documents.title,
       })
       .from(documents)
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
       .where(
         and(
           eq(documents.id, documentId),
+          isNull(knowledgeBases.deletedAt),
           eq(documents.processStatus, "completed"),
           eq(documents.enabled, true),
         ),
       )
       .limit(1);
     if (document === undefined) {
-      throw new NotFoundException("Completed document not found");
+      throw new NotFoundException("未找到已完成文档");
     }
     return document;
   }
@@ -1090,7 +1105,7 @@ export class KnowledgeImprovementService {
       where: eq(knowledgeImprovementTasks.dedupKey, dedupKey),
     });
     if (concurrent === undefined) {
-      throw new BadRequestException("Failed to create improvement task");
+      throw new BadRequestException("创建改进任务失败");
     }
     return { task: concurrent, created: false };
   }
@@ -1268,7 +1283,7 @@ export class KnowledgeImprovementService {
         { temperature: 0.2, maxOutputTokens: 1800 },
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Knowledge production model failed";
+      const message = error instanceof Error ? error.message : "知识生产模型调用失败";
       if (message.includes("knowledge_production") || message.includes("Model usage policy")) {
         throw new BadRequestException(MODEL_CONFIG_ERROR);
       }
@@ -1328,7 +1343,7 @@ export class KnowledgeImprovementService {
         { temperature: 0.2, maxOutputTokens: 3600 },
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Knowledge production model failed";
+      const message = error instanceof Error ? error.message : "知识生产模型调用失败";
       if (message.includes("knowledge_production") || message.includes("Model usage policy")) {
         throw new BadRequestException(MODEL_CONFIG_ERROR);
       }
@@ -1500,7 +1515,7 @@ export class KnowledgeImprovementService {
       where: eq(knowledgeImprovementTasks.id, taskId),
     });
     if (row === undefined) {
-      throw new NotFoundException("Improvement task not found");
+      throw new NotFoundException("未找到改进任务");
     }
     return row;
   }
@@ -1509,7 +1524,24 @@ export class KnowledgeImprovementService {
     if (await this.accessService.canManage(knowledgeBaseId, user)) {
       return;
     }
-    throw new ForbiddenException("Cannot manage improvement tasks in this knowledge base");
+    throw new ForbiddenException("无权管理该知识库的改进任务");
+  }
+
+  private async ensureKnowledgeBaseActive(knowledgeBaseId: string): Promise<void> {
+    if (await this.isKnowledgeBaseActive(knowledgeBaseId)) {
+      return;
+    }
+
+    throw new NotFoundException("未找到知识库");
+  }
+
+  private async isKnowledgeBaseActive(knowledgeBaseId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: knowledgeBases.id })
+      .from(knowledgeBases)
+      .where(and(eq(knowledgeBases.id, knowledgeBaseId), isNull(knowledgeBases.deletedAt)))
+      .limit(1);
+    return row !== undefined;
   }
 
   private async ensureTaskSourceActive(task: TaskRow): Promise<void> {
@@ -1518,10 +1550,12 @@ export class KnowledgeImprovementService {
       const [document] = await db
         .select({ enabled: documents.enabled })
         .from(documents)
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
         .where(
           and(
             eq(documents.id, sourceDocumentId),
             eq(documents.knowledgeBaseId, task.knowledgeBaseId),
+            isNull(knowledgeBases.deletedAt),
           ),
         )
         .limit(1);
@@ -1535,10 +1569,12 @@ export class KnowledgeImprovementService {
       const [item] = await db
         .select({ status: knowledgeItems.status, enabled: knowledgeItems.enabled })
         .from(knowledgeItems)
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
         .where(
           and(
             eq(knowledgeItems.id, sourceKnowledgeItemId),
             eq(knowledgeItems.knowledgeBaseId, task.knowledgeBaseId),
+            isNull(knowledgeBases.deletedAt),
           ),
         )
         .limit(1);

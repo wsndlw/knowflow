@@ -11,8 +11,8 @@ import type {
   MindMapResponse,
   SaveMindMapRequest,
 } from "@knowflow/shared";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { createHash, randomUUID } from "node:crypto";
 
 import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -62,6 +62,7 @@ export class MindMapService {
 
   async getDraft(knowledgeBaseId: string, user: AuthenticatedUser): Promise<MindMapResponse> {
     await this.ensureCanManage(knowledgeBaseId, user);
+    await this.ensureDraftForEditing(knowledgeBaseId);
     return { nodes: await this.listNodes(knowledgeBaseId, "draft") };
   }
 
@@ -75,6 +76,7 @@ export class MindMapService {
     await this.ensureReferencesBelongToKnowledgeBase(knowledgeBaseId, input.nodes);
 
     await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${knowledgeBaseId}))`);
       await tx
         .delete(knowledgeMapNodes)
         .where(
@@ -107,6 +109,17 @@ export class MindMapService {
     await this.ensureCanManage(knowledgeBaseId, user);
 
     await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${knowledgeBaseId}))`);
+      const draftRows = await tx
+        .select()
+        .from(knowledgeMapNodes)
+        .where(
+          and(
+            eq(knowledgeMapNodes.knowledgeBaseId, knowledgeBaseId),
+            eq(knowledgeMapNodes.status, "draft"),
+          ),
+        )
+        .orderBy(asc(knowledgeMapNodes.sortOrder), asc(knowledgeMapNodes.createdAt));
       await tx
         .delete(knowledgeMapNodes)
         .where(
@@ -115,18 +128,85 @@ export class MindMapService {
             eq(knowledgeMapNodes.status, "published"),
           ),
         );
-      await tx
-        .update(knowledgeMapNodes)
-        .set({ status: "published", updatedAt: new Date() })
+      if (draftRows.length === 0) {
+        return;
+      }
+
+      const publishedIdsByDraftId = new Map(
+        draftRows.map((row) => [row.id, this.publishedNodeId(row.id)]),
+      );
+      const now = new Date();
+      await tx.insert(knowledgeMapNodes).values(
+        draftRows.map((row) => ({
+          id: publishedIdsByDraftId.get(row.id) ?? this.publishedNodeId(row.id),
+          knowledgeBaseId,
+          parentId: row.parentId === null ? null : (publishedIdsByDraftId.get(row.parentId) ?? null),
+          type: row.type,
+          title: row.title,
+          referenceId: row.referenceId,
+          sortOrder: row.sortOrder,
+          status: "published" as const,
+          createdBy: row.createdBy,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
+    });
+
+    return { nodes: await this.listNodes(knowledgeBaseId, "published") };
+  }
+
+  private async ensureDraftForEditing(knowledgeBaseId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${knowledgeBaseId}))`);
+      const draftRows = await tx
+        .select({ id: knowledgeMapNodes.id })
+        .from(knowledgeMapNodes)
         .where(
           and(
             eq(knowledgeMapNodes.knowledgeBaseId, knowledgeBaseId),
             eq(knowledgeMapNodes.status, "draft"),
           ),
-        );
-    });
+        )
+        .limit(1);
+      if (draftRows.length > 0) {
+        return;
+      }
 
-    return { nodes: await this.listNodes(knowledgeBaseId, "published") };
+      const publishedRows = await tx
+        .select()
+        .from(knowledgeMapNodes)
+        .where(
+          and(
+            eq(knowledgeMapNodes.knowledgeBaseId, knowledgeBaseId),
+            eq(knowledgeMapNodes.status, "published"),
+          ),
+        )
+        .orderBy(asc(knowledgeMapNodes.sortOrder), asc(knowledgeMapNodes.createdAt));
+      if (publishedRows.length === 0) {
+        return;
+      }
+
+      const draftIdsByPublishedId = new Map(
+        publishedRows.map((row) => [row.id, this.draftNodeId(row.id)]),
+      );
+      const now = new Date();
+      await tx.insert(knowledgeMapNodes).values(
+        publishedRows.map((row) => ({
+          id: draftIdsByPublishedId.get(row.id) ?? this.draftNodeId(row.id),
+          knowledgeBaseId,
+          parentId: row.parentId === null ? null : (draftIdsByPublishedId.get(row.parentId) ?? null),
+          type: row.type,
+          title: row.title,
+          referenceId: row.referenceId,
+          sortOrder: row.sortOrder,
+          status: "draft" as const,
+          createdBy: row.createdBy,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
+    });
   }
 
   async generate(
@@ -136,7 +216,7 @@ export class MindMapService {
     await this.ensureCanManage(knowledgeBaseId, user);
     const context = await this.buildGenerateContext(knowledgeBaseId);
     if (context.documents.length === 0 && context.items.length === 0) {
-      throw new BadRequestException("Knowledge base has no documents or knowledge items");
+      throw new BadRequestException("知识库没有文档或知识条目");
     }
 
     const nodes = await this.generateNodes(context);
@@ -172,10 +252,10 @@ export class MindMapService {
         description: knowledgeBases.description,
       })
       .from(knowledgeBases)
-      .where(eq(knowledgeBases.id, knowledgeBaseId))
+      .where(and(eq(knowledgeBases.id, knowledgeBaseId), isNull(knowledgeBases.deletedAt)))
       .limit(1);
     if (knowledgeBase === undefined) {
-      throw new NotFoundException("Knowledge base not found");
+      throw new NotFoundException("未找到知识库");
     }
 
     const [documentRows, itemRows] = await Promise.all([
@@ -186,7 +266,10 @@ export class MindMapService {
           updatedAt: documents.updatedAt,
         })
         .from(documents)
-        .where(eq(documents.knowledgeBaseId, knowledgeBaseId))
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
+        .where(
+          and(eq(documents.knowledgeBaseId, knowledgeBaseId), isNull(knowledgeBases.deletedAt)),
+        )
         .orderBy(desc(documents.updatedAt))
         .limit(MAX_TOTAL_NODES),
       db
@@ -198,9 +281,11 @@ export class MindMapService {
           updatedAt: knowledgeItems.updatedAt,
         })
         .from(knowledgeItems)
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
         .where(
           and(
             eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId),
+            isNull(knowledgeBases.deletedAt),
             eq(knowledgeItems.status, "published"),
             eq(knowledgeItems.enabled, true),
           ),
@@ -415,15 +500,15 @@ export class MindMapService {
 
   private validateNodeTree(nodes: MapNodeInput[]): void {
     if (nodes.length > MAX_TOTAL_NODES) {
-      throw new BadRequestException("Mind map cannot exceed 200 nodes");
+      throw new BadRequestException("思维导图不能超过 200 个节点");
     }
     const ids = new Set(nodes.map((node) => node.id));
     if (ids.size !== nodes.length) {
-      throw new BadRequestException("Mind map node ids must be unique");
+      throw new BadRequestException("思维导图节点 ID 必须唯一");
     }
     for (const node of nodes) {
       if (node.parentId !== null && !ids.has(node.parentId)) {
-        throw new BadRequestException("Mind map parentId must reference a submitted node");
+        throw new BadRequestException("思维导图 parentId 必须引用已提交节点");
       }
     }
   }
@@ -468,7 +553,7 @@ export class MindMapService {
       documentRows.length !== new Set(documentIds).size ||
       itemRows.length !== new Set(itemIds).size
     ) {
-      throw new BadRequestException("Mind map references must belong to this knowledge base");
+      throw new BadRequestException("思维导图引用必须属于该知识库");
     }
   }
 
@@ -476,14 +561,14 @@ export class MindMapService {
     if (await this.accessService.canAccess(knowledgeBaseId, user)) {
       return;
     }
-    throw new NotFoundException("Knowledge base not found");
+    throw new NotFoundException("未找到知识库");
   }
 
   private async ensureCanManage(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canManage(knowledgeBaseId, user)) {
       return;
     }
-    throw new ForbiddenException("Cannot manage mind map in this knowledge base");
+    throw new ForbiddenException("无权管理该知识库的思维导图");
   }
 
   private toNode(row: MapNodeRow): PersistedMapNode {
@@ -506,5 +591,25 @@ export class MindMapService {
     return value !== null && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
+  }
+
+  private publishedNodeId(draftNodeId: string): string {
+    return this.derivedNodeId("knowflow:published-mind-map-node:", draftNodeId);
+  }
+
+  private draftNodeId(publishedNodeId: string): string {
+    return this.derivedNodeId("knowflow:draft-mind-map-node:", publishedNodeId);
+  }
+
+  private derivedNodeId(namespace: string, sourceNodeId: string): string {
+    const bytes = createHash("sha1")
+      .update(namespace)
+      .update(sourceNodeId)
+      .digest()
+      .subarray(0, 16);
+    bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50;
+    bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+    const hex = bytes.toString("hex");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   }
 }

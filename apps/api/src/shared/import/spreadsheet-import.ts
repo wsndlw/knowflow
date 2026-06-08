@@ -29,7 +29,7 @@ export async function parseSpreadsheetForBatchImport(
   const spreadsheet = await readSpreadsheet(buffer, kind);
   const firstSheet = spreadsheet.sheets[0];
   if (firstSheet === undefined) {
-    return { rows: [], skipped: 0, errors: [{ row: 1, reason: "Spreadsheet has no sheets" }] };
+    return { rows: [], skipped: 0, errors: [{ row: 1, reason: "表格文件没有工作表" }] };
   }
 
   const rows = firstSheet.rows;
@@ -41,7 +41,7 @@ export async function parseSpreadsheetForBatchImport(
   const dataStartIndex = mapping.hasHeader ? 1 : 0;
   const candidateRows = rows.slice(dataStartIndex);
   if (candidateRows.length > MAX_IMPORT_ROWS) {
-    throw new Error("Batch import supports at most 500 rows");
+    throw new Error("批量导入最多支持 500 行");
   }
 
   const result: BatchImportParseResult = { rows: [], skipped: 0, errors: [] };
@@ -57,7 +57,7 @@ export async function parseSpreadsheetForBatchImport(
     const summary = mapping.summaryIndex === null ? "" : (row[mapping.summaryIndex] ?? "").trim();
     if (title.length === 0 || content.length === 0) {
       result.skipped += 1;
-      result.errors.push({ row: physicalRow, reason: "Title and content are required" });
+      result.errors.push({ row: physicalRow, reason: "标题和内容不能为空" });
       return;
     }
 

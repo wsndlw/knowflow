@@ -41,7 +41,7 @@ export function csrfMiddleware(request: CsrfRequest, response: CsrfResponse, nex
     ok: false,
     error: {
       code: "CSRF_FAILED",
-      message: "CSRF token 验证失败",
+      message: "CSRF 令牌验证失败",
     },
   });
 }

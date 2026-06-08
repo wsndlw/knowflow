@@ -170,13 +170,13 @@ export class KnowledgeBaseController {
   }
 
   @Delete(":id")
-  @AuditLog("kb.disable", AuditTargetType.KNOWLEDGE_BASE)
+  @AuditLog("kb.delete", AuditTargetType.KNOWLEDGE_BASE)
   async delete(
     @Param() params: unknown,
     @Req() request: AuthenticatedRequest,
   ): Promise<EmptySuccess> {
     const { id } = uuidParamSchema.parse(params);
-    await this.knowledgeBaseService.disable(id, this.requireUser(request));
+    await this.knowledgeBaseService.delete(id, this.requireUser(request));
     return {
       ok: true,
       data: {},
@@ -207,6 +207,19 @@ export class KnowledgeBaseController {
     return {
       ok: true,
       data: await this.knowledgeBaseService.enable(id, this.requireUser(request)),
+    };
+  }
+
+  @Post(":id/restore")
+  @AuditLog("kb.restore", AuditTargetType.KNOWLEDGE_BASE)
+  async restore(
+    @Param() params: unknown,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<KnowledgeBaseSuccess> {
+    const { id } = uuidParamSchema.parse(params);
+    return {
+      ok: true,
+      data: await this.knowledgeBaseService.restore(id, this.requireUser(request)),
     };
   }
 
@@ -296,7 +309,7 @@ export class KnowledgeBaseController {
 
   private requireUser(request: AuthenticatedRequest) {
     if (request.user === undefined) {
-      throw new InternalServerErrorException("Authenticated request is missing user");
+      throw new InternalServerErrorException("已认证请求缺少用户信息");
     }
 
     return request.user;

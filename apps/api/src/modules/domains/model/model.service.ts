@@ -63,8 +63,7 @@ export class ModelService {
         name: input.name,
         providerType: input.providerType,
         baseUrl: input.baseUrl,
-        encryptedApiKey:
-          input.apiKey === undefined ? null : encryptApiKey(input.apiKey),
+        encryptedApiKey: input.apiKey === undefined ? null : encryptApiKey(input.apiKey),
         enabled: input.enabled ?? true,
         timeoutMs: input.timeoutMs ?? 30000,
         retryCount: input.retryCount ?? 2,
@@ -74,7 +73,7 @@ export class ModelService {
       })
       .returning();
     if (created === undefined) {
-      throw new BadRequestException("Failed to create model provider");
+      throw new BadRequestException("创建模型供应商失败");
     }
 
     return this.toProvider(created);
@@ -108,7 +107,7 @@ export class ModelService {
       .where(eq(modelProviders.id, id))
       .returning();
     if (updated === undefined) {
-      throw new BadRequestException("Failed to update model provider");
+      throw new BadRequestException("更新模型供应商失败");
     }
 
     return this.toProvider(updated);
@@ -122,13 +121,16 @@ export class ModelService {
       .from(modelCatalog)
       .where(eq(modelCatalog.providerId, id));
     if (modelCount > 0) {
-      throw new BadRequestException("Cannot delete a provider that still has models");
+      throw new BadRequestException("该供应商仍有关联模型，无法删除");
     }
 
     await db.delete(modelProviders).where(eq(modelProviders.id, id));
   }
 
-  async listModels(providerId: string, user: AuthenticatedUser): Promise<{ items: ModelCatalog[] }> {
+  async listModels(
+    providerId: string,
+    user: AuthenticatedUser,
+  ): Promise<{ items: ModelCatalog[] }> {
     this.ensureSuperAdmin(user);
     await this.ensureProviderExists(providerId);
     const rows = await db
@@ -168,11 +170,7 @@ export class ModelService {
       })
       .from(modelCatalog)
       .innerJoin(modelProviders, eq(modelProviders.id, modelCatalog.providerId))
-      .orderBy(
-        asc(modelProviders.name),
-        asc(modelCatalog.modelType),
-        asc(modelCatalog.modelName),
-      );
+      .orderBy(asc(modelProviders.name), asc(modelCatalog.modelType), asc(modelCatalog.modelName));
     return { items: rows.map((row) => this.toModel(row)) };
   }
 
@@ -195,7 +193,7 @@ export class ModelService {
       })
       .returning();
     if (created === undefined) {
-      throw new BadRequestException("Failed to create model");
+      throw new BadRequestException("创建模型失败");
     }
 
     return this.getModel(created.id, user);
@@ -205,7 +203,7 @@ export class ModelService {
     this.ensureSuperAdmin(user);
     const row = await this.findModel(id);
     if (row === undefined) {
-      throw new NotFoundException("Model not found");
+      throw new NotFoundException("未找到模型");
     }
 
     return this.toModel(row);
@@ -236,13 +234,10 @@ export class ModelService {
       .select({ value: count() })
       .from(modelUsagePolicies)
       .where(
-        or(
-          eq(modelUsagePolicies.defaultModelId, id),
-          eq(modelUsagePolicies.fallbackModelId, id),
-        ),
+        or(eq(modelUsagePolicies.defaultModelId, id), eq(modelUsagePolicies.fallbackModelId, id)),
       );
     if (policyCount > 0) {
-      throw new BadRequestException("Cannot delete a model referenced by usage policies");
+      throw new BadRequestException("该模型被使用策略引用，无法删除");
     }
 
     await db.delete(modelCatalog).where(eq(modelCatalog.id, id));
@@ -302,7 +297,7 @@ export class ModelService {
     const rows = await this.listUsagePolicies(user);
     const updated = rows.items.find((item) => item.usageType === usageType);
     if (updated === undefined) {
-      throw new BadRequestException("Failed to update usage policy");
+      throw new BadRequestException("更新模型使用策略失败");
     }
     return updated;
   }
@@ -315,10 +310,15 @@ export class ModelService {
     this.ensureSuperAdmin(user);
     const provider = await this.findProvider(id);
     if (provider === undefined) {
-      throw new NotFoundException("Model provider not found");
+      throw new NotFoundException("未找到模型供应商");
     }
     if (provider.encryptedApiKey === null) {
-      return { ok: false, latencyMs: 0, modelName: null, error: "Provider API key is not configured" };
+      return {
+        ok: false,
+        latencyMs: 0,
+        modelName: null,
+        error: "Provider API key is not configured",
+      };
     }
 
     const model =
@@ -343,26 +343,26 @@ export class ModelService {
         ok: false,
         latencyMs: Date.now() - startedAt,
         modelName: model.modelName,
-        error: error instanceof Error ? error.message.slice(0, 500) : "Connection test failed",
+        error: error instanceof Error ? error.message.slice(0, 500) : "连接测试失败",
       };
     }
   }
 
   private ensureSuperAdmin(user: AuthenticatedUser): void {
     if (user.platformRole !== "super_admin") {
-      throw new ForbiddenException("Only super admins can manage model configuration");
+      throw new ForbiddenException("仅超级管理员可管理模型配置");
     }
   }
 
   private async ensureProviderExists(id: string): Promise<void> {
     if ((await this.findProvider(id)) === undefined) {
-      throw new NotFoundException("Model provider not found");
+      throw new NotFoundException("未找到模型供应商");
     }
   }
 
   private async ensureModelExists(id: string): Promise<void> {
     if ((await this.findModel(id)) === undefined) {
-      throw new NotFoundException("Model not found");
+      throw new NotFoundException("未找到模型");
     }
   }
 
@@ -469,22 +469,19 @@ export class ModelService {
     signal: AbortSignal,
   ): Promise<void> {
     const base = provider.baseUrl.replace(/\/compatible-mode\/v1\/?$/, "");
-    const response = await fetch(
-      `${base}/api/v1/services/rerank/text-rerank/text-rerank`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: model.modelName,
-          input: { query: "health check", documents: ["health check"] },
-          parameters: { return_documents: false, top_n: 1 },
-        }),
-        signal,
+    const response = await fetch(`${base}/api/v1/services/rerank/text-rerank/text-rerank`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        model: model.modelName,
+        input: { query: "health check", documents: ["health check"] },
+        parameters: { return_documents: false, top_n: 1 },
+      }),
+      signal,
+    });
     if (!response.ok) {
       throw new Error(`Rerank test failed: ${String(response.status)} ${await response.text()}`);
     }

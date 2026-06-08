@@ -5,7 +5,15 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { db, documentTags, documents, knowledgeItemTags, knowledgeItems, tags } from "@knowflow/db";
+import {
+  db,
+  documentTags,
+  documents,
+  knowledgeBases,
+  knowledgeItemTags,
+  knowledgeItems,
+  tags,
+} from "@knowflow/db";
 import type {
   CreateTagRequest,
   KnowledgeTag,
@@ -13,7 +21,7 @@ import type {
   TagListResponse,
   UpdateTagRequest,
 } from "@knowflow/shared";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
@@ -62,7 +70,7 @@ export class TagService {
       })
       .returning(this.selection());
     if (created === undefined) {
-      throw new BadRequestException("Failed to create tag");
+      throw new BadRequestException("创建标签失败");
     }
 
     return this.toTag(created);
@@ -75,7 +83,7 @@ export class TagService {
   ): Promise<KnowledgeTag> {
     const tag = await this.findTag(tagId);
     if (tag === undefined) {
-      throw new NotFoundException("Tag not found");
+      throw new NotFoundException("未找到标签");
     }
     await this.ensureCanManage(tag.knowledgeBaseId, user);
     if (input.name !== undefined && input.name !== tag.name) {
@@ -92,7 +100,7 @@ export class TagService {
       .where(eq(tags.id, tagId))
       .returning(this.selection());
     if (updated === undefined) {
-      throw new NotFoundException("Tag not found");
+      throw new NotFoundException("未找到标签");
     }
 
     return this.toTag(updated);
@@ -101,7 +109,7 @@ export class TagService {
   async delete(tagId: string, user: AuthenticatedUser): Promise<void> {
     const tag = await this.findTag(tagId);
     if (tag === undefined) {
-      throw new NotFoundException("Tag not found");
+      throw new NotFoundException("未找到标签");
     }
     await this.ensureCanManage(tag.knowledgeBaseId, user);
     await db.delete(tags).where(eq(tags.id, tagId));
@@ -118,10 +126,11 @@ export class TagService {
         knowledgeBaseId: documents.knowledgeBaseId,
       })
       .from(documents)
-      .where(eq(documents.id, documentId))
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
+      .where(and(eq(documents.id, documentId), isNull(knowledgeBases.deletedAt)))
       .limit(1);
     if (document === undefined) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
     await this.ensureCanManage(document.knowledgeBaseId, user);
     await this.ensureTagsBelongToKnowledgeBase(tagIds, document.knowledgeBaseId);
@@ -152,10 +161,11 @@ export class TagService {
         knowledgeBaseId: knowledgeItems.knowledgeBaseId,
       })
       .from(knowledgeItems)
-      .where(eq(knowledgeItems.id, knowledgeItemId))
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
+      .where(and(eq(knowledgeItems.id, knowledgeItemId), isNull(knowledgeBases.deletedAt)))
       .limit(1);
     if (item === undefined) {
-      throw new NotFoundException("Knowledge item not found");
+      throw new NotFoundException("未找到知识条目");
     }
     await this.ensureCanManage(item.knowledgeBaseId, user);
     await this.ensureTagsBelongToKnowledgeBase(tagIds, item.knowledgeBaseId);
@@ -209,7 +219,7 @@ export class TagService {
       .from(tags)
       .where(and(inArray(tags.id, tagIds), eq(tags.knowledgeBaseId, knowledgeBaseId)));
     if (rows.length !== new Set(tagIds).size) {
-      throw new BadRequestException("All tags must belong to the same knowledge base");
+      throw new BadRequestException("所有标签必须属于同一知识库");
     }
   }
 
@@ -220,7 +230,7 @@ export class TagService {
       .where(and(eq(tags.knowledgeBaseId, knowledgeBaseId), eq(tags.name, name)))
       .limit(1);
     if (existing !== undefined) {
-      throw new BadRequestException("Tag name already exists in this knowledge base");
+      throw new BadRequestException("该知识库中标签名称已存在");
     }
   }
 
@@ -228,18 +238,23 @@ export class TagService {
     if (await this.accessService.canAccess(knowledgeBaseId, user)) {
       return;
     }
-    throw new NotFoundException("Knowledge base not found");
+    throw new NotFoundException("未找到知识库");
   }
 
   private async ensureCanManage(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canManage(knowledgeBaseId, user)) {
       return;
     }
-    throw new ForbiddenException("Cannot manage tags in this knowledge base");
+    throw new ForbiddenException("无权管理该知识库中的标签");
   }
 
   private async findTag(tagId: string): Promise<TagRow | undefined> {
-    const [tag] = await db.select(this.selection()).from(tags).where(eq(tags.id, tagId)).limit(1);
+    const [tag] = await db
+      .select(this.selection())
+      .from(tags)
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, tags.knowledgeBaseId))
+      .where(and(eq(tags.id, tagId), isNull(knowledgeBases.deletedAt)))
+      .limit(1);
     return tag;
   }
 

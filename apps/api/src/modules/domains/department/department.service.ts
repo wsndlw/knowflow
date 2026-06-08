@@ -15,7 +15,7 @@ import type {
   UpdateDepartmentRequest,
   UserOption,
 } from "@knowflow/shared";
-import { and, asc, count, eq, ne } from "drizzle-orm";
+import { and, asc, count, eq, isNull, ne } from "drizzle-orm";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 
@@ -59,9 +59,7 @@ export class DepartmentService {
       .from(departments)
       .leftJoin(users, eq(users.departmentId, departments.id))
       .where(
-        user.platformRole === "super_admin"
-          ? undefined
-          : eq(departments.id, user.departmentId),
+        user.platformRole === "super_admin" ? undefined : eq(departments.id, user.departmentId),
       )
       .groupBy(departments.id)
       .orderBy(asc(departments.name));
@@ -76,12 +74,9 @@ export class DepartmentService {
     this.ensureSuperAdmin(user);
     await this.ensureDepartmentNameAvailable(input.name);
 
-    const [created] = await db
-      .insert(departments)
-      .values({ name: input.name })
-      .returning();
+    const [created] = await db.insert(departments).values({ name: input.name }).returning();
     if (created === undefined) {
-      throw new BadRequestException("Failed to create department");
+      throw new BadRequestException("创建部门失败");
     }
 
     return this.toDepartment(created);
@@ -111,14 +106,8 @@ export class DepartmentService {
     await this.ensureDepartmentExists(id);
 
     const counts = await this.countDepartmentReferences(id);
-    if (
-      counts.userCount > 0 ||
-      counts.knowledgeBaseCount > 0 ||
-      counts.adminCount > 0
-    ) {
-      throw new BadRequestException(
-        "Cannot delete a department with assigned users, knowledge bases, or admins",
-      );
+    if (counts.userCount > 0 || counts.knowledgeBaseCount > 0 || counts.adminCount > 0) {
+      throw new BadRequestException("存在已分配用户、知识库或管理员，无法删除部门");
     }
 
     await db.delete(departments).where(eq(departments.id, id));
@@ -168,19 +157,19 @@ export class DepartmentService {
   ): Promise<void> {
     await this.ensureCanManageDepartment(sourceDepartmentId, user);
     if (sourceDepartmentId === targetDepartmentId) {
-      throw new BadRequestException("Target department must be different");
+      throw new BadRequestException("目标部门必须不同");
     }
     await this.ensureDepartmentExists(targetDepartmentId);
 
     const member = await this.findUser(memberUserId);
     if (member === undefined) {
-      throw new BadRequestException("User not found");
+      throw new BadRequestException("未找到用户");
     }
     if (member.departmentId !== sourceDepartmentId) {
-      throw new BadRequestException("User is not a member of this department");
+      throw new BadRequestException("用户不属于该部门");
     }
     if (user.platformRole === "department_admin") {
-      throw new ForbiddenException("Department admins cannot move members out of their department");
+      throw new ForbiddenException("部门管理员不能移出本部门成员");
     }
 
     await db
@@ -225,7 +214,7 @@ export class DepartmentService {
 
     const updated = await this.findUser(userId);
     if (updated === undefined) {
-      throw new BadRequestException("Failed to assign user department");
+      throw new BadRequestException("设置用户部门失败");
     }
     return this.toUserOption(updated);
   }
@@ -234,12 +223,12 @@ export class DepartmentService {
     if (user.platformRole === "super_admin" || user.platformRole === "department_admin") {
       return;
     }
-    throw new ForbiddenException("Only admins can manage departments");
+    throw new ForbiddenException("仅管理员可管理部门");
   }
 
   private ensureSuperAdmin(user: AuthenticatedUser): void {
     if (user.platformRole !== "super_admin") {
-      throw new ForbiddenException("Only super admins can manage departments");
+      throw new ForbiddenException("仅超级管理员可管理部门");
     }
   }
 
@@ -254,7 +243,7 @@ export class DepartmentService {
     if (user.platformRole === "department_admin" && user.departmentId === departmentId) {
       return;
     }
-    throw new ForbiddenException("Cannot manage this department");
+    throw new ForbiddenException("无权管理该部门");
   }
 
   private async ensureCanAssignUserToDepartment(
@@ -268,7 +257,7 @@ export class DepartmentService {
 
     const targetUser = await this.findUser(userId);
     if (targetUser === undefined) {
-      throw new BadRequestException("User not found");
+      throw new BadRequestException("未找到用户");
     }
 
     return targetUser;
@@ -277,14 +266,14 @@ export class DepartmentService {
   private async getDepartment(id: string): Promise<Department> {
     const row = await this.findDepartment(id);
     if (row === undefined) {
-      throw new NotFoundException("Department not found");
+      throw new NotFoundException("未找到部门");
     }
     return this.toDepartment(row);
   }
 
   private async ensureDepartmentExists(id: string): Promise<void> {
     if ((await this.findDepartment(id)) === undefined) {
-      throw new NotFoundException("Department not found");
+      throw new NotFoundException("未找到部门");
     }
   }
 
@@ -300,7 +289,7 @@ export class DepartmentService {
       },
     });
     if (existing !== undefined) {
-      throw new BadRequestException("Department name already exists");
+      throw new BadRequestException("部门名称已存在");
     }
   }
 
@@ -336,7 +325,7 @@ export class DepartmentService {
       db
         .select({ value: count() })
         .from(knowledgeBases)
-        .where(eq(knowledgeBases.departmentId, id)),
+        .where(and(eq(knowledgeBases.departmentId, id), isNull(knowledgeBases.deletedAt))),
       db
         .select({ value: count() })
         .from(departmentAdmins)

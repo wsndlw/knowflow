@@ -37,6 +37,6 @@ export class PermissionGuard implements CanActivate {
       return true;
     }
 
-    throw new ForbiddenException("Insufficient platform role");
+    throw new ForbiddenException("平台角色权限不足");
   }
 }

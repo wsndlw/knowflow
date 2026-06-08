@@ -81,6 +81,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "kb.create": "创建知识库",
   "kb.update": "更新知识库",
   "kb.delete": "删除知识库",
+  "kb.restore": "恢复知识库",
   "kb.disable": "禁用知识库",
   "kb.enable": "启用知识库",
   "kb.member.add": "添加成员",

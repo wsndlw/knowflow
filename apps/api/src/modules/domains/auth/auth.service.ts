@@ -62,12 +62,12 @@ export class AuthService {
 
     if (user?.status !== "active") {
       this.recordLoginFailure(failureKey);
-      throw new UnauthorizedException("Invalid username or password");
+      throw new UnauthorizedException("用户名或密码错误");
     }
 
     if (!verifyPassword(input.password, user.passwordHash)) {
       this.recordLoginFailure(failureKey);
-      throw new UnauthorizedException("Invalid username or password");
+      throw new UnauthorizedException("用户名或密码错误");
     }
 
     const [access, refresh] = await Promise.all([
@@ -97,7 +97,7 @@ export class AuthService {
         onlyIfActive: true,
       });
       if (!revokedRefresh) {
-        throw new UnauthorizedException("Authentication required");
+        throw new UnauthorizedException("请先登录");
       }
     }
 
@@ -129,7 +129,7 @@ export class AuthService {
       type === "access" ? ACCESS_SESSION_COOKIE_NAME : REFRESH_SESSION_COOKIE_NAME;
     const token = this.readCookie(request, cookieName);
     if (token === undefined) {
-      throw new UnauthorizedException("Authentication required");
+      throw new UnauthorizedException("请先登录");
     }
 
     const session = await db.query.sessions.findFirst({
@@ -137,11 +137,11 @@ export class AuthService {
     });
 
     if (!session) {
-      throw new UnauthorizedException("Authentication required");
+      throw new UnauthorizedException("请先登录");
     }
 
     if (session.revokedAt !== null || session.expiresAt <= new Date()) {
-      throw new UnauthorizedException("Authentication required");
+      throw new UnauthorizedException("请先登录");
     }
 
     const user = await db.query.users.findFirst({
@@ -149,7 +149,7 @@ export class AuthService {
     });
 
     if (user?.status !== "active") {
-      throw new UnauthorizedException("Authentication required");
+      throw new UnauthorizedException("请先登录");
     }
 
     await db.update(sessions).set({ lastSeenAt: new Date() }).where(eq(sessions.id, session.id));
@@ -281,7 +281,7 @@ export class AuthService {
     }
 
     if (bucket.count >= LOGIN_FAILURE_LIMIT) {
-      throw new HttpException("Invalid username or password", HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException("用户名或密码错误", HttpStatus.TOO_MANY_REQUESTS);
     }
   }
 

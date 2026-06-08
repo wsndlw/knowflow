@@ -5,6 +5,7 @@ import {
   auditLogs,
   db,
   documents,
+  knowledgeBases,
   knowledgeItems,
   tags,
   users,
@@ -17,19 +18,7 @@ import {
   type AuditLogListQuery,
   type AuditLogListResponse,
 } from "@knowflow/shared";
-import {
-  and,
-  count,
-  desc,
-  eq,
-  exists,
-  gte,
-  inArray,
-  isNull,
-  lte,
-  or,
-  type SQL,
-} from "drizzle-orm";
+import { and, count, desc, eq, exists, gte, inArray, isNull, lte, or, type SQL } from "drizzle-orm";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { KnowledgeBaseAccessService } from "./knowledge-base-access.service.js";
@@ -251,8 +240,10 @@ export class AuditLogQueryService {
     const rows = await db
       .select({ id: documents.id, title: documents.title })
       .from(documents)
-      .where(inArray(documents.id, [...ids]));
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
+      .where(and(inArray(documents.id, [...ids]), isNull(knowledgeBases.deletedAt)));
     rows.forEach((row) => labels.set(this.labelKey(AuditTargetType.DOCUMENT, row.id), row.title));
+    this.addMissingLabels(labels, AuditTargetType.DOCUMENT, ids, "已删除资源");
   }
 
   private async addKnowledgeItemLabels(labels: Map<string, string>, ids: Set<string> | undefined) {
@@ -262,10 +253,12 @@ export class AuditLogQueryService {
     const rows = await db
       .select({ id: knowledgeItems.id, title: knowledgeItems.title })
       .from(knowledgeItems)
-      .where(inArray(knowledgeItems.id, [...ids]));
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
+      .where(and(inArray(knowledgeItems.id, [...ids]), isNull(knowledgeBases.deletedAt)));
     rows.forEach((row) =>
       labels.set(this.labelKey(AuditTargetType.KNOWLEDGE_ITEM, row.id), row.title),
     );
+    this.addMissingLabels(labels, AuditTargetType.KNOWLEDGE_ITEM, ids, "已删除资源");
   }
 
   private async addAgentLabels(labels: Map<string, string>, ids: Set<string> | undefined) {
@@ -286,8 +279,24 @@ export class AuditLogQueryService {
     const rows = await db
       .select({ id: tags.id, name: tags.name })
       .from(tags)
-      .where(inArray(tags.id, [...ids]));
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, tags.knowledgeBaseId))
+      .where(and(inArray(tags.id, [...ids]), isNull(knowledgeBases.deletedAt)));
     rows.forEach((row) => labels.set(this.labelKey(AuditTargetType.TAG, row.id), row.name));
+    this.addMissingLabels(labels, AuditTargetType.TAG, ids, "已删除资源");
+  }
+
+  private addMissingLabels(
+    labels: Map<string, string>,
+    targetType: AuditTargetType,
+    ids: Set<string>,
+    label: string,
+  ): void {
+    for (const id of ids) {
+      const key = this.labelKey(targetType, id);
+      if (!labels.has(key)) {
+        labels.set(key, label);
+      }
+    }
   }
 
   private toEntry(row: AuditLogRow, labels: Map<string, string>): AuditLogEntry {
@@ -334,6 +343,6 @@ export class AuditLogQueryService {
     if (await this.accessService.canManage(knowledgeBaseId, user)) {
       return;
     }
-    throw new ForbiddenException("Cannot read audit logs in this knowledge base");
+    throw new ForbiddenException("无权查看该知识库的审计日志");
   }
 }

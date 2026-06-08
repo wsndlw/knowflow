@@ -13,7 +13,7 @@ import type {
   RetrievalTestRequest,
   RetrievalTestResponse,
 } from "@knowflow/shared";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { AliyunLlmService, EXPECTED_EMBEDDING_DIMENSION } from "../../../shared/llm/aliyun-llm.js";
 import type {
@@ -379,6 +379,7 @@ export class RetrievalService {
       .where(
         and(
           inArray(childChunks.knowledgeBaseId, allowedKnowledgeBaseIds),
+          isNull(knowledgeBases.deletedAt),
           eq(knowledgeBases.status, "active"),
           eq(documents.enabled, true),
           eq(documents.processStatus, "completed"),
@@ -411,6 +412,7 @@ export class RetrievalService {
       .where(
         and(
           inArray(childChunks.knowledgeBaseId, allowedKnowledgeBaseIds),
+          isNull(knowledgeBases.deletedAt),
           eq(knowledgeBases.status, "active"),
           eq(documents.enabled, true),
           eq(documents.processStatus, "completed"),
@@ -446,6 +448,7 @@ export class RetrievalService {
       .where(
         and(
           inArray(knowledgeItems.knowledgeBaseId, allowedKnowledgeBaseIds),
+          isNull(knowledgeBases.deletedAt),
           eq(knowledgeBases.status, "active"),
           eq(knowledgeItems.enabled, true),
           eq(knowledgeItems.status, "published"),
@@ -479,6 +482,7 @@ export class RetrievalService {
       .where(
         and(
           eq(childChunks.knowledgeBaseId, knowledgeBaseId),
+          isNull(knowledgeBases.deletedAt),
           eq(knowledgeBases.status, "active"),
           eq(documents.enabled, true),
           this.documentStatusCondition(documentStatus),
@@ -511,6 +515,7 @@ export class RetrievalService {
       .where(
         and(
           eq(childChunks.knowledgeBaseId, knowledgeBaseId),
+          isNull(knowledgeBases.deletedAt),
           eq(knowledgeBases.status, "active"),
           eq(documents.enabled, true),
           this.documentStatusCondition(documentStatus),
@@ -544,6 +549,7 @@ export class RetrievalService {
       .where(
         and(
           eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId),
+          isNull(knowledgeBases.deletedAt),
           eq(knowledgeBases.status, "active"),
           eq(knowledgeItems.enabled, true),
           this.knowledgeItemStatusCondition(itemStatus, canManage),

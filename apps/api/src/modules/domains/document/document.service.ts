@@ -11,6 +11,7 @@ import {
   documentTags,
   documents,
   files,
+  knowledgeBases,
   knowledgeImprovementTasks,
   knowledgeItems,
   knowledgeItemFeedback,
@@ -40,6 +41,7 @@ import {
   exists,
   ilike,
   inArray,
+  isNull,
   min,
   ne,
   or,
@@ -140,13 +142,13 @@ export class DocumentService {
   ): Promise<KnowledgeDocument> {
     await this.ensureCanManage(knowledgeBaseId, user);
     if (file === undefined) {
-      throw new BadRequestException("Document file is required");
+      throw new BadRequestException("请上传文档文件");
     }
     if (file.size <= 0) {
-      throw new BadRequestException("Document file is empty");
+      throw new BadRequestException("文档文件为空");
     }
     if (file.size > MAX_DOCUMENT_UPLOAD_BYTES) {
-      throw new BadRequestException("Document file exceeds 10 MB");
+      throw new BadRequestException("文档文件不能超过 10 MB");
     }
 
     const kind = this.detectFileKind(file);
@@ -171,7 +173,7 @@ export class DocumentService {
           })
           .returning({ id: files.id });
         if (storedFile === undefined) {
-          throw new BadRequestException("Failed to store file metadata");
+          throw new BadRequestException("保存文件元数据失败");
         }
         createdFileId = storedFile.id;
 
@@ -194,7 +196,7 @@ export class DocumentService {
           })
           .returning({ id: documents.id });
         if (document === undefined) {
-          throw new BadRequestException("Failed to create document");
+          throw new BadRequestException("创建文档失败");
         }
         createdDocumentId = document.id;
 
@@ -258,7 +260,7 @@ export class DocumentService {
   async get(id: string, user: AuthenticatedUser): Promise<KnowledgeDocument> {
     const row = await this.findRow(id);
     if (row === undefined) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
     await this.ensureCanAccess(row.knowledgeBaseId, user);
 
@@ -277,7 +279,7 @@ export class DocumentService {
   async getContent(id: string, user: AuthenticatedUser): Promise<DocumentContentResponse> {
     const row = await this.findRow(id);
     if (row === undefined) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
     await this.ensureCanAccess(row.knowledgeBaseId, user);
 
@@ -302,7 +304,7 @@ export class DocumentService {
   ): Promise<DocumentChunksResponse> {
     const row = await this.findRow(id);
     if (row === undefined) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
     await this.ensureCanAccess(row.knowledgeBaseId, user);
 
@@ -318,11 +320,11 @@ export class DocumentService {
   ): Promise<DocumentFileStream> {
     const row = await this.findRow(id);
     if (row === undefined) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
     await this.ensureCanAccess(row.knowledgeBaseId, user);
     if (row.fileId === null) {
-      throw new NotFoundException("Document has no original file");
+      throw new NotFoundException("文档没有原始文件");
     }
 
     const [file] = await db
@@ -336,17 +338,17 @@ export class DocumentService {
       .where(eq(files.id, row.fileId))
       .limit(1);
     if (file === undefined) {
-      throw new NotFoundException("Document file not found");
+      throw new NotFoundException("未找到文档文件");
     }
 
     const absolutePath = this.resolveStoredFilePath(file.storagePath);
     try {
       const fileStat = await stat(absolutePath);
       if (!fileStat.isFile()) {
-        throw new NotFoundException("Document file not found");
+        throw new NotFoundException("未找到文档文件");
       }
     } catch {
-      throw new NotFoundException("Document file not found");
+      throw new NotFoundException("未找到文档文件");
     }
 
     return {
@@ -361,7 +363,7 @@ export class DocumentService {
   async delete(id: string, user: AuthenticatedUser): Promise<void> {
     const row = await this.findRow(id);
     if (row === undefined) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
 
@@ -431,7 +433,7 @@ export class DocumentService {
   async reprocess(id: string, user: AuthenticatedUser): Promise<KnowledgeDocument> {
     const row = await this.findRow(id);
     if (row === undefined) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
     if (
@@ -440,7 +442,7 @@ export class DocumentService {
       row.processStatus === "chunking" ||
       row.processStatus === "embedding"
     ) {
-      throw new BadRequestException("Document is already being processed");
+      throw new BadRequestException("文档正在处理中");
     }
 
     const [previousParentChunks, previousChildChunks] = await Promise.all([
@@ -500,7 +502,7 @@ export class DocumentService {
 
     const updated = await this.findRow(id);
     if (updated === undefined) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
     const tagsByDocumentId = await this.fetchTagsByDocumentIds([id]);
     return this.toDocument(updated, await this.countChunks(id), tagsByDocumentId.get(id) ?? []);
@@ -524,7 +526,7 @@ export class DocumentService {
         try {
           subscriber.next(JSON.parse(payload) as DocumentProgressEvent);
         } catch {
-          subscriber.error(new Error("Invalid progress payload"));
+          subscriber.error(new Error("文档进度消息格式无效"));
         }
       });
       redis.on("error", (error) => subscriber.error(error));
@@ -540,18 +542,28 @@ export class DocumentService {
     if (await this.accessService.canAccess(knowledgeBaseId, user)) {
       return;
     }
-    throw new NotFoundException("Document not found");
+    throw new NotFoundException("未找到文档");
   }
 
   private async ensureCanManage(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canManage(knowledgeBaseId, user)) {
       return;
     }
-    throw new ForbiddenException("Cannot manage documents in this knowledge base");
+    throw new ForbiddenException("无权管理该知识库中的文档");
   }
 
   private buildListCondition(knowledgeBaseId: string, query: DocumentListQuery): SQL | undefined {
-    const conditions: SQL[] = [eq(documents.knowledgeBaseId, knowledgeBaseId)];
+    const conditions: SQL[] = [
+      eq(documents.knowledgeBaseId, knowledgeBaseId),
+      exists(
+        db
+          .select({ id: knowledgeBases.id })
+          .from(knowledgeBases)
+          .where(
+            and(eq(knowledgeBases.id, documents.knowledgeBaseId), isNull(knowledgeBases.deletedAt)),
+          ),
+      ),
+    ];
     const enabled = query.archived !== undefined ? !query.archived : (query.enabled ?? true);
     conditions.push(eq(documents.enabled, enabled));
     if (query.keyword !== undefined) {
@@ -581,7 +593,7 @@ export class DocumentService {
   ): Promise<KnowledgeDocument> {
     const row = await this.findRow(id);
     if (row === undefined) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
 
@@ -603,7 +615,7 @@ export class DocumentService {
 
     const updated = await this.findRow(id);
     if (updated === undefined) {
-      throw new NotFoundException("Document not found");
+      throw new NotFoundException("未找到文档");
     }
     const tagsByDocumentId = await this.fetchTagsByDocumentIds([id]);
     return this.toDocument(updated, await this.countChunks(id), tagsByDocumentId.get(id) ?? []);
@@ -613,11 +625,11 @@ export class DocumentService {
     const kind = detectDocumentUploadKind(file);
     if (kind === null) {
       throw new BadRequestException(
-        "Only PDF, Markdown, TXT, DOCX, CSV, XLSX, XLS, and image files with matching MIME types are supported",
+        "仅支持 PDF、Markdown、TXT、DOCX、CSV、XLSX、XLS 以及 MIME 类型匹配的图片文件",
       );
     }
     if (!validateDocumentUploadContent(file, kind)) {
-      throw new BadRequestException("Document file content does not match its declared type");
+      throw new BadRequestException("文档文件内容与声明类型不匹配");
     }
     return kind;
   }
@@ -637,14 +649,14 @@ export class DocumentService {
     );
     const absoluteDirectory = path.resolve(storageRoot, relativeDirectory);
     if (!this.isWithinDirectory(storageRoot, absoluteDirectory)) {
-      throw new BadRequestException("Invalid storage path");
+      throw new BadRequestException("存储路径无效");
     }
 
     await mkdir(absoluteDirectory, { recursive: true });
     const filename = `${randomUUID()}${extension}`;
     const absolutePath = path.resolve(absoluteDirectory, filename);
     if (!this.isWithinDirectory(storageRoot, absolutePath)) {
-      throw new BadRequestException("Invalid storage path");
+      throw new BadRequestException("存储路径无效");
     }
 
     await writeFile(absolutePath, file.buffer);
@@ -670,7 +682,7 @@ export class DocumentService {
   private normalizeTitle(originalName: string): string {
     const parsed = path.parse(originalName);
     const title = (parsed.name || originalName).trim();
-    return title.length > 0 ? title.slice(0, 255) : "Untitled document";
+    return title.length > 0 ? title.slice(0, 255) : "未命名文档";
   }
 
   private decodeMultipartFilename(originalName: string): string {
@@ -683,7 +695,8 @@ export class DocumentService {
       .select(this.documentSelection())
       .from(documents)
       .innerJoin(users, eq(users.id, documents.uploaderId))
-      .where(eq(documents.id, id))
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
+      .where(and(eq(documents.id, id), isNull(knowledgeBases.deletedAt)))
       .limit(1);
     return row;
   }
@@ -937,7 +950,7 @@ export class DocumentService {
       documentId: row.id,
       stage: row.processStatus,
       percent: this.progressPercent(row.processStatus),
-      message: row.errorMessage ?? `Document status: ${row.processStatus}`,
+      message: row.errorMessage ?? `文档状态：${this.processStatusLabel(row.processStatus)}`,
       timestamp: new Date().toISOString(),
     };
   }
@@ -955,6 +968,23 @@ export class DocumentService {
       case "completed":
       case "failed":
         return 100;
+    }
+  }
+
+  private processStatusLabel(status: KnowledgeDocument["processStatus"]): string {
+    switch (status) {
+      case "pending":
+        return "待处理";
+      case "parsing":
+        return "解析中";
+      case "chunking":
+        return "切分中";
+      case "embedding":
+        return "向量化中";
+      case "completed":
+        return "已完成";
+      case "failed":
+        return "失败";
     }
   }
 
@@ -1010,7 +1040,7 @@ export class DocumentService {
     const storageRoot = resolveLocalStorageRoot();
     const absolutePath = path.resolve(storageRoot, storagePath);
     if (!this.isWithinDirectory(storageRoot, absolutePath)) {
-      throw new NotFoundException("Document file not found");
+      throw new NotFoundException("未找到文档文件");
     }
     return absolutePath;
   }

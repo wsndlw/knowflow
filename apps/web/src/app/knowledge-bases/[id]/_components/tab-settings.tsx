@@ -10,6 +10,7 @@ import {
   RETRIEVAL_MODES,
 } from "@knowflow/shared";
 import { Button } from "../../../../components/ui/button";
+import { HelpTooltip } from "../../../../components/ui/help-tooltip";
 import { Label } from "../../../../components/ui/label";
 import { Slider } from "../../../../components/ui/slider";
 import { Switch } from "../../../../components/ui/switch";
@@ -34,6 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../../../components/ui/alert-dialog";
+import { RETRIEVAL_HELP_TEXT } from "./retrieval-test/help-text";
 
 const RETRIEVAL_MODE_LABELS: Record<string, string> = {
   hybrid: "混合检索",
@@ -197,9 +199,12 @@ export function TabSettings({
 
       <div className="flex flex-col gap-6">
         <h3 className="text-lg font-medium text-ink">基础检索设置</h3>
-        
+
         <div className="flex flex-col gap-3">
-          <Label>检索模式</Label>
+          <div className="flex items-center gap-1.5">
+            <Label>检索模式</Label>
+            <HelpTooltip content="选择知识库默认使用的检索策略，影响 RAG 问答时如何召回相关文档" />
+          </div>
           <Select
             value={settings.mode}
             onValueChange={(next) =>
@@ -220,8 +225,11 @@ export function TabSettings({
         </div>
 
         <div className="flex flex-col gap-3">
-          <div className="flex justify-between">
-            <Label>Top K (最大召回数)</Label>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1.5">
+              <Label>Top K (最大召回数)</Label>
+              <HelpTooltip content={RETRIEVAL_HELP_TEXT.topK} />
+            </div>
             <span className="text-sm font-medium text-ink tabular-nums">{settings.topK}</span>
           </div>
           <Slider
@@ -234,8 +242,11 @@ export function TabSettings({
         </div>
 
         <div className="flex flex-col gap-3">
-          <div className="flex justify-between">
-            <Label>相似度阈值 (Similarity Threshold)</Label>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1.5">
+              <Label>相似度阈值 (Similarity Threshold)</Label>
+              <HelpTooltip content={RETRIEVAL_HELP_TEXT.similarityThreshold} />
+            </div>
             <span className="text-sm font-medium text-ink tabular-nums">{settings.similarityThreshold.toFixed(2)}</span>
           </div>
           <Slider
@@ -251,7 +262,10 @@ export function TabSettings({
       <div className="flex flex-col gap-6 border-t border-border pt-6">
         <div className="flex items-center justify-between">
           <div className="flex flex-col gap-1">
-            <h3 className="text-lg font-medium text-ink">重排序 (Rerank)</h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-lg font-medium text-ink">重排序 (Rerank)</h3>
+              <HelpTooltip content={RETRIEVAL_HELP_TEXT.rerank.enabled} />
+            </div>
             <p className="text-sm text-ink-muted">使用专用模型对初步召回结果进行精准重排</p>
           </div>
           <Switch
@@ -263,8 +277,11 @@ export function TabSettings({
         {settings.rerankEnabled ? (
           <div className="flex flex-col gap-6 pl-4 border-l-2 border-border/50">
             <div className="flex flex-col gap-3">
-              <div className="flex justify-between">
-                <Label>候选数量 (Rerank Top N)</Label>
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-1.5">
+                  <Label>候选数量 (Rerank Top N)</Label>
+                  <HelpTooltip content={RETRIEVAL_HELP_TEXT.rerank.topN} />
+                </div>
                 <span className="text-sm font-medium text-ink tabular-nums">{settings.rerankTopN}</span>
               </div>
               <Slider
@@ -278,8 +295,11 @@ export function TabSettings({
             </div>
 
             <div className="flex flex-col gap-3">
-              <div className="flex justify-between">
-                <Label>保留数量 (Rerank Keep N)</Label>
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-1.5">
+                  <Label>保留数量 (Rerank Keep N)</Label>
+                  <HelpTooltip content={RETRIEVAL_HELP_TEXT.rerank.keepN} />
+                </div>
                 <span className="text-sm font-medium text-ink tabular-nums">{settings.rerankKeepN}</span>
               </div>
               <Slider
@@ -296,12 +316,18 @@ export function TabSettings({
       </div>
 
       <div className="flex flex-col gap-6 border-t border-border pt-6">
-        <h3 className="text-lg font-medium text-ink">混合检索权重配比</h3>
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-lg font-medium text-ink">混合检索权重配比</h3>
+          <HelpTooltip content={RETRIEVAL_HELP_TEXT.weights.total} />
+        </div>
         <p className="text-sm text-ink-muted">仅在混合检索（或最终算分）时生效</p>
 
         <div className="flex flex-col gap-3">
-          <div className="flex justify-between">
-            <Label>向量权重 (Vector Weight)</Label>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1.5">
+              <Label>向量权重 (Vector Weight)</Label>
+              <HelpTooltip content={RETRIEVAL_HELP_TEXT.weights.vector} />
+            </div>
             <span className="text-sm font-medium text-ink tabular-nums">{settings.vectorWeight.toFixed(2)}</span>
           </div>
           <Slider
@@ -314,8 +340,11 @@ export function TabSettings({
         </div>
 
         <div className="flex flex-col gap-3">
-          <div className="flex justify-between">
-            <Label>全文权重 (FTS Weight)</Label>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1.5">
+              <Label>全文权重 (FTS Weight)</Label>
+              <HelpTooltip content={RETRIEVAL_HELP_TEXT.weights.fts} />
+            </div>
             <span className="text-sm font-medium text-ink tabular-nums">{settings.ftsWeight.toFixed(2)}</span>
           </div>
           <Slider
@@ -328,8 +357,11 @@ export function TabSettings({
         </div>
 
         <div className="flex flex-col gap-3">
-          <div className="flex justify-between">
-            <Label>知识条目权重 (KI Weight)</Label>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1.5">
+              <Label>知识条目权重 (KI Weight)</Label>
+              <HelpTooltip content={RETRIEVAL_HELP_TEXT.weights.ki} />
+            </div>
             <span className="text-sm font-medium text-ink tabular-nums">{settings.kiWeight.toFixed(2)}</span>
           </div>
           <Slider

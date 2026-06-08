@@ -13,6 +13,17 @@ import { Button } from "../../../../components/ui/button";
 import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Card } from "../../../../components/ui/card";
 import { apiRequest, emptyObjectSchema } from "../../../../lib/api";
+import { translateApiError } from "../../../../lib/api-error";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../../components/ui/alert-dialog";
 import { AgentDialog, type AgentFormData } from "./dialogs/agent-dialog";
 
 type TabAgentsProps = {
@@ -41,6 +52,9 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
   const [generating, setGenerating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ManagedAgent | null>(null);
+  const [deletingAgent, setDeletingAgent] = useState<ManagedAgent | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const loadAgents = useCallback(async () => {
     setLoading(true);
@@ -116,13 +130,19 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
     }
   }
 
-  async function handleDelete(agentId: string) {
-    setActionError(null);
+  async function handleDelete() {
+    if (!deletingAgent) return;
+    setDeleting(true);
+    setDeleteError(null);
     try {
-      await apiRequest(`/agents/${agentId}`, emptyObjectSchema, { method: "DELETE" });
+      await apiRequest(`/agents/${deletingAgent.id}`, emptyObjectSchema, { method: "DELETE" });
+      setDeletingAgent(null);
       await loadAgents();
     } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "删除失败");
+      // 失败保留确认框、在框内提示，避免错误甩到列表顶部用户看不到
+      setDeleteError(caught instanceof Error ? translateApiError(caught.message) : "删除失败");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -210,7 +230,7 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => void handleDelete(agent.id)}
+                    onClick={() => { setDeleteError(null); setDeletingAgent(agent); }}
                   >
                     删除
                   </Button>
@@ -228,6 +248,33 @@ export function TabAgents({ knowledgeBaseId }: TabAgentsProps) {
         onSubmit={editing ? handleUpdate : handleCreate}
         editing={editing}
       />
+
+      <AlertDialog
+        open={deletingAgent !== null}
+        onOpenChange={(open) => { if (!open) { setDeletingAgent(null); setDeleteError(null); } }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除专家 Agent</AlertDialogTitle>
+            <AlertDialogDescription>
+              删除后「{deletingAgent?.name}」及其全部对话记录将被永久清除，且无法恢复。确认删除？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError ? (
+            <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{deleteError}</p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={(e) => { e.preventDefault(); void handleDelete(); }}
+            >
+              {deleting ? "删除中…" : "确认删除"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

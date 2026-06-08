@@ -47,12 +47,6 @@ const visibilityMeta: Record<
   restricted: { label: "受限", tone: "warning" },
 };
 
-type Tone = "neutral" | "brand" | "success" | "warning" | "danger" | "info";
-
-const statusMeta: Record<string, { label: string; tone: Tone }> = {
-  active: { label: "启用", tone: "success" },
-  disabled: { label: "已禁用", tone: "neutral" },
-};
 
 function buildListPath(filters: Filters, deleted: boolean): string {
   const params = new URLSearchParams();
@@ -240,14 +234,16 @@ export default function KnowledgeBasesPage() {
               </div>
             </>
           ) : null}
-          <Button
-            variant={trashMode ? "primary" : "outline"}
-            size="sm"
-            className={cn(trashMode && "ml-auto")}
-            onClick={() => setTrashMode((value) => !value)}
-          >
-            {trashMode ? "返回列表" : "回收站"}
-          </Button>
+          {canCreate ? (
+            <Button
+              variant={trashMode ? "primary" : "outline"}
+              size="sm"
+              className={cn(trashMode && "ml-auto")}
+              onClick={() => setTrashMode((value) => !value)}
+            >
+              {trashMode ? "返回列表" : "回收站"}
+            </Button>
+          ) : null}
         </div>
 
         {error !== null ? (
@@ -291,9 +287,9 @@ export default function KnowledgeBasesPage() {
           trashMode ? (
             <TrashView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
           ) : view === "card" ? (
-            <CardView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
+            <CardView items={items} />
           ) : (
-            <TableView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
+            <TableView items={items} />
           )
         ) : null}
 
@@ -456,97 +452,52 @@ function TrashView({
   );
 }
 
-function CardView({
-  items,
-  onRefresh,
-  showToast,
-}: {
-  items: KnowledgeBaseListItem[];
-  onRefresh: () => Promise<void>;
-  showToast: (msg: string, tone?: "success" | "danger") => void;
-}) {
-  const [enablingId, setEnablingId] = useState<string | null>(null);
-
-  async function handleEnable(id: string) {
-    setEnablingId(id);
-    try {
-      await apiRequest(`/knowledge-bases/${id}/enable`, knowledgeBaseSchema, {
-        method: "POST",
-      });
-      showToast("知识库已启用");
-      await onRefresh();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "启用失败", "danger");
-    } finally {
-      setEnablingId(null);
-    }
-  }
-
+function CardView({ items }: { items: KnowledgeBaseListItem[] }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((item) => {
-        const isDisabled = item.status === "disabled";
-        const meta = statusMeta[item.status];
-        return (
-          <Card
-            key={item.id}
-            className={cn(
-              "group flex h-full flex-col p-5 transition-shadow duration-150 hover:shadow-md",
-              isDisabled && "opacity-75",
-            )}
-          >
-            <div className="mb-2 flex items-start justify-between gap-2">
-              <Link href={`/knowledge-bases/${item.id}`} className="min-w-0">
-                <h3 className="truncate text-md font-semibold text-ink transition-colors group-hover:text-brand-700">
-                  {item.name}
-                </h3>
-              </Link>
-              <div className="flex shrink-0 items-center gap-1.5">
-                {isDisabled && meta ? <Badge tone={meta.tone}>{meta.label}</Badge> : null}
-                <Badge tone={visibilityMeta[item.visibility].tone}>
-                  {visibilityMeta[item.visibility].label}
-                </Badge>
-              </div>
-            </div>
-            <Link href={`/knowledge-bases/${item.id}`} className="block">
-              <p className="line-clamp-2 min-h-10 text-sm text-ink-muted">
-                {item.description ?? "暂无描述"}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
-                <CountStat label="文档" value={item.documentCount} />
-                <CountStat label="条目" value={item.knowledgeItemCount} />
-                <CountStat label="成员" value={item.memberCount} />
-              </div>
+      {items.map((item) => (
+        <Card
+          key={item.id}
+          className="group flex h-full flex-col p-5 transition-shadow duration-150 hover:shadow-md"
+        >
+          <div className="mb-2 flex items-start justify-between gap-2">
+            <Link href={`/knowledge-bases/${item.id}`} className="min-w-0">
+              <h3 className="truncate text-md font-semibold text-ink transition-colors group-hover:text-brand-700">
+                {item.name}
+              </h3>
             </Link>
-            <div className="mt-auto flex items-center gap-2 border-t border-border pt-3">
-              {isDisabled && item.canManage ? (
-                <Button
-                  variant="outline"
-                  size="xs"
-                  loading={enablingId === item.id}
-                  onClick={() => void handleEnable(item.id)}
-                >
-                  启用
-                </Button>
-              ) : null}
-              <Button asChild variant="outline" size="xs">
-                <Link href={`/knowledge-bases/${item.id}?tab=chat`}>专家 Agent</Link>
-              </Button>
-              <Button asChild variant="outline" size="xs">
-                <Link href={`/knowledge-bases/${item.id}?tab=documents`}>文档</Link>
-              </Button>
-              <Button asChild variant="outline" size="xs">
-                <Link href={`/knowledge-bases/${item.id}?tab=knowledge-items`}>知识条目</Link>
-              </Button>
-              {item.canManage ? (
-                <Button asChild variant="primary" size="xs" className="ml-auto">
-                  <Link href={`/knowledge-bases/${item.id}?mode=manage`}>管理</Link>
-                </Button>
-              ) : null}
+            <Badge tone={visibilityMeta[item.visibility].tone}>
+              {visibilityMeta[item.visibility].label}
+            </Badge>
+          </div>
+          <Link href={`/knowledge-bases/${item.id}`} className="block">
+            <p className="line-clamp-2 min-h-10 text-sm text-ink-muted">
+              {item.description ?? "暂无描述"}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
+              <CountStat label="文档" value={item.documentCount} />
+              <CountStat label="条目" value={item.knowledgeItemCount} />
+              <CountStat label="成员" value={item.memberCount} />
             </div>
-          </Card>
-        );
-      })}
+          </Link>
+          <div className="mt-auto flex items-center gap-2 border-t border-border pt-3">
+            <Button asChild variant="outline" size="xs">
+              <Link href={`/knowledge-bases/${item.id}?tab=chat`}>专家 Agent</Link>
+            </Button>
+            <Button asChild variant="outline" size="xs">
+              <Link href={`/knowledge-bases/${item.id}?tab=documents`}>文档</Link>
+            </Button>
+            <Button asChild variant="outline" size="xs">
+              <Link href={`/knowledge-bases/${item.id}?tab=knowledge-items`}>知识条目</Link>
+            </Button>
+            {item.canManage ? (
+              <Button asChild variant="primary" size="xs" className="ml-auto">
+                <Link href={`/knowledge-bases/${item.id}?mode=manage`}>管理</Link>
+              </Button>
+            ) : null}
+          </div>
+        </Card>
+      ))}
     </div>
   );
 }
@@ -560,101 +511,52 @@ function CountStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function TableView({
-  items,
-  onRefresh,
-  showToast,
-}: {
-  items: KnowledgeBaseListItem[];
-  onRefresh: () => Promise<void>;
-  showToast: (msg: string, tone?: "success" | "danger") => void;
-}) {
-  const [enablingId, setEnablingId] = useState<string | null>(null);
-
-  async function handleEnable(id: string) {
-    setEnablingId(id);
-    try {
-      await apiRequest(`/knowledge-bases/${id}/enable`, knowledgeBaseSchema, {
-        method: "POST",
-      });
-      showToast("知识库已启用");
-      await onRefresh();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "启用失败", "danger");
-    } finally {
-      setEnablingId(null);
-    }
-  }
-
+function TableView({ items }: { items: KnowledgeBaseListItem[] }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
       <table className="w-full text-left text-base">
         <thead>
           <tr className="border-b border-border bg-neutral-50 text-sm text-ink-muted">
             <th className="px-4 py-2.5 font-medium">名称</th>
-            <th className="px-4 py-2.5 font-medium">状态</th>
             <th className="px-4 py-2.5 font-medium">可见范围</th>
             <th className="px-4 py-2.5 font-medium">文档</th>
             <th className="px-4 py-2.5 font-medium">条目</th>
             <th className="px-4 py-2.5 font-medium">成员</th>
             <th className="px-4 py-2.5 font-medium">部门</th>
             <th className="px-4 py-2.5 font-medium">角色</th>
-            <th className="px-4 py-2.5 font-medium">操作</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => {
-            const isDisabled = item.status === "disabled";
-            const meta = statusMeta[item.status];
-            return (
-              <tr
-                key={item.id}
-                className={cn(
-                  "border-b border-border last:border-0 hover:bg-neutral-50",
-                  isDisabled && "opacity-75",
-                )}
-              >
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/knowledge-bases/${item.id}`}
-                    className="font-medium text-ink hover:text-brand-700"
-                  >
-                    {item.name}
-                  </Link>
-                  {item.description !== null ? (
-                    <p className="mt-0.5 line-clamp-1 text-sm text-ink-subtle">
-                      {item.description}
-                    </p>
-                  ) : null}
-                </td>
-                <td className="px-4 py-3">
-                  {meta ? <Badge tone={meta.tone}>{meta.label}</Badge> : null}
-                </td>
-                <td className="px-4 py-3">
-                  <Badge tone={visibilityMeta[item.visibility].tone}>
-                    {visibilityMeta[item.visibility].label}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-ink-muted">{item.documentCount}</td>
-                <td className="px-4 py-3 text-ink-muted">{item.knowledgeItemCount}</td>
-                <td className="px-4 py-3 text-ink-muted">{item.memberCount}</td>
-                <td className="px-4 py-3 text-ink-muted">{item.departmentName}</td>
-                <td className="px-4 py-3 text-ink-muted">{item.canManage ? "管理员" : "成员"}</td>
-                <td className="px-4 py-3">
-                  {isDisabled && item.canManage ? (
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      loading={enablingId === item.id}
-                      onClick={() => void handleEnable(item.id)}
-                    >
-                      启用
-                    </Button>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })}
+          {items.map((item) => (
+            <tr
+              key={item.id}
+              className="border-b border-border last:border-0 hover:bg-neutral-50"
+            >
+              <td className="px-4 py-3">
+                <Link
+                  href={`/knowledge-bases/${item.id}`}
+                  className="font-medium text-ink hover:text-brand-700"
+                >
+                  {item.name}
+                </Link>
+                {item.description !== null ? (
+                  <p className="mt-0.5 line-clamp-1 text-sm text-ink-subtle">
+                    {item.description}
+                  </p>
+                ) : null}
+              </td>
+              <td className="px-4 py-3">
+                <Badge tone={visibilityMeta[item.visibility].tone}>
+                  {visibilityMeta[item.visibility].label}
+                </Badge>
+              </td>
+              <td className="px-4 py-3 text-ink-muted">{item.documentCount}</td>
+              <td className="px-4 py-3 text-ink-muted">{item.knowledgeItemCount}</td>
+              <td className="px-4 py-3 text-ink-muted">{item.memberCount}</td>
+              <td className="px-4 py-3 text-ink-muted">{item.departmentName}</td>
+              <td className="px-4 py-3 text-ink-muted">{item.canManage ? "管理员" : "成员"}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

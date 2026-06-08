@@ -4,9 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   retrievalSettingsSchema,
-  knowledgeBaseSchema,
   type RetrievalSettings,
-  type KnowledgeBaseStatus,
   RETRIEVAL_MODES,
 } from "@knowflow/shared";
 import { Button } from "../../../../components/ui/button";
@@ -21,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../../components/ui/select";
-import { Dialog } from "../../../../components/ui/dialog";
 import { Skeleton } from "../../../../components/ui/feedback";
 import { apiRequest, emptyObjectSchema } from "../../../../lib/api";
 import { translateApiError } from "../../../../lib/api-error";
@@ -48,21 +45,15 @@ const RETRIEVAL_MODE_LABELS: Record<string, string> = {
 export function TabSettings({
   knowledgeBaseId,
   kbName,
-  kbStatus,
-  onStatusChanged,
 }: {
   knowledgeBaseId: string;
   kbName: string;
-  kbStatus: KnowledgeBaseStatus;
-  onStatusChanged: () => Promise<void>;
 }) {
   const [settings, setSettings] = useState<RetrievalSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [toggling, setToggling] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -116,39 +107,6 @@ export function TabSettings({
     }
   }
 
-  async function handleDisable() {
-    setToggling(true);
-    setError(null);
-    try {
-      await apiRequest(`/knowledge-bases/${knowledgeBaseId}/disable`, emptyObjectSchema, {
-        method: "POST",
-      });
-      setConfirmOpen(false);
-      setSuccess("知识库已禁用，可随时重新启用");
-      await onStatusChanged();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "禁用失败");
-    } finally {
-      setToggling(false);
-    }
-  }
-
-  async function handleEnable() {
-    setToggling(true);
-    setError(null);
-    try {
-      await apiRequest(`/knowledge-bases/${knowledgeBaseId}/enable`, knowledgeBaseSchema, {
-        method: "POST",
-      });
-      setSuccess("知识库已启用");
-      await onStatusChanged();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "启用失败");
-    } finally {
-      setToggling(false);
-    }
-  }
-
   async function handleDelete() {
     setDeleting(true);
     setDeleteError(null);
@@ -184,8 +142,6 @@ export function TabSettings({
       </p>
     );
   }
-
-  const isActive = kbStatus === "active";
 
   return (
     <div className="flex flex-col gap-10">
@@ -386,22 +342,6 @@ export function TabSettings({
         <h3 className="text-base font-medium text-danger">危险区域</h3>
         <div className="flex items-start justify-between gap-4">
           <p className="text-sm text-ink-muted">
-            {isActive
-              ? "禁用知识库后，该库将不再参与检索、问答和 Agent 调用，可随时重新启用。"
-              : "该知识库当前已禁用，不参与检索和问答。点击右侧按钮可重新启用。"}
-          </p>
-          {isActive ? (
-            <Button type="button" variant="destructive" className="shrink-0" onClick={() => setConfirmOpen(true)}>
-              禁用知识库
-            </Button>
-          ) : (
-            <Button type="button" variant="secondary" className="shrink-0" loading={toggling} onClick={() => void handleEnable()}>
-              启用知识库
-            </Button>
-          )}
-        </div>
-        <div className="flex items-start justify-between gap-4 border-t border-danger/20 pt-4">
-          <p className="text-sm text-ink-muted">
             删除知识库后将移入回收站，不再参与检索与问答；可在知识库列表的回收站中恢复。
           </p>
           <Button type="button" variant="destructive" className="shrink-0" onClick={() => { setDeleteError(null); setDeleteOpen(true); }}>
@@ -409,22 +349,6 @@ export function TabSettings({
           </Button>
         </div>
       </section>
-
-      <Dialog
-        open={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
-        title="确认禁用知识库"
-        description={`禁用「${kbName}」后，该库将不再参与检索、问答和 Agent 调用。你可以随时重新启用。`}
-      >
-        <div className="flex justify-end gap-2 pt-4">
-          <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
-            取消
-          </Button>
-          <Button variant="destructive" loading={toggling} onClick={() => void handleDisable()}>
-            确认禁用
-          </Button>
-        </div>
-      </Dialog>
 
       <AlertDialog open={deleteOpen} onOpenChange={(open) => { if (!open) { setDeleteOpen(false); setDeleteError(null); } }}>
         <AlertDialogContent>

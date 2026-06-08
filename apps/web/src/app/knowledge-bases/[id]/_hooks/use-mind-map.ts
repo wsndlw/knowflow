@@ -149,13 +149,13 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
       if (draft.length > 0) {
         setNodes(draft.map(toEditable));
       } else if (published.length > 0) {
-        // 🔴 publish 已消耗 draft：用 published 克隆一份作为编辑起点
+        // publish 已消耗 draft：用 published 克隆一份作为编辑起点，视为干净基线
         setNodes(clonePublished(published));
-        setDirty(true); // 克隆出的内容尚未保存为 draft
       } else {
         setNodes([]);
       }
       setMode("edit");
+      setDirty(false); // 刚加载完即为干净基线，用户真正编辑后才标记未保存
     } catch (caught) {
       setLoadError(
         caught instanceof Error ? translateApiError(caught.message) : "加载思维导图失败",

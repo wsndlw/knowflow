@@ -23,6 +23,7 @@ import {
 } from "@knowflow/shared";
 
 import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
 import { Dialog } from "../../components/ui/dialog";
 import { cn } from "../../lib/cn";
 
@@ -432,11 +433,10 @@ export function CorrectionDialog({
           />
         </label>
         <label className="flex items-center gap-2 text-base text-ink">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={ingestion}
-            onChange={(e) => setIngestion(e.target.checked)}
-            className="size-4 rounded border-border text-brand-600 focus:ring-brand-500/20"
+            onCheckedChange={(v) => setIngestion(v === true)}
+            aria-label="建议补充到知识库"
           />
           建议补充到知识库
         </label>

@@ -12,7 +12,13 @@ import { Button } from "../../../../components/ui/button";
 import { Label } from "../../../../components/ui/label";
 import { Slider } from "../../../../components/ui/slider";
 import { Switch } from "../../../../components/ui/switch";
-import { Select } from "../../../../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../components/ui/select";
 import { Dialog } from "../../../../components/ui/dialog";
 import { Skeleton } from "../../../../components/ui/feedback";
 import { apiRequest, emptyObjectSchema } from "../../../../lib/api";
@@ -162,14 +168,20 @@ export function TabSettings({
           <Label>检索模式</Label>
           <Select
             value={settings.mode}
-            onChange={(e) => setSettings({ ...settings, mode: e.target.value as typeof RETRIEVAL_MODES[number] })}
-            className="max-w-xs"
+            onValueChange={(next) =>
+              setSettings({ ...settings, mode: next as (typeof RETRIEVAL_MODES)[number] })
+            }
           >
-            {RETRIEVAL_MODES.map((m) => (
-              <option key={m} value={m}>
-                {RETRIEVAL_MODE_LABELS[m] ?? m}
-              </option>
-            ))}
+            <SelectTrigger className="w-full max-w-xs">
+              <SelectValue placeholder="选择检索模式" />
+            </SelectTrigger>
+            <SelectContent>
+              {RETRIEVAL_MODES.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {RETRIEVAL_MODE_LABELS[m] ?? m}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
 

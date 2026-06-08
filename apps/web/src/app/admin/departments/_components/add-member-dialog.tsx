@@ -5,6 +5,13 @@ import type { UserOption } from "@knowflow/shared";
 
 import { Dialog } from "../../../../components/ui/dialog";
 import { Button } from "../../../../components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../components/ui/select";
 
 type AddMemberDialogProps = {
   open: boolean;
@@ -70,26 +77,28 @@ export function AddMemberDialog({
           <p className="text-sm text-ink-muted">暂无可分配的用户（所有用户均已在本部门）。</p>
         ) : (
           <div>
-            <label htmlFor="user-select" className="mb-1.5 block text-sm font-medium text-ink">
+            <label className="mb-1.5 block text-sm font-medium text-ink">
               选择用户
             </label>
-            <select
-              id="user-select"
-              className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            <Select
               value={selectedUserId}
-              onChange={(e) => {
-                setSelectedUserId(e.target.value);
+              onValueChange={(next) => {
+                setSelectedUserId(next);
                 setError("");
               }}
               disabled={loading}
             >
-              <option value="">请选择</option>
-              {filteredUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}（{u.username}）— 当前：{u.departmentName}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="请选择" />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredUsers.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}（{u.username}）— 当前：{u.departmentName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
 

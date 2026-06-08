@@ -10,7 +10,14 @@ import type {
 
 import { Dialog } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
-import { Select } from "../../../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../components/ui/select";
+import { Checkbox } from "../../../components/ui/checkbox";
 import { Button } from "../../../components/ui/button";
 import { Textarea } from "../../../components/ui/textarea";
 
@@ -170,17 +177,20 @@ export function ProviderDialog({ open, onClose, provider, onSubmit }: ProviderDi
             供应商类型 <span className="text-danger">*</span>
           </label>
           <Select
-            id="providerType"
-            value={formData.providerType}
-            onChange={(e) => handleChange("providerType", e.target.value)}
+            value={formData.providerType === "" ? undefined : formData.providerType}
+            onValueChange={(next) => handleChange("providerType", next)}
             disabled={loading || isEdit}
           >
-            <option value="">请选择</option>
-            {Object.entries(PROVIDER_TYPE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
+            <SelectTrigger id="providerType" className="w-full">
+              <SelectValue placeholder="请选择" />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(PROVIDER_TYPE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
           {errors["providerType"] !== undefined ? (
             <p className="mt-1 text-xs text-danger">{errors["providerType"]}</p>
@@ -217,13 +227,11 @@ export function ProviderDialog({ open, onClose, provider, onSubmit }: ProviderDi
           />
           {isEdit && provider.hasApiKey ? (
             <div className="mt-1.5 flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="clearKey"
                 checked={clearKey}
-                onChange={(e) => setClearKey(e.target.checked)}
+                onCheckedChange={(v) => setClearKey(v === true)}
                 disabled={loading}
-                className="size-4"
               />
               <label htmlFor="clearKey" className="text-sm text-ink-muted">
                 清除密钥
@@ -307,13 +315,11 @@ export function ProviderDialog({ open, onClose, provider, onSubmit }: ProviderDi
         </div>
 
         <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
+          <Checkbox
             id="enabled"
             checked={formData.enabled}
-            onChange={(e) => handleChange("enabled", e.target.checked)}
+            onCheckedChange={(v) => handleChange("enabled", v === true)}
             disabled={loading}
-            className="size-4"
           />
           <label htmlFor="enabled" className="text-sm text-ink">
             启用

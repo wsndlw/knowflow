@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { agentListResponseSchema, conversationListResponseSchema, type Agent, type Conversation } from "@knowflow/shared";
 import { apiRequest } from "../../../../lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../components/ui/select";
 import { useAgentChat } from "../../../_hooks/use-agent-chat";
 import { AgentChatLayout } from "../../../_components/agent-chat-layout";
 
@@ -88,23 +95,26 @@ export function TabChat({ knowledgeBaseId }: { knowledgeBaseId: string }) {
   }, [chatHook.selectedConversationId, conversations, selectedAgentId]);
 
   const agentSelector = (
-    <select
-      value={selectedAgentId}
-      onChange={(e) => {
-        setSelectedAgentId(e.target.value);
+    <Select
+      value={selectedAgentId === "" ? undefined : selectedAgentId}
+      onValueChange={(next) => {
+        setSelectedAgentId(next);
         chatHook.setSelectedConversationId("");
         chatHook.setMessages([]);
       }}
       disabled={agents.length <= 1}
-      className="w-full rounded-md border border-border bg-neutral-0 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-neutral-100 disabled:text-ink-subtle"
     >
-      {agents.map((agent) => (
-        <option key={agent.id} value={agent.id}>
-          {agent.name}
-        </option>
-      ))}
-      {agents.length === 0 && <option value="">无可用专家</option>}
-    </select>
+      <SelectTrigger className="w-full">
+        <SelectValue placeholder={agents.length === 0 ? "无可用专家" : "选择专家 Agent"} />
+      </SelectTrigger>
+      <SelectContent>
+        {agents.map((agent) => (
+          <SelectItem key={agent.id} value={agent.id}>
+            {agent.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 
   return (

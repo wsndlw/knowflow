@@ -8,7 +8,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -113,29 +119,44 @@ export function ConfigPanel({
         <FilterField label="文档状态">
           <Select
             value={filters.documentStatus}
-            onChange={(event) => onFiltersChange({ ...filters, documentStatus: event.target.value })}
+            onValueChange={(next) => onFiltersChange({ ...filters, documentStatus: next })}
           >
-            <option value="completed">仅处理完成</option>
-            <option value="all">全部文档</option>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="文档状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="completed">仅处理完成</SelectItem>
+              <SelectItem value="all">全部文档</SelectItem>
+            </SelectContent>
           </Select>
         </FilterField>
         <FilterField label="条目状态">
           <Select
             value={filters.itemStatus}
-            onChange={(event) => onFiltersChange({ ...filters, itemStatus: event.target.value })}
+            onValueChange={(next) => onFiltersChange({ ...filters, itemStatus: next })}
           >
-            <option value="published">仅已发布</option>
-            <option value="all">全部条目</option>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="条目状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="published">仅已发布</SelectItem>
+              <SelectItem value="all">全部条目</SelectItem>
+            </SelectContent>
           </Select>
         </FilterField>
         <FilterField label="来源类型">
           <Select
             value={filters.sourceType}
-            onChange={(event) => onFiltersChange({ ...filters, sourceType: event.target.value })}
+            onValueChange={(next) => onFiltersChange({ ...filters, sourceType: next })}
           >
-            <option value="all">全部来源</option>
-            <option value="chunk">仅文档切片</option>
-            <option value="knowledge_item">仅知识条目</option>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="来源类型" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部来源</SelectItem>
+              <SelectItem value="chunk">仅文档切片</SelectItem>
+              <SelectItem value="knowledge_item">仅知识条目</SelectItem>
+            </SelectContent>
           </Select>
         </FilterField>
       </section>

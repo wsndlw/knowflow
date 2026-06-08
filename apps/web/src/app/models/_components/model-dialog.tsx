@@ -5,7 +5,14 @@ import type { ModelCatalog, ModelType, CreateModelCatalogRequest, UpdateModelCat
 
 import { Dialog } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
-import { Select } from "../../../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../components/ui/select";
+import { Checkbox } from "../../../components/ui/checkbox";
 import { Button } from "../../../components/ui/button";
 
 const MODEL_TYPE_LABELS: Record<ModelType, string> = {
@@ -121,17 +128,20 @@ export function ModelDialog({ open, onClose, model, onSubmit }: ModelDialogProps
             模型类型 <span className="text-danger">*</span>
           </label>
           <Select
-            id="modelType"
-            value={formData.modelType}
-            onChange={(e) => handleChange("modelType", e.target.value)}
+            value={formData.modelType === "" ? undefined : formData.modelType}
+            onValueChange={(next) => handleChange("modelType", next)}
             disabled={loading}
           >
-            <option value="">请选择</option>
-            {Object.entries(MODEL_TYPE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
+            <SelectTrigger id="modelType" className="w-full">
+              <SelectValue placeholder="请选择" />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(MODEL_TYPE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
           {errors["modelType"] !== undefined ? (
             <p className="mt-1 text-xs text-danger">{errors["modelType"]}</p>
@@ -155,13 +165,11 @@ export function ModelDialog({ open, onClose, model, onSubmit }: ModelDialogProps
         </div>
 
         <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
+          <Checkbox
             id="supportsStreaming"
             checked={formData.supportsStreaming}
-            onChange={(e) => handleChange("supportsStreaming", e.target.checked)}
+            onCheckedChange={(v) => handleChange("supportsStreaming", v === true)}
             disabled={loading}
-            className="size-4"
           />
           <label htmlFor="supportsStreaming" className="text-sm text-ink">
             支持流式输出
@@ -169,13 +177,11 @@ export function ModelDialog({ open, onClose, model, onSubmit }: ModelDialogProps
         </div>
 
         <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
+          <Checkbox
             id="enabled"
             checked={formData.enabled}
-            onChange={(e) => handleChange("enabled", e.target.checked)}
+            onCheckedChange={(v) => handleChange("enabled", v === true)}
             disabled={loading}
-            className="size-4"
           />
           <label htmlFor="enabled" className="text-sm text-ink">
             启用

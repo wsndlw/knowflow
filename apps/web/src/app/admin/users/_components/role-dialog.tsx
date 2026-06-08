@@ -5,6 +5,13 @@ import type { UserOption, PlatformRole } from "@knowflow/shared";
 
 import { Dialog } from "../../../../components/ui/dialog";
 import { Button } from "../../../../components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../components/ui/select";
 
 const ROLE_LABELS: Record<PlatformRole, string> = {
   super_admin: "超级管理员",
@@ -50,17 +57,21 @@ export function RoleDialog({ open, onClose, user, onSubmit }: RoleDialogProps) {
       <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4">
         <div className="space-y-1">
           <label className="text-sm font-medium text-ink">选择角色</label>
-          <select
-            className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+          <Select
             value={role}
-            onChange={(e) => setRole(e.target.value as PlatformRole)}
+            onValueChange={(next) => setRole(next as PlatformRole)}
           >
-            {(["super_admin", "department_admin", "user"] as PlatformRole[]).map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="请选择角色" />
+            </SelectTrigger>
+            <SelectContent>
+              {(["super_admin", "department_admin", "user"] as PlatformRole[]).map((r) => (
+                <SelectItem key={r} value={r}>
+                  {ROLE_LABELS[r]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="mt-6 flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>

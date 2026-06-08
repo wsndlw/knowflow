@@ -8,7 +8,13 @@ import { Button } from "../../../../components/ui/button";
 import { Dialog } from "../../../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Input } from "../../../../components/ui/input";
-import { Select } from "../../../../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../components/ui/select";
 import { Textarea } from "../../../../components/ui/textarea";
 import { useImprovementTasks } from "../_hooks/use-improvement-tasks";
 import { Pagination } from "./pagination";
@@ -96,20 +102,42 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
 
       {/* 筛选区 */}
       <div className="flex items-center gap-3">
-        <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-40">
-          <option value="">全部状态</option>
-          <option value="pending">生成中</option>
-          <option value="processing">处理中</option>
-          <option value="candidate_ready">待审核 (Candidate Ready)</option>
-          <option value="approved">已通过</option>
-          <option value="rejected">已驳回</option>
-          <option value="published">已发布</option>
-          <option value="failed">处理失败</option>
+        <Select
+          value={status === "" ? "all" : status}
+          onValueChange={(next) => {
+            setStatus(next === "all" ? "" : next);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="全部状态" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部状态</SelectItem>
+            <SelectItem value="pending">生成中</SelectItem>
+            <SelectItem value="processing">处理中</SelectItem>
+            <SelectItem value="candidate_ready">待审核 (Candidate Ready)</SelectItem>
+            <SelectItem value="approved">已通过</SelectItem>
+            <SelectItem value="rejected">已驳回</SelectItem>
+            <SelectItem value="published">已发布</SelectItem>
+            <SelectItem value="failed">处理失败</SelectItem>
+          </SelectContent>
         </Select>
-        <Select value={source} onChange={(e) => { setSource(e.target.value); setPage(1); }} className="w-40">
-          <option value="">全部来源</option>
-          <option value="feedback">用户反馈 (Feedback)</option>
-          <option value="document">文档提炼 (Document)</option>
+        <Select
+          value={source === "" ? "all" : source}
+          onValueChange={(next) => {
+            setSource(next === "all" ? "" : next);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="全部来源" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部来源</SelectItem>
+            <SelectItem value="feedback">用户反馈 (Feedback)</SelectItem>
+            <SelectItem value="document">文档提炼 (Document)</SelectItem>
+          </SelectContent>
         </Select>
       </div>
 

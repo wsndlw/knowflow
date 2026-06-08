@@ -6,46 +6,14 @@ import { Select as SelectPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/cn"
 
-function hasOptionChildren(children: React.ReactNode): boolean {
-  return React.Children.toArray(children).some(
-    (child) => React.isValidElement(child) && child.type === "option"
-  )
-}
-
 function Select({
-  children,
+  value,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Root> | React.ComponentProps<"select">) {
-  if (hasOptionChildren(children)) {
-    const { className, ...nativeProps } = props as React.ComponentProps<"select">
-
-    return (
-      <div className="relative">
-        <select
-          data-slot="native-select"
-          className={cn(
-            "h-9 w-full appearance-none rounded-md border border-input bg-transparent px-3 py-1 pr-9 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30",
-            className
-          )}
-          {...nativeProps}
-        >
-          {children}
-        </select>
-        <ChevronDownIcon
-          className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
-          aria-hidden
-        />
-      </div>
-    )
-  }
-
-  const rootProps = props as React.ComponentProps<typeof SelectPrimitive.Root>
-
-  return (
-    <SelectPrimitive.Root data-slot="select" {...rootProps}>
-      {children}
-    </SelectPrimitive.Root>
-  )
+}: Omit<React.ComponentProps<typeof SelectPrimitive.Root>, "value"> & {
+  value?: string | undefined
+}) {
+  // 受控用法统一：value 为 undefined/"" 视为未选，转空串交给 Radix（无匹配项时显示 placeholder）
+  return <SelectPrimitive.Root data-slot="select" value={value ?? ""} {...props} />
 }
 
 function SelectGroup({

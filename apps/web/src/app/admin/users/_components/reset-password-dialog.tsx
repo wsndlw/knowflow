@@ -17,17 +17,20 @@ type ResetPasswordDialogProps = {
 export function ResetPasswordDialog({ open, onClose, user, onSubmit }: ResetPasswordDialogProps) {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setPassword("");
+      setFormError(null);
     }
   }, [open]);
 
   const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setFormError(null);
     if (password.length < 8) {
-      alert("密码长度不能小于 8 位");
+      setFormError("密码长度不能小于 8 位");
       return;
     }
     setSubmitting(true);
@@ -47,6 +50,9 @@ export function ResetPasswordDialog({ open, onClose, user, onSubmit }: ResetPass
         正在为 <span className="font-medium text-ink">{user?.name}</span> 重置密码。
       </div>
       <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4">
+        {formError ? (
+          <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{formError}</p>
+        ) : null}
         <div className="space-y-1">
           <label className="text-sm font-medium text-ink">新密码</label>
           <Input

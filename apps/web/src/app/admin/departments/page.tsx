@@ -21,6 +21,16 @@ import {
   TableHeaderCell,
   TableCell,
 } from "../../../components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
 import { DepartmentDialog } from "./_components/department-dialog";
 import { AddMemberDialog } from "./_components/add-member-dialog";
 import { MoveMemberDialog } from "./_components/move-member-dialog";
@@ -80,6 +90,10 @@ function DepartmentsPageContent() {
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [addMemberDept, setAddMemberDept] = useState<Department | null>(null);
   const [movingMember, setMovingMember] = useState<UserOption | null>(null);
+
+  /* ── 删除部门确认 + 删除失败提示 ── */
+  const [pendingDeleteDeptId, setPendingDeleteDeptId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   // ─── 加载部门列表 ───
   const loadDepartments = useCallback(async () => {
@@ -159,8 +173,12 @@ function DepartmentsPageContent() {
     await loadDepartments();
   };
 
-  const handleDeleteDepartment = async (deptId: string) => {
-    if (!confirm("确认删除此部门？")) return;
+  const handleDeleteDepartment = (deptId: string) => {
+    setPendingDeleteDeptId(deptId);
+  };
+
+  const doDeleteDepartment = async (deptId: string): Promise<boolean> => {
+    setDeleteError("");
     try {
       await apiRequest(`/admin/departments/${deptId}`, emptyObjectSchema, {
         method: "DELETE",
@@ -170,13 +188,15 @@ function DepartmentsPageContent() {
         setMembers([]);
       }
       await loadDepartments();
+      return true;
     } catch (err) {
       if (err instanceof ApiError && err.status === 400) {
         // 后端对非空部门返回 400，给出友好提示
-        alert("该部门仍有成员或关联的知识库，无法删除。请先转移所有成员和资源后再试。");
+        setDeleteError("该部门仍有成员或关联的知识库，无法删除。请先转移所有成员和资源后再试。");
       } else {
-        alert(err instanceof Error ? err.message : "删除失败");
+        setDeleteError(err instanceof Error ? err.message : "删除失败");
       }
+      return false;
     }
   };
 
@@ -332,7 +352,7 @@ function DepartmentsPageContent() {
                               variant="ghost"
                               className="text-danger hover:text-danger"
                               onClick={() => {
-                                void handleDeleteDepartment(dept.id);
+                                handleDeleteDepartment(dept.id);
                               }}
                             >
                               删除
@@ -440,6 +460,48 @@ function DepartmentsPageContent() {
         departments={departments}
         onMove={handleMoveMember}
       />
+
+      <AlertDialog
+        open={pendingDeleteDeptId !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setPendingDeleteDeptId(null);
+            setDeleteError("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除部门</AlertDialogTitle>
+            <AlertDialogDescription>确认删除此部门？</AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError !== "" ? (
+            <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger" role="alert">
+              {deleteError}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={(e) => {
+                // 阻止默认关闭：删除失败时需保留弹窗以展示错误
+                e.preventDefault();
+                const id = pendingDeleteDeptId;
+                if (id === null) return;
+                void doDeleteDepartment(id).then((ok) => {
+                  if (ok) {
+                    setPendingDeleteDeptId(null);
+                    setDeleteError("");
+                  }
+                });
+              }}
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
     </div>
   );

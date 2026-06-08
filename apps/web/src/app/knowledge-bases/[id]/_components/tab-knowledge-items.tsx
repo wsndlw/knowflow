@@ -11,10 +11,17 @@ import { ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { Badge } from "../../../../components/ui/badge";
 import { Button } from "../../../../components/ui/button";
+import { Checkbox } from "../../../../components/ui/checkbox";
 import { Dialog } from "../../../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Input } from "../../../../components/ui/input";
-import { Select } from "../../../../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "../../../../components/ui/table";
 import { TagBadge } from "../../../../components/ui/tag-badge";
 import { apiRequest, emptyObjectSchema, replaceKnowledgeItemTags } from "../../../../lib/api";
@@ -33,7 +40,7 @@ type TabKnowledgeItemsProps = {
 };
 
 const STATUS_OPTIONS = [
-  { value: "", label: "全部状态" },
+  { value: "all", label: "全部状态" },
   { value: "draft", label: "草稿" },
   { value: "pending_review", label: "待审核" },
   { value: "published", label: "已发布" },
@@ -65,7 +72,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -97,7 +104,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (keyword.trim()) params.set("keyword", keyword.trim());
-      if (status) params.set("status", status);
+      if (status && status !== "all") params.set("status", status);
       if (tagFilter.queryValue) params.set("tagIds", tagFilter.queryValue);
       const response = await apiRequest(
         `/knowledge-bases/${knowledgeBaseId}/knowledge-items?${params.toString()}`,
@@ -312,10 +319,15 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
             onChange={(e) => handleKeywordChange(e.target.value)}
             className="max-w-xs"
           />
-          <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-32">
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
+          <Select value={status} onValueChange={(next) => { setStatus(next); setPage(1); }}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="全部状态" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
           <TagFilterPopover
             allTags={allTags}
@@ -388,11 +400,9 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
             <TableRow>
               {canManage ? (
                 <TableHeaderCell className="w-10">
-                  <input
-                    type="checkbox"
-                    className="size-4 shrink-0 cursor-pointer accent-brand-600"
+                  <Checkbox
                     checked={allSelected}
-                    onChange={toggleAll}
+                    onCheckedChange={() => toggleAll()}
                     aria-label="全选"
                   />
                 </TableHeaderCell>
@@ -412,11 +422,9 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
               <TableRow key={item.id}>
                 {canManage ? (
                   <TableCell className="w-10">
-                    <input
-                      type="checkbox"
-                      className="size-4 shrink-0 cursor-pointer accent-brand-600"
+                    <Checkbox
                       checked={selected.has(item.id)}
-                      onChange={() => toggleRow(item.id)}
+                      onCheckedChange={() => toggleRow(item.id)}
                       aria-label={`选择 ${item.title}`}
                     />
                   </TableCell>

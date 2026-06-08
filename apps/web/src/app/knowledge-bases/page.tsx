@@ -20,12 +20,18 @@ import { Card } from "../../components/ui/card";
 import { Dialog } from "../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../components/ui/feedback";
 import { Input } from "../../components/ui/input";
-import { Select } from "../../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 import { apiRequest } from "../../lib/api";
 import { cn } from "../../lib/cn";
 
 type Filters = {
-  visibility: "" | KnowledgeBaseVisibility;
+  visibility: "all" | KnowledgeBaseVisibility;
   keyword: string;
 };
 
@@ -49,7 +55,7 @@ const statusMeta: Record<string, { label: string; tone: Tone }> = {
 
 function buildListPath(filters: Filters): string {
   const params = new URLSearchParams();
-  if (filters.visibility !== "") {
+  if (filters.visibility !== "all") {
     params.set("visibility", filters.visibility);
   }
   if (filters.keyword.trim() !== "") {
@@ -63,7 +69,7 @@ export default function KnowledgeBasesPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<KnowledgeBaseListItem[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
-  const [filters, setFilters] = useState<Filters>({ visibility: "", keyword: "" });
+  const [filters, setFilters] = useState<Filters>({ visibility: "all", keyword: "" });
   const [searchKeyword, setSearchKeyword] = useState("");
   const [view, setView] = useState<ViewMode>("card");
   const [isLoading, setIsLoading] = useState(true);
@@ -72,6 +78,7 @@ export default function KnowledgeBasesPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
+  const [visibility, setVisibility] = useState<KnowledgeBaseVisibility>("department");
   const [toast, setToast] = useState<{ message: string; tone: "success" | "danger" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const loadRequestIdRef = useRef(0);
@@ -146,18 +153,23 @@ export default function KnowledgeBasesPage() {
     setIsCreating(true);
     setCreateError(null);
     try {
+      if (selectedDepartmentId === "") {
+        setCreateError("请选择归属部门");
+        return;
+      }
       const formData = new FormData(form);
       const input: CreateKnowledgeBaseRequest = createKnowledgeBaseRequestSchema.parse({
         name: formData.get("name"),
         description: formData.get("description"),
         departmentId: selectedDepartmentId,
-        visibility: formData.get("visibility"),
+        visibility,
       });
       await apiRequest("/knowledge-bases", knowledgeBaseSchema, {
         method: "POST",
         body: JSON.stringify(input),
       });
       form.reset();
+      setVisibility("department");
       setDialogOpen(false);
       await loadKnowledgeBases();
     } catch (caught) {
@@ -182,19 +194,23 @@ export default function KnowledgeBasesPage() {
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <div className="w-36">
             <Select
-              aria-label="按可见范围筛选"
               value={filters.visibility}
-              onChange={(event) =>
+              onValueChange={(next) =>
                 setFilters((current) => ({
                   ...current,
-                  visibility: event.target.value as Filters["visibility"],
+                  visibility: next as Filters["visibility"],
                 }))
               }
             >
-              <option value="">全部可见范围</option>
-              <option value="public">公开</option>
-              <option value="department">部门</option>
-              <option value="restricted">受限</option>
+              <SelectTrigger className="w-full" aria-label="按可见范围筛选">
+                <SelectValue placeholder="全部可见范围" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部可见范围</SelectItem>
+                <SelectItem value="public">公开</SelectItem>
+                <SelectItem value="department">部门</SelectItem>
+                <SelectItem value="restricted">受限</SelectItem>
+              </SelectContent>
             </Select>
           </div>
           <div className="min-w-48 flex-1 sm:max-w-xs">
@@ -270,24 +286,35 @@ export default function KnowledgeBasesPage() {
             </Field>
             <Field label="归属部门">
               <Select
-                name="departmentId"
-                required
-                value={selectedDepartmentId}
-                onChange={(event) => setSelectedDepartmentId(event.target.value)}
+                value={selectedDepartmentId === "" ? undefined : selectedDepartmentId}
+                onValueChange={(next) => setSelectedDepartmentId(next)}
+                disabled={departments.length === 0}
               >
-                {departments.length === 0 ? <option value="">加载中…</option> : null}
-                {departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={departments.length === 0 ? "加载中…" : "请选择部门"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </Field>
             <Field label="可见范围">
-              <Select name="visibility" defaultValue="department">
-                <option value="public">公开 — 全员可见</option>
-                <option value="department">部门 — 归属部门成员可见</option>
-                <option value="restricted">受限 — 仅指定成员可见</option>
+              <Select
+                value={visibility}
+                onValueChange={(next) => setVisibility(next as KnowledgeBaseVisibility)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="请选择可见范围" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="public">公开 — 全员可见</SelectItem>
+                  <SelectItem value="department">部门 — 归属部门成员可见</SelectItem>
+                  <SelectItem value="restricted">受限 — 仅指定成员可见</SelectItem>
+                </SelectContent>
               </Select>
             </Field>
             <Field label="描述">

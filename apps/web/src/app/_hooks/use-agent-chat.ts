@@ -51,6 +51,7 @@ export function useAgentChat({
   const [correctionFor, setCorrectionFor] = useState<string | null>(null);
   
   const listEndRef = useRef<HTMLDivElement>(null);
+  const prevMessagesLenRef = useRef(0);
   const streamingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   // 始终指向「当前选中会话」与「在途流所属会话」，供流事件归属校验与切换中断使用
@@ -105,7 +106,15 @@ export function useAgentChat({
       }
       container = container.parentElement;
     }
-    if (container !== null) {
+    if (container === null) {
+      return;
+    }
+    // 新消息总是吸底；流式增量时仅当用户已贴近底部才吸底，避免打断上滑查看历史
+    const isNewMessage = messages.length > prevMessagesLenRef.current;
+    prevMessagesLenRef.current = messages.length;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (isNewMessage || distanceFromBottom < 120) {
       container.scrollTop = container.scrollHeight;
     }
   }, [messages]);
@@ -133,6 +142,11 @@ export function useAgentChat({
   useEffect(() => {
     void loadMessages();
   }, [loadMessages]);
+
+  // 切换会话时重置长度基准，使新会话加载完成后强制吸底到最新消息
+  useEffect(() => {
+    prevMessagesLenRef.current = 0;
+  }, [selectedConversationId]);
 
   async function ensureConversation(): Promise<string> {
     if (selectedConversationId !== "") {
@@ -163,8 +177,9 @@ export function useAgentChat({
     try {
       const conversationId = await ensureConversation();
       const now = new Date().toISOString();
+      const localId = crypto.randomUUID();
       const userMessage: DisplayMessage = {
-        id: `local-user-${now}`,
+        id: `local-user-${localId}`,
         conversationId,
         role: "user",
         content: trimmed,
@@ -175,7 +190,7 @@ export function useAgentChat({
         createdAt: now,
       };
       const draft: DraftAssistantMessage = {
-        id: `draft-${now}`,
+        id: `draft-${localId}`,
         conversationId,
         role: "assistant",
         content: "",

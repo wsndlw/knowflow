@@ -329,9 +329,9 @@ export function AssistantBubble({
           {/* 推荐问题 */}
           {message.recommendedQuestions.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              {message.recommendedQuestions.map((q) => (
+              {message.recommendedQuestions.map((q, i) => (
                 <button
-                  key={q}
+                  key={`${String(i)}-${q}`}
                   type="button"
                   onClick={() => onAskRecommended(q)}
                   className="rounded-full border border-border bg-neutral-0 px-3 py-1 text-sm text-ink-muted transition-colors hover:border-brand-300 hover:text-brand-700"

@@ -24,9 +24,13 @@ export function KnowledgeItemDialog({ open, onClose, onSubmit, editing }: Knowle
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
-    const title = (formData.get("title") as string).trim();
-    const content = (formData.get("content") as string).trim();
-    const summaryRaw = (formData.get("summary") as string).trim();
+    const readText = (key: string): string => {
+      const value = formData.get(key);
+      return typeof value === "string" ? value : "";
+    };
+    const title = readText("title").trim();
+    const content = readText("content").trim();
+    const summaryRaw = readText("summary").trim();
     const summary = summaryRaw === "" ? null : summaryRaw;
 
     if (!title || !content) {

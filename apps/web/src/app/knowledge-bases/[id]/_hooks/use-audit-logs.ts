@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   auditLogListResponseSchema,
   type AuditLogEntry,
@@ -81,8 +81,10 @@ export function useAuditLogs(knowledgeBaseId: string): UseAuditLogsReturn {
   const [filters, setFiltersState] = useState<AuditLogFilters>(EMPTY_AUDIT_FILTERS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadRequestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    const reqId = ++loadRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -92,14 +94,16 @@ export function useAuditLogs(knowledgeBaseId: string): UseAuditLogsReturn {
         auditLogListResponseSchema,
         { cache: "no-store" },
       );
+      if (reqId !== loadRequestIdRef.current) return;
       setItems(data.items);
       setTotal(data.total);
     } catch (caught) {
+      if (reqId !== loadRequestIdRef.current) return;
       setError(caught instanceof Error ? translateApiError(caught.message) : "加载操作日志失败");
       setItems([]);
       setTotal(0);
     } finally {
-      setLoading(false);
+      if (reqId === loadRequestIdRef.current) setLoading(false);
     }
   }, [knowledgeBaseId, filters, page]);
 

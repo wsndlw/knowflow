@@ -133,17 +133,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await fetch(apiUrl("/auth/logout"), {
-      method: "POST",
-      headers: {
-        [CSRF_HEADER_NAME]: getCsrfToken(),
-      },
-      credentials: "include",
-    });
-    resetRefreshState();
-    setUser(null);
-    setStatus("unauthenticated");
-    router.replace("/login");
+    try {
+      await fetch(apiUrl("/auth/logout"), {
+        method: "POST",
+        headers: {
+          [CSRF_HEADER_NAME]: getCsrfToken(),
+        },
+        credentials: "include",
+      });
+    } finally {
+      // 即使登出请求失败，也清空前端会话状态并跳登录，避免卡在已登录态
+      resetRefreshState();
+      setUser(null);
+      setStatus("unauthenticated");
+      router.replace("/login");
+    }
   }, [router]);
 
   const value = useMemo<AuthContextValue>(

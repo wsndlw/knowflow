@@ -118,7 +118,7 @@ export function BatchImportDialog({ open, onClose, knowledgeBaseId, onSuccess }:
                 </TableHead>
                 <TableBody>
                   {result.errors.map((err, idx) => (
-                    <TableRow key={idx}>
+                    <TableRow key={`${String(err.row)}-${String(idx)}`}>
                       <TableCell>{err.row}</TableCell>
                       <TableCell className="text-danger">{err.reason}</TableCell>
                     </TableRow>

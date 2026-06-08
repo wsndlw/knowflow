@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { AnalyticsOverviewResponse } from "@knowflow/shared";
 import { analyticsOverviewResponseSchema } from "@knowflow/shared";
 import {
@@ -63,23 +63,25 @@ function AnalyticsContent() {
   const [data, setData] = useState<AnalyticsOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [topContentTab, setTopContentTab] = useState<"documents" | "items">("documents");
+  const loadRequestIdRef = useRef(0);
 
   useEffect(() => {
     void loadData();
   }, [range]);
 
   const loadData = async () => {
+    const reqId = ++loadRequestIdRef.current;
     setLoading(true);
     try {
       const result = await apiRequest(
         `/analytics/overview?range=${range}`,
         analyticsOverviewResponseSchema,
       );
-      setData(result);
+      if (reqId === loadRequestIdRef.current) setData(result);
     } catch (err) {
       console.error("Failed to load analytics:", err);
     } finally {
-      setLoading(false);
+      if (reqId === loadRequestIdRef.current) setLoading(false);
     }
   };
 

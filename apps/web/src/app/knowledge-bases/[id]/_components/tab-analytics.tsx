@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   knowledgeBaseAnalyticsResponseSchema,
   type KnowledgeBaseAnalyticsResponse,
@@ -49,8 +49,10 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
   const [data, setData] = useState<KnowledgeBaseAnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadRequestIdRef = useRef(0);
 
   const loadAnalytics = useCallback(async () => {
+    const reqId = ++loadRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -59,11 +61,12 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
         knowledgeBaseAnalyticsResponseSchema,
         { cache: "no-store" },
       );
-      setData(response);
+      if (reqId === loadRequestIdRef.current) setData(response);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "加载统计数据失败");
+      if (reqId === loadRequestIdRef.current)
+        setError(caught instanceof Error ? caught.message : "加载统计数据失败");
     } finally {
-      setLoading(false);
+      if (reqId === loadRequestIdRef.current) setLoading(false);
     }
   }, [knowledgeBaseId, range]);
 
@@ -338,7 +341,7 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
             </TableHead>
             <TableBody>
               {lowConfidenceQuestions.slice(0, 10).map((q, i) => (
-                <TableRow key={i}>
+                <TableRow key={`${String(i)}-${q.question}`}>
                   <TableCell className="truncate max-w-md">{q.question}</TableCell>
                   <TableCell className="text-ink-muted">{q.count}</TableCell>
                 </TableRow>
@@ -362,7 +365,7 @@ export function TabAnalytics({ knowledgeBaseId }: TabAnalyticsProps) {
             </TableHead>
             <TableBody>
               {noAnswerQuestions.slice(0, 10).map((q, i) => (
-                <TableRow key={i}>
+                <TableRow key={`${String(i)}-${q.question}`}>
                   <TableCell className="truncate max-w-md">{q.question}</TableCell>
                   <TableCell className="text-ink-muted">{q.count}</TableCell>
                   <TableCell className="text-ink-muted text-xs">{q.noAnswerType ?? "—"}</TableCell>

@@ -143,6 +143,11 @@ export function useAgentChat({
     void loadMessages();
   }, [loadMessages]);
 
+  // 切换会话时重置长度基准，使新会话加载完成后强制吸底到最新消息
+  useEffect(() => {
+    prevMessagesLenRef.current = 0;
+  }, [selectedConversationId]);
+
   async function ensureConversation(): Promise<string> {
     if (selectedConversationId !== "") {
       return selectedConversationId;

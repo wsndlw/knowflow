@@ -268,7 +268,7 @@ export const assignUserDepartmentRequestSchema = z.object({
 export const createUserRequestSchema = z.object({
   username: z.string().trim().min(1).max(80),
   name: z.string().trim().min(1).max(120),
-  password: z.string().min(1).max(256),
+  password: z.string().min(8).max(256),
   departmentId: z.uuid(),
   platformRole: platformRoleSchema,
 });

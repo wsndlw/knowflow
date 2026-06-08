@@ -128,12 +128,18 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     void loadDocuments();
   }, [loadDocuments]);
 
-  useEffect(() => () => clearTimeout(successTimer.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(successTimer.current);
+      clearTimeout(debounceRef.current);
+    },
+    [],
+  );
 
-  // 翻页时清空跨页累积的选择，避免批量操作误作用到不可见的已选项
+  // 翻页或改筛选时清空跨页累积的选择，避免批量操作误作用到不可见的已选项
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [page]);
+  }, [page, status, keyword, tagFilter.queryValue, archivedMode]);
 
   const progressMap = useDocumentProgress(documents, () => void loadDocuments());
 

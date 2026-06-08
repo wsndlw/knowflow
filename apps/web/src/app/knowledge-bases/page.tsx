@@ -107,12 +107,13 @@ export default function KnowledgeBasesPage() {
   }, [loadKnowledgeBases]);
 
   useEffect(() => {
-    // 跳过首帧/无变化：searchKeyword 与 filters.keyword 相同时不重设 filters，避免一次多余的列表请求
-    if (searchKeyword === filters.keyword) {
+    // 跳过无变化（含纯空格）：trim 后与 filters.keyword 相同则不重设 filters，避免多余列表请求
+    const trimmed = searchKeyword.trim();
+    if (trimmed === filters.keyword) {
       return;
     }
     const timer = setTimeout(() => {
-      setFilters((current) => ({ ...current, keyword: searchKeyword }));
+      setFilters((current) => ({ ...current, keyword: trimmed }));
     }, 300);
     return () => clearTimeout(timer);
   }, [searchKeyword, filters.keyword]);

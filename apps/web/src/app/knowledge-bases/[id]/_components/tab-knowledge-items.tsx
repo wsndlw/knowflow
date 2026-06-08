@@ -120,10 +120,12 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
     void loadItems();
   }, [loadItems]);
 
-  // 翻页时清空跨页累积的选择
+  // 翻页或改筛选时清空跨页累积的选择
   useEffect(() => {
     setSelected(new Set());
-  }, [page]);
+  }, [page, status, keyword, tagFilter.queryValue]);
+
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
 
   function handleKeywordChange(value: string) {
     if (debounceRef.current) clearTimeout(debounceRef.current);

@@ -100,7 +100,7 @@ export function ProviderDialog({ open, onClose, provider, onSubmit }: ProviderDi
     setLoading(true);
     try {
       const payload: CreateModelProviderRequest | UpdateModelProviderRequest = {
-        name: formData.name,
+        name: formData.name.trim(),
         providerType: formData.providerType as ModelProviderType,
         baseUrl: trimmedBaseUrl,
         enabled: formData.enabled,

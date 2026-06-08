@@ -66,9 +66,9 @@ export async function parseApiError(response: Response): Promise<string> {
   try {
     const body: unknown = await response.json();
     const parsed = apiFailureSchema.safeParse(body);
-    return parsed.success ? parsed.data.error.message : "Request failed";
+    return parsed.success ? parsed.data.error.message : "请求失败";
   } catch {
-    return "Request failed";
+    return "请求失败";
   }
 }
 
@@ -180,7 +180,7 @@ export async function apiRequest<TData>(
     body.ok !== true ||
     !("data" in body)
   ) {
-    throw new Error("Invalid API response");
+    throw new Error("响应格式无效");
   }
 
   return dataSchema.parse(body.data);

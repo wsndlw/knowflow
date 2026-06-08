@@ -47,7 +47,7 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
       await approveTask(task.id, data);
       setSelectedTask(null);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Approve failed");
+      setActionError(e instanceof Error ? e.message : "审批失败");
     } finally {
       setIsApproving(false);
     }
@@ -65,7 +65,7 @@ export function TabImprovement({ knowledgeBaseId }: { knowledgeBaseId: string })
       setSelectedTask(null);
       setRejectReason("");
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Reject failed");
+      setActionError(e instanceof Error ? e.message : "驳回失败");
     } finally {
       setIsRejecting(false);
     }

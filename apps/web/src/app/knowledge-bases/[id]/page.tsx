@@ -129,7 +129,7 @@ function KnowledgeBaseDetailContent() {
           "flex-1 flex flex-col min-h-0 w-full",
           activeTab === "chat"
             ? "overflow-hidden"
-            : "mx-auto max-w-5xl px-6 pb-6 mt-6 overflow-y-auto"
+            : "mx-auto max-w-5xl px-6 pb-6 pt-6 overflow-y-auto"
         )}
       >
         {activeTab === "overview" && overview ? (

@@ -42,9 +42,9 @@ async function parseError(response: Response): Promise<string> {
   try {
     const body: unknown = await response.json();
     const parsed = apiFailureSchema.safeParse(body);
-    return parsed.success ? parsed.data.error.message : "Request failed";
+    return parsed.success ? parsed.data.error.message : "请求失败";
   } catch {
-    return "Request failed";
+    return "请求失败";
   }
 }
 

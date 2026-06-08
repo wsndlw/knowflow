@@ -37,6 +37,7 @@ type ConversationRow = typeof conversations.$inferSelect;
 
 type SelectChain = {
   from: (table: unknown) => SelectChain;
+  innerJoin: (table: unknown, condition: unknown) => SelectChain;
   where: (condition: unknown) => SelectChain;
   orderBy: (...conditions: unknown[]) => Promise<unknown[]>;
   limit: (limit: number) => Promise<unknown[]>;
@@ -342,6 +343,9 @@ function captureConversationSelect(
     from() {
       return chain;
     },
+    innerJoin() {
+      return chain;
+    },
     where(condition: unknown) {
       onWhere(condition);
       return chain;
@@ -441,6 +445,9 @@ function captureAnswerFeedbackDb(options: { createdFeedbackId: string }) {
   mutableDb.select = () => {
     const chain: SelectChain = {
       from() {
+        return chain;
+      },
+      innerJoin() {
         return chain;
       },
       where() {

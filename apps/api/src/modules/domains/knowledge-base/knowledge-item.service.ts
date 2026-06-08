@@ -36,6 +36,7 @@ import {
   exists,
   ilike,
   inArray,
+  isNull,
   ne,
   or,
   sql,
@@ -183,7 +184,7 @@ export class KnowledgeItemService {
       })
       .returning({ id: knowledgeItems.id });
     if (created === undefined) {
-      throw new BadRequestException("Failed to create knowledge item");
+      throw new BadRequestException("创建知识条目失败");
     }
 
     return this.get(created.id, user, { incrementView: false });
@@ -196,13 +197,13 @@ export class KnowledgeItemService {
   ): Promise<BatchImportResponse> {
     await this.ensureCanManage(knowledgeBaseId, user);
     if (file === undefined) {
-      throw new BadRequestException("Import file is required");
+      throw new BadRequestException("请上传导入文件");
     }
     if (file.size <= 0) {
-      throw new BadRequestException("Import file is empty");
+      throw new BadRequestException("导入文件为空");
     }
     if (file.size > MAX_BATCH_IMPORT_BYTES) {
-      throw new BadRequestException("Import file exceeds 10 MB");
+      throw new BadRequestException("导入文件不能超过 10 MB");
     }
     const kind = this.detectImportFileKind(file);
 
@@ -210,9 +211,7 @@ export class KnowledgeItemService {
     try {
       parsed = await parseSpreadsheetForBatchImport(file.buffer, kind);
     } catch (error) {
-      throw new BadRequestException(
-        error instanceof Error ? error.message : "Import file is invalid",
-      );
+      throw new BadRequestException(error instanceof Error ? error.message : "导入文件无效");
     }
     if (parsed.rows.length === 0) {
       return { imported: 0, skipped: parsed.skipped, errors: parsed.errors };
@@ -253,7 +252,7 @@ export class KnowledgeItemService {
   ): Promise<KnowledgeItem> {
     const row = await this.findRow(id, user.id);
     if (row === undefined) {
-      throw new NotFoundException("Knowledge item not found");
+      throw new NotFoundException("未找到知识条目");
     }
     await this.ensureCanReadRow(row, user);
 
@@ -286,7 +285,7 @@ export class KnowledgeItemService {
   ): Promise<KnowledgeItem> {
     const row = await this.findRow(id, user.id);
     if (row === undefined) {
-      throw new NotFoundException("Knowledge item not found");
+      throw new NotFoundException("未找到知识条目");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
     await this.ensureSourceDocumentBelongsToKnowledgeBase(
@@ -328,13 +327,13 @@ export class KnowledgeItemService {
   async publish(id: string, user: AuthenticatedUser): Promise<KnowledgeItem> {
     const row = await this.findRow(id, user.id);
     if (row === undefined) {
-      throw new NotFoundException("Knowledge item not found");
+      throw new NotFoundException("未找到知识条目");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
 
     const [embedding] = await this.llm.embedTexts([this.embeddingText(row)]);
     if (embedding?.length !== EXPECTED_EMBEDDING_DIMENSION) {
-      throw new BadRequestException("Knowledge item embedding failed");
+      throw new BadRequestException("知识条目向量化失败");
     }
 
     await db
@@ -357,7 +356,7 @@ export class KnowledgeItemService {
   async unpublish(id: string, user: AuthenticatedUser): Promise<KnowledgeItem> {
     const row = await this.findRow(id, user.id);
     if (row === undefined) {
-      throw new NotFoundException("Knowledge item not found");
+      throw new NotFoundException("未找到知识条目");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
 
@@ -377,7 +376,7 @@ export class KnowledgeItemService {
   async archive(id: string, user: AuthenticatedUser): Promise<KnowledgeItem> {
     const row = await this.findRow(id, user.id);
     if (row === undefined) {
-      throw new NotFoundException("Knowledge item not found");
+      throw new NotFoundException("未找到知识条目");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
 
@@ -397,7 +396,7 @@ export class KnowledgeItemService {
   async restore(id: string, user: AuthenticatedUser): Promise<KnowledgeItem> {
     const row = await this.findRow(id, user.id);
     if (row === undefined) {
-      throw new NotFoundException("Knowledge item not found");
+      throw new NotFoundException("未找到知识条目");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
 
@@ -417,7 +416,7 @@ export class KnowledgeItemService {
   async delete(id: string, user: AuthenticatedUser): Promise<void> {
     const row = await this.findRow(id, user.id);
     if (row === undefined) {
-      throw new NotFoundException("Knowledge item not found");
+      throw new NotFoundException("未找到知识条目");
     }
     await this.ensureCanManage(row.knowledgeBaseId, user);
 
@@ -441,7 +440,7 @@ export class KnowledgeItemService {
   ): Promise<KnowledgeItem> {
     const row = await this.findRow(id, user.id);
     if (row === undefined) {
-      throw new NotFoundException("Knowledge item not found");
+      throw new NotFoundException("未找到知识条目");
     }
     await this.ensureCanReadRow(row, user);
 
@@ -508,7 +507,10 @@ export class KnowledgeItemService {
     return this.get(id, user, { incrementView: false });
   }
 
-  private async triggerImmediateImprovement(feedbackId: string, knowledgeItemId: string): Promise<void> {
+  private async triggerImmediateImprovement(
+    feedbackId: string,
+    knowledgeItemId: string,
+  ): Promise<void> {
     try {
       await this.improvementService.triggerFromItemFeedback(feedbackId);
     } catch (error) {
@@ -525,7 +527,20 @@ export class KnowledgeItemService {
     query: KnowledgeItemListQuery,
     canManage: boolean,
   ): SQL | undefined {
-    const conditions: SQL[] = [eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId)];
+    const conditions: SQL[] = [
+      eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId),
+      exists(
+        db
+          .select({ id: knowledgeBases.id })
+          .from(knowledgeBases)
+          .where(
+            and(
+              eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId),
+              isNull(knowledgeBases.deletedAt),
+            ),
+          ),
+      ),
+    ];
     if (!canManage) {
       conditions.push(eq(knowledgeItems.status, "published"), eq(knowledgeItems.enabled, true));
     } else if (query.status !== undefined) {
@@ -606,7 +621,7 @@ export class KnowledgeItemService {
           eq(knowledgeItemFeedback.userId, userId),
         ),
       )
-      .where(eq(knowledgeItems.id, id))
+      .where(and(eq(knowledgeItems.id, id), isNull(knowledgeBases.deletedAt)))
       .limit(1);
 
     return row;
@@ -649,22 +664,27 @@ export class KnowledgeItemService {
     const [document] = await db
       .select({ id: documents.id })
       .from(documents)
-      .where(and(eq(documents.id, documentId), eq(documents.knowledgeBaseId, knowledgeBaseId)))
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
+      .where(
+        and(
+          eq(documents.id, documentId),
+          eq(documents.knowledgeBaseId, knowledgeBaseId),
+          isNull(knowledgeBases.deletedAt),
+        ),
+      )
       .limit(1);
     if (document === undefined) {
-      throw new BadRequestException("Source document not found in this knowledge base");
+      throw new BadRequestException("未找到该知识库中的来源文档");
     }
   }
 
   private detectImportFileKind(file: UploadedFile): "csv" | "excel" {
     const kind = detectBatchImportKind(file);
     if (kind === null) {
-      throw new BadRequestException(
-        "Only CSV, XLSX, and XLS files with matching MIME types are supported for batch import",
-      );
+      throw new BadRequestException("仅支持 CSV、XLSX 和 XLS 且 MIME 类型匹配的文件用于批量导入");
     }
     if (!validateBatchImportContent(file, kind)) {
-      throw new BadRequestException("Import file content does not match its declared type");
+      throw new BadRequestException("导入文件内容与声明类型不匹配");
     }
     return kind;
   }
@@ -673,12 +693,12 @@ export class KnowledgeItemService {
     if (await this.accessService.canAccess(knowledgeBaseId, user)) {
       return;
     }
-    throw new NotFoundException("Knowledge item not found");
+    throw new NotFoundException("未找到知识条目");
   }
 
   private async ensureCanReadRow(row: KnowledgeItemRow, user: AuthenticatedUser): Promise<void> {
     if (!(await this.accessService.canAccess(row.knowledgeBaseId, user))) {
-      throw new NotFoundException("Knowledge item not found");
+      throw new NotFoundException("未找到知识条目");
     }
     if (row.status === "published" && row.enabled) {
       return;
@@ -686,14 +706,14 @@ export class KnowledgeItemService {
     if (await this.accessService.canManage(row.knowledgeBaseId, user)) {
       return;
     }
-    throw new NotFoundException("Knowledge item not found");
+    throw new NotFoundException("未找到知识条目");
   }
 
   private async ensureCanManage(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canManage(knowledgeBaseId, user)) {
       return;
     }
-    throw new ForbiddenException("Cannot manage knowledge items in this knowledge base");
+    throw new ForbiddenException("无权管理该知识库中的知识条目");
   }
 
   private toKnowledgeItem(row: KnowledgeItemRow, tagItems: KnowledgeTag[]): KnowledgeItem {

@@ -142,7 +142,7 @@ export class AgentController {
     } catch (error) {
       writeEvent({
         type: "agent.failed",
-        message: error instanceof Error ? error.message : "Agent request failed",
+        message: error instanceof Error ? error.message : "Agent 请求失败",
       });
     } finally {
       response.end();
@@ -163,7 +163,7 @@ export class AgentController {
 
   private requireUser(request: AuthenticatedRequest): AuthenticatedUser {
     if (request.user === undefined) {
-      throw new InternalServerErrorException("Authenticated request is missing user");
+      throw new InternalServerErrorException("已认证请求缺少用户信息");
     }
 
     return request.user;

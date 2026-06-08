@@ -93,7 +93,7 @@ export class KnowledgeItemController {
         }
         callback(
           new BadRequestException(
-            "Only CSV, XLSX, and XLS files with matching MIME types are supported for batch import",
+            "仅支持 CSV、XLSX 和 XLS 且 MIME 类型匹配的文件用于批量导入",
           ),
           false,
         );
@@ -202,7 +202,7 @@ export class KnowledgeItemController {
 
   private requireUser(request: AuthenticatedRequest): AuthenticatedUser {
     if (request.user === undefined) {
-      throw new InternalServerErrorException("Authenticated request is missing user");
+      throw new InternalServerErrorException("已认证请求缺少用户信息");
     }
 
     return request.user;

@@ -25,12 +25,15 @@ type SelectChain = {
 
 type UpdateChain = {
   set: (values: Record<string, unknown>) => {
-    where: (condition: unknown) => Promise<unknown[]>;
+    where: (condition: unknown) => {
+      returning: (selection?: unknown) => Promise<unknown[]>;
+    };
   };
 };
 
 type StatusUpdateValues = {
   status?: unknown;
+  deletedAt?: unknown;
   updatedAt?: unknown;
 };
 
@@ -40,7 +43,10 @@ type MutableDb = {
 };
 
 type ServiceInternals = {
-  findRowById: (id: string) => Promise<KnowledgeBaseRow | undefined>;
+  findRowById: (
+    id: string,
+    options?: { includeDeleted?: boolean },
+  ) => Promise<KnowledgeBaseRow | undefined>;
 };
 
 type KnowledgeBaseRow = {
@@ -56,6 +62,7 @@ type KnowledgeBaseRow = {
   creatorName: string;
   embeddingModel: string;
   embeddingDimension: number;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -74,36 +81,54 @@ void describe("KnowledgeBaseService disable/enable semantics", () => {
     const service = makeService(access);
 
     await assert.rejects(
-      () =>
-        service.update(
-          "00000000-0000-0000-0000-000000000100",
-          { status: "archived" },
-          user,
-        ),
+      () => service.update("00000000-0000-0000-0000-000000000100", { status: "archived" }, user),
       BadRequestException,
     );
     await assert.rejects(
-      () =>
-        service.update(
-          "00000000-0000-0000-0000-000000000100",
-          { status: "active" },
-          user,
-        ),
+      () => service.update("00000000-0000-0000-0000-000000000100", { status: "active" }, user),
       BadRequestException,
     );
     assert.equal(access.canManageCalls, 2);
   });
 
-  void it("disables a knowledge base instead of archiving or physically deleting related records", async () => {
+  void it("soft deletes a knowledge base instead of disabling or physically deleting related records", async () => {
     const access = makeAccessStub({ canManage: true });
     const service = makeService(access);
     await withCapturedStatusUpdate(async (updateValues) => {
       await service.delete("00000000-0000-0000-0000-000000000100", user);
 
       assert.equal(access.canManageCalls, 1);
-      assert.equal(updateValues.status, "disabled");
+      assert.equal(updateValues.status, undefined);
+      assert.equal(Object.prototype.toString.call(updateValues.deletedAt), "[object Date]");
       const updatedAt = updateValues.updatedAt;
       assert.equal(Object.prototype.toString.call(updatedAt), "[object Date]");
+    });
+  });
+
+  void it("restores a soft deleted knowledge base and returns the refreshed resource", async () => {
+    const access = makeAccessStub({ canManage: true });
+    const analytics = makeAnalyticsStub();
+    const service = makeService(access, analytics);
+    Object.assign(service as object, {
+      findRowById: (_id: string, options?: { includeDeleted?: boolean }) =>
+        Promise.resolve(
+          makeKnowledgeBaseRow({
+            deletedAt:
+              options?.includeDeleted === true ? new Date("2026-06-04T00:00:00.000Z") : null,
+            status: "active",
+          }),
+        ),
+    } satisfies ServiceInternals);
+
+    await withCapturedStatusUpdate(async (updateValues) => {
+      const result = await service.restore("00000000-0000-0000-0000-000000000100", user);
+
+      assert.equal(updateValues.deletedAt, null);
+      const updatedAt = updateValues.updatedAt;
+      assert.equal(Object.prototype.toString.call(updatedAt), "[object Date]");
+      assert.equal(result.deletedAt, null);
+      assert.equal(result.canManage, true);
+      assert.equal(access.canManageCalls, 2);
     });
   });
 
@@ -213,7 +238,10 @@ void describe("KnowledgeBaseService disable/enable semantics", () => {
     assert.equal(access.buildAccessConditionCalls, 0);
     assert.equal(access.buildManageConditionCalls, 1);
     assert.ok(fragments.includes("archived"));
-    assert.equal(fragments.some((fragment) => fragment.includes("<>")), false);
+    assert.equal(
+      fragments.some((fragment) => fragment.includes("<>")),
+      false,
+    );
   });
 });
 
@@ -255,10 +283,7 @@ function makeService(
   access: AccessStub,
   analytics: AnalyticsStub = makeAnalyticsStub(),
 ): KnowledgeBaseService {
-  return new KnowledgeBaseService(
-    access,
-    analytics as unknown as AnalyticsEventService,
-  );
+  return new KnowledgeBaseService(access, analytics as unknown as AnalyticsEventService);
 }
 
 function makeAccessStub(options: { canAccess?: boolean; canManage?: boolean } = {}) {
@@ -310,6 +335,7 @@ function makeKnowledgeBaseRow(overrides: Partial<KnowledgeBaseRow> = {}): Knowle
     creatorName: "Alice",
     embeddingModel: "text-embedding-v4",
     embeddingDimension: 1024,
+    deletedAt: null,
     createdAt: new Date("2026-06-04T00:00:00.000Z"),
     updatedAt: new Date("2026-06-04T00:00:00.000Z"),
     ...overrides,
@@ -358,10 +384,15 @@ async function withCapturedStatusUpdate(
   mutableDb.update = () => ({
     set(values: Record<string, unknown>) {
       updateValues.status = values["status"];
+      updateValues.deletedAt = values["deletedAt"];
       updateValues.updatedAt = values["updatedAt"];
       return {
         where() {
-          return Promise.resolve([]);
+          return {
+            returning() {
+              return Promise.resolve([{ id: "00000000-0000-0000-0000-000000000100" }]);
+            },
+          };
         },
       };
     },

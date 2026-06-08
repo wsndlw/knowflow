@@ -95,14 +95,14 @@ export class RetrievalSettingsService {
     if (await this.accessService.canAccess(knowledgeBaseId, user)) {
       return;
     }
-    throw new NotFoundException("Knowledge base not found");
+    throw new NotFoundException("未找到知识库");
   }
 
   private async ensureCanManage(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canManage(knowledgeBaseId, user)) {
       return;
     }
-    throw new ForbiddenException("Cannot manage retrieval settings in this knowledge base");
+    throw new ForbiddenException("无权管理该知识库的检索设置");
   }
 
   private selection() {

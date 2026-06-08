@@ -43,7 +43,7 @@ export class RetrievalController {
     const user = this.requireUser(request);
     const canManage = await this.accessService.canManage(id, user);
     if (!canManage) {
-      throw new NotFoundException("Knowledge base not found");
+      throw new NotFoundException("未找到知识库");
     }
 
     const data = await this.retrievalService.testRetrieve({
@@ -56,7 +56,7 @@ export class RetrievalController {
 
   private requireUser(request: AuthenticatedRequest) {
     if (request.user === undefined) {
-      throw new InternalServerErrorException("Authenticated request is missing user");
+      throw new InternalServerErrorException("已认证请求缺少用户信息");
     }
 
     return request.user;

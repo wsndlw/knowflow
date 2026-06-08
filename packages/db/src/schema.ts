@@ -318,11 +318,13 @@ export const knowledgeBases = pgTable(
       .default("text-embedding-v4")
       .notNull(),
     embeddingDimension: integer("embedding_dimension").default(1024).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps(),
   },
   (table) => [
     index("knowledge_bases_department_idx").on(table.departmentId),
     index("knowledge_bases_visibility_idx").on(table.visibility),
+    index("knowledge_bases_deleted_at_idx").on(table.deletedAt),
   ],
 );
 
@@ -662,7 +664,9 @@ export const knowledgeImprovementTasks = pgTable(
       .notNull()
       .references(() => knowledgeBases.id),
     triggerType: improvementTriggerTypeEnum("trigger_type").notNull(),
-    sourceMessageId: uuid("source_message_id").references(() => conversationMessages.id),
+    sourceMessageId: uuid("source_message_id").references(() => conversationMessages.id, {
+      onDelete: "set null",
+    }),
     sourceFeedbackId: uuid("source_feedback_id"),
     sourceQuestion: text("source_question").notNull(),
     sourceContext: jsonb("source_context").default({}).notNull(),
@@ -919,7 +923,7 @@ export const analyticsEvents = pgTable(
     targetId: uuid("target_id"),
     knowledgeBaseId: uuid("knowledge_base_id").references(() => knowledgeBases.id),
     sessionId: varchar("session_id", { length: 160 }),
-    agentId: uuid("agent_id").references(() => agents.id),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
     durationMs: integer("duration_ms"),
     metadata: jsonb("metadata").default({}).notNull(),
     createdDate: date("created_date").defaultNow().notNull(),
@@ -937,11 +941,13 @@ export const agentRuntimeTraces = pgTable(
   "agent_runtime_traces",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(() => agents.id),
-    conversationId: uuid("conversation_id").references(() => conversations.id),
-    messageId: uuid("message_id").references(() => conversationMessages.id),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    messageId: uuid("message_id").references(() => conversationMessages.id, {
+      onDelete: "set null",
+    }),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),

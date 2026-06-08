@@ -99,6 +99,20 @@
       "when": 1780647245528,
       "tag": "0013_unknown_zombie",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1780915435361,
+      "tag": "0014_last_firedrake",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1780919896577,
+      "tag": "0015_fair_husk",
+      "breakpoints": true
     }
   ]
 }

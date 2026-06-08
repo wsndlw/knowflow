@@ -11,7 +11,7 @@ import type {
   MindMapResponse,
   SaveMindMapRequest,
 } from "@knowflow/shared";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
@@ -136,7 +136,7 @@ export class MindMapService {
     await this.ensureCanManage(knowledgeBaseId, user);
     const context = await this.buildGenerateContext(knowledgeBaseId);
     if (context.documents.length === 0 && context.items.length === 0) {
-      throw new BadRequestException("Knowledge base has no documents or knowledge items");
+      throw new BadRequestException("知识库没有文档或知识条目");
     }
 
     const nodes = await this.generateNodes(context);
@@ -172,10 +172,10 @@ export class MindMapService {
         description: knowledgeBases.description,
       })
       .from(knowledgeBases)
-      .where(eq(knowledgeBases.id, knowledgeBaseId))
+      .where(and(eq(knowledgeBases.id, knowledgeBaseId), isNull(knowledgeBases.deletedAt)))
       .limit(1);
     if (knowledgeBase === undefined) {
-      throw new NotFoundException("Knowledge base not found");
+      throw new NotFoundException("未找到知识库");
     }
 
     const [documentRows, itemRows] = await Promise.all([
@@ -186,7 +186,10 @@ export class MindMapService {
           updatedAt: documents.updatedAt,
         })
         .from(documents)
-        .where(eq(documents.knowledgeBaseId, knowledgeBaseId))
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
+        .where(
+          and(eq(documents.knowledgeBaseId, knowledgeBaseId), isNull(knowledgeBases.deletedAt)),
+        )
         .orderBy(desc(documents.updatedAt))
         .limit(MAX_TOTAL_NODES),
       db
@@ -198,9 +201,11 @@ export class MindMapService {
           updatedAt: knowledgeItems.updatedAt,
         })
         .from(knowledgeItems)
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
         .where(
           and(
             eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId),
+            isNull(knowledgeBases.deletedAt),
             eq(knowledgeItems.status, "published"),
             eq(knowledgeItems.enabled, true),
           ),
@@ -415,15 +420,15 @@ export class MindMapService {
 
   private validateNodeTree(nodes: MapNodeInput[]): void {
     if (nodes.length > MAX_TOTAL_NODES) {
-      throw new BadRequestException("Mind map cannot exceed 200 nodes");
+      throw new BadRequestException("思维导图不能超过 200 个节点");
     }
     const ids = new Set(nodes.map((node) => node.id));
     if (ids.size !== nodes.length) {
-      throw new BadRequestException("Mind map node ids must be unique");
+      throw new BadRequestException("思维导图节点 ID 必须唯一");
     }
     for (const node of nodes) {
       if (node.parentId !== null && !ids.has(node.parentId)) {
-        throw new BadRequestException("Mind map parentId must reference a submitted node");
+        throw new BadRequestException("思维导图 parentId 必须引用已提交节点");
       }
     }
   }
@@ -468,7 +473,7 @@ export class MindMapService {
       documentRows.length !== new Set(documentIds).size ||
       itemRows.length !== new Set(itemIds).size
     ) {
-      throw new BadRequestException("Mind map references must belong to this knowledge base");
+      throw new BadRequestException("思维导图引用必须属于该知识库");
     }
   }
 
@@ -476,14 +481,14 @@ export class MindMapService {
     if (await this.accessService.canAccess(knowledgeBaseId, user)) {
       return;
     }
-    throw new NotFoundException("Knowledge base not found");
+    throw new NotFoundException("未找到知识库");
   }
 
   private async ensureCanManage(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canManage(knowledgeBaseId, user)) {
       return;
     }
-    throw new ForbiddenException("Cannot manage mind map in this knowledge base");
+    throw new ForbiddenException("无权管理该知识库的思维导图");
   }
 
   private toNode(row: MapNodeRow): PersistedMapNode {

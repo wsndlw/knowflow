@@ -21,7 +21,20 @@ import type {
   KnowledgeBaseAnalyticsResponse,
 } from "@knowflow/shared";
 import type { AnyColumn } from "drizzle-orm";
-import { and, count, desc, eq, gte, inArray, isNotNull, lte, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -151,7 +164,7 @@ export class AnalyticsService {
     user: AuthenticatedUser,
   ): Promise<AnalyticsOverviewResponse> {
     if (user.platformRole !== "super_admin") {
-      throw new ForbiddenException("Only super admins can view platform analytics");
+      throw new ForbiddenException("仅超级管理员可查看平台分析");
     }
 
     const range = this.normalizeRange(query);
@@ -258,17 +271,12 @@ export class AnalyticsService {
   }
 
   private previousRange(range: NormalizedRange): NormalizedRange {
-    const days =
-      Math.floor((range.toDate.getTime() - range.fromDate.getTime()) / 86_400_000) + 1;
+    const days = Math.floor((range.toDate.getTime() - range.fromDate.getTime()) / 86_400_000) + 1;
     const previousTo = new Date(range.fromDate);
     previousTo.setUTCDate(previousTo.getUTCDate() - 1);
     const previousFrom = new Date(previousTo);
     previousFrom.setUTCDate(previousFrom.getUTCDate() - (days - 1));
-    return this.buildRange(
-      range.range,
-      this.toDateOnly(previousFrom),
-      this.toDateOnly(previousTo),
-    );
+    return this.buildRange(range.range, this.toDateOnly(previousFrom), this.toDateOnly(previousTo));
   }
 
   private eventRangeCondition(range: NormalizedRange): SQL {
@@ -277,10 +285,7 @@ export class AnalyticsService {
     );
   }
 
-  private createdAtRangeCondition(
-    column: AnyColumn<{ data: Date }>,
-    range: NormalizedRange,
-  ): SQL {
+  private createdAtRangeCondition(column: AnyColumn<{ data: Date }>, range: NormalizedRange): SQL {
     return this.requireCondition(and(gte(column, range.fromDate), lte(column, range.toDate)));
   }
 
@@ -293,16 +298,28 @@ export class AnalyticsService {
 
   private async countEvents(
     range: NormalizedRange,
-    filter: { eventType: typeof analyticsEvents.eventType.enumValues[number]; knowledgeBaseId?: string },
+    filter: {
+      eventType: (typeof analyticsEvents.eventType.enumValues)[number];
+      knowledgeBaseId?: string;
+    },
   ): Promise<number> {
-    const conditions = [this.eventRangeCondition(range), eq(analyticsEvents.eventType, filter.eventType)];
+    const conditions = [
+      this.eventRangeCondition(range),
+      eq(analyticsEvents.eventType, filter.eventType),
+    ];
     if (filter.knowledgeBaseId !== undefined) {
       conditions.push(eq(analyticsEvents.knowledgeBaseId, filter.knowledgeBaseId));
     }
-    const [{ value } = { value: 0 }] = await db
-      .select({ value: sql<number>`count(*)::int` })
-      .from(analyticsEvents)
-      .where(and(...conditions));
+    const query = db.select({ value: sql<number>`count(*)::int` }).from(analyticsEvents);
+    const rows =
+      filter.knowledgeBaseId === undefined
+        ? await query
+            .leftJoin(knowledgeBases, eq(knowledgeBases.id, analyticsEvents.knowledgeBaseId))
+            .where(and(...conditions, this.activeOrUnscopedEventCondition()))
+        : await query
+            .innerJoin(knowledgeBases, eq(knowledgeBases.id, analyticsEvents.knowledgeBaseId))
+            .where(and(...conditions, isNull(knowledgeBases.deletedAt)));
+    const [{ value } = { value: 0 }] = rows;
     return value;
   }
 
@@ -314,10 +331,18 @@ export class AnalyticsService {
     if (knowledgeBaseId !== undefined) {
       conditions.push(eq(analyticsEvents.knowledgeBaseId, knowledgeBaseId));
     }
-    const [{ value } = { value: 0 }] = await db
+    const query = db
       .select({ value: sql<number>`count(distinct ${analyticsEvents.userId})::int` })
-      .from(analyticsEvents)
-      .where(and(...conditions));
+      .from(analyticsEvents);
+    const rows =
+      knowledgeBaseId === undefined
+        ? await query
+            .leftJoin(knowledgeBases, eq(knowledgeBases.id, analyticsEvents.knowledgeBaseId))
+            .where(and(...conditions, this.activeOrUnscopedEventCondition()))
+        : await query
+            .innerJoin(knowledgeBases, eq(knowledgeBases.id, analyticsEvents.knowledgeBaseId))
+            .where(and(...conditions, isNull(knowledgeBases.deletedAt)));
+    const [{ value } = { value: 0 }] = rows;
     return value;
   }
 
@@ -448,16 +473,30 @@ export class AnalyticsService {
       conditions.push(eq(analyticsEvents.knowledgeBaseId, knowledgeBaseId));
     }
 
-    return db
+    const query = db
       .select({
         keyword: keywordExpression,
         count: countExpression,
       })
-      .from(analyticsEvents)
-      .where(and(...conditions))
+      .from(analyticsEvents);
+    return (
+      knowledgeBaseId === undefined
+        ? query
+            .leftJoin(knowledgeBases, eq(knowledgeBases.id, analyticsEvents.knowledgeBaseId))
+            .where(and(...conditions, this.activeOrUnscopedEventCondition()))
+        : query
+            .innerJoin(knowledgeBases, eq(knowledgeBases.id, analyticsEvents.knowledgeBaseId))
+            .where(and(...conditions, isNull(knowledgeBases.deletedAt)))
+    )
       .groupBy(keywordExpression)
       .orderBy(desc(countExpression), keywordExpression)
       .limit(10);
+  }
+
+  private activeOrUnscopedEventCondition(): SQL {
+    return this.requireCondition(
+      or(isNull(analyticsEvents.knowledgeBaseId), isNull(knowledgeBases.deletedAt)),
+    );
   }
 
   private toCountMap(rows: { id: string | null; value: number }[]): Map<string, number> {
@@ -498,7 +537,7 @@ export class AnalyticsService {
       })
       .from(documents)
       .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
-      .where(and(...conditions));
+      .where(and(...conditions, isNull(knowledgeBases.deletedAt)));
 
     return rows
       .map((row) => ({
@@ -535,7 +574,7 @@ export class AnalyticsService {
       })
       .from(knowledgeItems)
       .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
-      .where(and(...conditions));
+      .where(and(...conditions, isNull(knowledgeBases.deletedAt)));
 
     return rows
       .map((row) => ({
@@ -564,6 +603,7 @@ export class AnalyticsService {
         lastViewedAt: documentLastViewedAtExpression,
       })
       .from(documents)
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
       .leftJoin(
         analyticsEvents,
         and(
@@ -574,7 +614,7 @@ export class AnalyticsService {
           this.eventRangeCondition(range),
         ),
       )
-      .where(eq(documents.knowledgeBaseId, knowledgeBaseId))
+      .where(and(eq(documents.knowledgeBaseId, knowledgeBaseId), isNull(knowledgeBases.deletedAt)))
       .groupBy(documents.id, documents.title)
       .orderBy(sql`${documentLastViewedAtExpression} asc nulls first`)
       .limit(5);
@@ -589,6 +629,7 @@ export class AnalyticsService {
         lastViewedAt: knowledgeItemLastViewedAtExpression,
       })
       .from(knowledgeItems)
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
       .leftJoin(
         analyticsEvents,
         and(
@@ -599,7 +640,9 @@ export class AnalyticsService {
           this.eventRangeCondition(range),
         ),
       )
-      .where(eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId))
+      .where(
+        and(eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId), isNull(knowledgeBases.deletedAt)),
+      )
       .groupBy(knowledgeItems.id, knowledgeItems.title)
       .orderBy(sql`${knowledgeItemLastViewedAtExpression} asc nulls first`)
       .limit(5);
@@ -673,7 +716,7 @@ export class AnalyticsService {
       .limit(10);
 
     return rows.map((row) => ({
-      question: row.question.length > 0 ? row.question : "(unknown question)",
+      question: row.question.length > 0 ? row.question : "未知问题",
       count: row.count,
       noAnswerType:
         row.noAnswerType === "no_answer" ||
@@ -728,7 +771,7 @@ export class AnalyticsService {
       .limit(10);
 
     return rows.map((row) => ({
-      question: row.question.length > 0 ? row.question : "(unknown question)",
+      question: row.question.length > 0 ? row.question : "未知问题",
       count: row.count,
       lastAskedAt: this.toIsoDateTime(row.lastAskedAt),
     }));
@@ -746,9 +789,11 @@ export class AnalyticsService {
           corrections: sql<number>`count(*) filter (where ${answerFeedback.rating} = 'correction')::int`,
         })
         .from(answerFeedback)
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, answerFeedback.knowledgeBaseId))
         .where(
           and(
             eq(answerFeedback.knowledgeBaseId, knowledgeBaseId),
+            isNull(knowledgeBases.deletedAt),
             this.createdAtRangeCondition(answerFeedback.createdAt, range),
           ),
         ),
@@ -759,9 +804,11 @@ export class AnalyticsService {
         })
         .from(knowledgeItemFeedback)
         .innerJoin(knowledgeItems, eq(knowledgeItems.id, knowledgeItemFeedback.knowledgeItemId))
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, knowledgeItems.knowledgeBaseId))
         .where(
           and(
             eq(knowledgeItems.knowledgeBaseId, knowledgeBaseId),
+            isNull(knowledgeBases.deletedAt),
             this.createdAtRangeCondition(knowledgeItemFeedback.createdAt, range),
           ),
         ),
@@ -780,7 +827,7 @@ export class AnalyticsService {
     range: NormalizedRange,
     knowledgeBaseId: string,
   ): Promise<KnowledgeBaseAnalyticsResponse["feedbackReasons"]> {
-    const reasonExpression = sql<string>`coalesce(nullif(${answerFeedback.reason}, ''), 'unspecified')`;
+    const reasonExpression = sql<string>`coalesce(nullif(${answerFeedback.reason}, ''), '未填写原因')`;
     const countExpression = sql<number>`count(*)::int`;
     const rows = await db
       .select({
@@ -788,9 +835,11 @@ export class AnalyticsService {
         count: countExpression,
       })
       .from(answerFeedback)
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, answerFeedback.knowledgeBaseId))
       .where(
         and(
           eq(answerFeedback.knowledgeBaseId, knowledgeBaseId),
+          isNull(knowledgeBases.deletedAt),
           this.createdAtRangeCondition(answerFeedback.createdAt, range),
         ),
       )
@@ -816,6 +865,7 @@ export class AnalyticsService {
       .where(
         and(
           this.eventRangeCondition(range),
+          isNull(knowledgeBases.deletedAt),
           inArray(analyticsEvents.eventType, ["knowledge_base_viewed", "question_asked"]),
         ),
       )
@@ -840,8 +890,12 @@ export class AnalyticsService {
       [{ value: agentCount } = { value: 0 }],
     ] = await Promise.all([
       db.select({ value: count() }).from(users),
-      db.select({ value: count() }).from(knowledgeBases),
-      db.select({ value: count() }).from(documents),
+      db.select({ value: count() }).from(knowledgeBases).where(isNull(knowledgeBases.deletedAt)),
+      db
+        .select({ value: count() })
+        .from(documents)
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
+        .where(isNull(knowledgeBases.deletedAt)),
       db.select({ value: count() }).from(agents).where(eq(agents.type, "official")),
     ]);
 
@@ -853,13 +907,10 @@ export class AnalyticsService {
     };
   }
 
-  private async ensureCanAccess(
-    knowledgeBaseId: string,
-    user: AuthenticatedUser,
-  ): Promise<void> {
+  private async ensureCanAccess(knowledgeBaseId: string, user: AuthenticatedUser): Promise<void> {
     if (await this.accessService.canAccess(knowledgeBaseId, user)) {
       return;
     }
-    throw new NotFoundException("Knowledge base analytics not found");
+    throw new NotFoundException("未找到知识库分析数据");
   }
 }

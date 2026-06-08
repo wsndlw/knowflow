@@ -176,11 +176,37 @@ pnpm build
 ## 四、目录结构
 
 ```text
-apps/web/src/app           前端页面与路由：知识库、文档、条目、Agent、统计、部门后台等
-apps/api/src/modules       NestJS 领域模块：auth、knowledge-base、document、retrieval、agent、model 等
-apps/api/src/worker.ts     Worker 入口：文档处理、知识提炼、定时扫描、对话摘要
-packages/shared/src        前后端共享契约：schemas、constants、types
-packages/db/src            Drizzle schema、migrations、seed、db client
+apps/web/src/app                      前端页面与路由
+  ├── _components/                    公共前端组件
+  ├── _hooks/                         自定义 React Hooks
+  ├── admin/                          管理后台页面（部门、用户、操作审计）
+  ├── agents/                         专家 Agent 页面（列表、详情、对话）
+  ├── knowledge-bases/                知识库主页面（列表、详情、文档、条目、统计）
+  ├── login/                          登录页面
+  └── models/                         模型配置后台页面
+
+apps/api/src/modules                  NestJS 领域模块
+  └── domains/                        业务领域模块集合
+      ├── auth/                       登录、Session、三层权限、CSRF
+      ├── department/                 部门组织与归属
+      ├── knowledge-base/             知识库 CRUD、成员、可见范围、知识条目、自动提炼
+      ├── document/                   文档上传、解析、分段、向量化、进度回推
+      ├── retrieval/                  三路召回、Rerank、父子扩展、检索测试
+      ├── agent/                      LangGraph 问答运行时、对话记忆、会话归档
+      ├── model/                      模型供应商、用途映射、加密 Key、热切换
+      ├── analytics/                  使用热度统计
+      └── health/                     健康检查
+
+apps/api/src/worker.ts                Worker 入口：文档处理、知识提炼、定时扫描、对话摘要
+apps/api/src/scripts/                 维护脚本
+apps/api/src/shared/                  后端共享工具（decorators、guards、filters）
+
+packages/shared/src                   前后端共享契约
+  ├── schemas/                        Zod schema 与 DTO 定义
+  ├── constants/                      常量枚举（权限、状态、错误码）
+  └── types/                          TypeScript 类型定义
+
+packages/db/src                       数据库层：schema、seed、client、加密工具
 ```
 
 ---

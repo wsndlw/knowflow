@@ -8,6 +8,16 @@ import { useAuth } from "../../components/auth-provider";
 import { apiRequest, emptyObjectSchema } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/ui/feedback";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 import { ProviderDialog } from "./_components/provider-dialog";
 import { ProviderCard } from "./_components/provider-card";
 import { ModelCatalogList } from "./_components/model-catalog-list";
@@ -36,6 +46,7 @@ function ModelsPageContent() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<ModelProvider | null>(null);
   const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null);
+  const [pendingDeleteProviderId, setPendingDeleteProviderId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadProviders();
@@ -70,8 +81,11 @@ function ModelsPageContent() {
     await loadProviders();
   };
 
-  const handleDelete = async (providerId: string) => {
-    if (!confirm("确认删除此供应商？关联的模型也会被删除。")) return;
+  const handleDelete = (providerId: string) => {
+    setPendingDeleteProviderId(providerId);
+  };
+
+  const doDeleteProvider = async (providerId: string) => {
     await apiRequest(`/admin/model-providers/${providerId}`, emptyObjectSchema, {
       method: "DELETE",
     });
@@ -125,7 +139,7 @@ function ModelsPageContent() {
                     provider={provider}
                     onEdit={() => { openEditDialog(provider); }}
                     onDelete={() => {
-                      handleDelete(provider.id).catch(console.error);
+                      handleDelete(provider.id);
                     }}
                     onToggleModels={() => toggleModels(provider.id)}
                     modelsExpanded={expandedProviderId === provider.id}
@@ -151,6 +165,33 @@ function ModelsPageContent() {
         provider={editingProvider}
         onSubmit={editingProvider === null ? handleCreate : handleUpdate}
       />
+
+      <AlertDialog
+        open={pendingDeleteProviderId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteProviderId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除供应商</AlertDialogTitle>
+            <AlertDialogDescription>确认删除此供应商？关联的模型也会被删除。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                const id = pendingDeleteProviderId;
+                setPendingDeleteProviderId(null);
+                if (id !== null) void doDeleteProvider(id);
+              }}
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

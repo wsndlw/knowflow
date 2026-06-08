@@ -12,7 +12,13 @@ import { Dialog } from "../../../../components/ui/dialog";
 import { Button } from "../../../../components/ui/button";
 import { Skeleton, EmptyState } from "../../../../components/ui/feedback";
 import { Badge } from "../../../../components/ui/badge";
-import { Select } from "../../../../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../components/ui/select";
 import { Pagination } from "./pagination";
 import { apiRequest, apiUrl, ApiError } from "../../../../lib/api";
 
@@ -212,11 +218,18 @@ function ChunksView({ doc }: { doc: KnowledgeDocument }) {
       <div className="flex justify-between items-center shrink-0">
         <Select
           value={level}
-          onChange={(e) => { setLevel(e.target.value as "parent" | "child"); setPage(1); }}
-          className="w-40"
+          onValueChange={(next) => {
+            setLevel(next as "parent" | "child");
+            setPage(1);
+          }}
         >
-          <option value="parent">父块 (Parent)</option>
-          <option value="child">子块 (Child)</option>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="选择层级" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="parent">父块 (Parent)</SelectItem>
+            <SelectItem value="child">子块 (Child)</SelectItem>
+          </SelectContent>
         </Select>
         <span className="text-xs text-ink-subtle">共 {total} 块</span>
       </div>

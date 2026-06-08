@@ -5,6 +5,13 @@ import type { Department, UserOption } from "@knowflow/shared";
 
 import { Dialog } from "../../../../components/ui/dialog";
 import { Button } from "../../../../components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../components/ui/select";
 
 type MoveMemberDialogProps = {
   open: boolean;
@@ -74,26 +81,28 @@ export function MoveMemberDialog({
           <p className="text-sm text-ink-muted">没有其他部门可供选择，请先创建新部门。</p>
         ) : (
           <div>
-            <label htmlFor="target-dept" className="mb-1.5 block text-sm font-medium text-ink">
+            <label className="mb-1.5 block text-sm font-medium text-ink">
               目标部门
             </label>
-            <select
-              id="target-dept"
-              className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            <Select
               value={targetDeptId}
-              onChange={(e) => {
-                setTargetDeptId(e.target.value);
+              onValueChange={(next) => {
+                setTargetDeptId(next);
                 setError("");
               }}
               disabled={loading}
             >
-              <option value="">请选择</option>
-              {otherDepartments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="请选择" />
+              </SelectTrigger>
+              <SelectContent>
+                {otherDepartments.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
 

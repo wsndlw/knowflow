@@ -8,6 +8,16 @@ import { apiRequest, emptyObjectSchema } from "../../../lib/api";
 import { Button } from "../../../components/ui/button";
 import { Badge } from "../../../components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "../../../components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
 import { ModelDialog } from "./model-dialog";
 
 type ModelCatalogListProps = {
@@ -21,6 +31,7 @@ export function ModelCatalogList({ providerId, expanded }: ModelCatalogListProps
   const [loaded, setLoaded] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<ModelCatalog | null>(null);
+  const [pendingDeleteModelId, setPendingDeleteModelId] = useState<string | null>(null);
 
   useEffect(() => {
     if (expanded && !loaded) {
@@ -61,8 +72,11 @@ export function ModelCatalogList({ providerId, expanded }: ModelCatalogListProps
     await loadModels();
   };
 
-  const handleDelete = async (modelId: string) => {
-    if (!confirm("确认删除此模型？")) return;
+  const handleDelete = (modelId: string) => {
+    setPendingDeleteModelId(modelId);
+  };
+
+  const doDeleteModel = async (modelId: string) => {
     await apiRequest(`/admin/models/${modelId}`, emptyObjectSchema, {
       method: "DELETE",
     });
@@ -140,7 +154,7 @@ export function ModelCatalogList({ providerId, expanded }: ModelCatalogListProps
                     <Button size="sm" variant="secondary" onClick={() => { openEditDialog(model); }}>
                       编辑
                     </Button>
-                    <Button size="sm" variant="destructive" onClick={() => { handleDelete(model.id).catch(console.error); }}>
+                    <Button size="sm" variant="destructive" onClick={() => { handleDelete(model.id); }}>
                       删除
                     </Button>
                   </div>
@@ -158,6 +172,33 @@ export function ModelCatalogList({ providerId, expanded }: ModelCatalogListProps
         model={editingModel}
         onSubmit={editingModel === null ? handleCreate : handleUpdate}
       />
+
+      <AlertDialog
+        open={pendingDeleteModelId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteModelId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除模型</AlertDialogTitle>
+            <AlertDialogDescription>确认删除此模型？</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                const id = pendingDeleteModelId;
+                setPendingDeleteModelId(null);
+                if (id !== null) void doDeleteModel(id);
+              }}
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

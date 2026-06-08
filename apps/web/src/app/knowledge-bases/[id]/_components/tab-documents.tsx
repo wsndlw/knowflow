@@ -12,10 +12,17 @@ import {
 
 import { Badge } from "../../../../components/ui/badge";
 import { Button } from "../../../../components/ui/button";
+import { Checkbox } from "../../../../components/ui/checkbox";
 import { Dialog } from "../../../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Input } from "../../../../components/ui/input";
-import { Select } from "../../../../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../components/ui/select";
 import { TagBadge } from "../../../../components/ui/tag-badge";
 import { apiRequest, apiUrl, emptyObjectSchema, getCsrfToken, parseApiError, replaceDocumentTags } from "../../../../lib/api";
 import { useDocumentProgress } from "../_hooks/use-document-progress";
@@ -33,7 +40,7 @@ type TabDocumentsProps = {
 };
 
 const STATUS_OPTIONS = [
-  { value: "", label: "全部状态" },
+  { value: "all", label: "全部状态" },
   { value: "pending", label: "等待中" },
   { value: "parsing", label: "解析中" },
   { value: "chunking", label: "切分中" },
@@ -65,7 +72,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -104,7 +111,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (keyword.trim()) params.set("keyword", keyword.trim());
-      if (status) params.set("status", status);
+      if (status && status !== "all") params.set("status", status);
       if (tagFilter.queryValue) params.set("tagIds", tagFilter.queryValue);
       params.set("archived", archivedMode ? "true" : "false");
       const response = await apiRequest(
@@ -366,23 +373,31 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
           />
           <Select
             value={status}
-            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
-            className="w-32"
+            onValueChange={(next) => { setStatus(next); setPage(1); }}
           >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="全部状态" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
           <Select
             value={archivedMode ? "archived" : "in-use"}
-            onChange={(e) => {
-              setArchivedMode(e.target.value === "archived");
+            onValueChange={(next) => {
+              setArchivedMode(next === "archived");
               setPage(1);
             }}
-            className="w-32"
           >
-            <option value="in-use">在用</option>
-            <option value="archived">已归档</option>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="in-use">在用</SelectItem>
+              <SelectItem value="archived">已归档</SelectItem>
+            </SelectContent>
           </Select>
           <TagFilterPopover
             allTags={allTags}
@@ -406,11 +421,10 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
       {canManage && documents.length > 0 ? (
         <div className="flex items-center gap-3 px-0.5">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-muted">
-            <input
-              type="checkbox"
-              className="size-4 shrink-0 cursor-pointer accent-brand-600"
+            <Checkbox
               checked={allSelected}
-              onChange={toggleAll}
+              onCheckedChange={() => toggleAll()}
+              aria-label="全选"
             />
             全选
           </label>
@@ -644,11 +658,9 @@ function DocumentRow({
   return (
     <div className="flex items-center gap-4 rounded-lg border border-border bg-surface px-4 py-3 transition-colors hover:border-brand-200">
       {canManage ? (
-        <input
-          type="checkbox"
-          className="size-4 shrink-0 cursor-pointer accent-brand-600"
+        <Checkbox
           checked={selected}
-          onChange={onToggleSelect}
+          onCheckedChange={() => onToggleSelect()}
           aria-label="选择文档"
         />
       ) : null}

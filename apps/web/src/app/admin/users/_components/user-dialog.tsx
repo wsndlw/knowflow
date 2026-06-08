@@ -7,6 +7,13 @@ import { departmentListResponseSchema, type CreateUserRequest } from "@knowflow/
 import { Dialog } from "../../../../components/ui/dialog";
 import { Input } from "../../../../components/ui/input";
 import { Button } from "../../../../components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../components/ui/select";
 import { apiRequest } from "../../../../lib/api";
 
 const ROLE_LABELS: Record<PlatformRole, string> = {
@@ -31,6 +38,7 @@ export function UserDialog({ open, onClose, onSubmit }: UserDialogProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -39,7 +47,8 @@ export function UserDialog({ open, onClose, onSubmit }: UserDialogProps) {
       setPassword("");
       setDepartmentId("");
       setPlatformRole("user");
-      
+      setFormError(null);
+
       const loadDepts = async () => {
         setLoading(true);
         try {
@@ -57,12 +66,13 @@ export function UserDialog({ open, onClose, onSubmit }: UserDialogProps) {
 
   const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setFormError(null);
     if (username.trim().length === 0 || name.trim().length === 0 || !departmentId) {
-      alert("请填写完整信息");
+      setFormError("请填写完整信息");
       return;
     }
     if (password.length < 8) {
-      alert("密码至少 8 位");
+      setFormError("密码至少 8 位");
       return;
     }
     setSubmitting(true);
@@ -86,6 +96,9 @@ export function UserDialog({ open, onClose, onSubmit }: UserDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} title="新建用户">
       <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4 py-2">
+        {formError ? (
+          <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{formError}</p>
+        ) : null}
         <div className="space-y-1">
           <label className="text-sm font-medium text-ink">用户名</label>
           <Input
@@ -119,34 +132,41 @@ export function UserDialog({ open, onClose, onSubmit }: UserDialogProps) {
         </div>
         <div className="space-y-1">
           <label className="text-sm font-medium text-ink">部门</label>
-          <select
-            className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:bg-neutral-100 disabled:opacity-50"
+          <Select
             value={departmentId}
-            onChange={(e) => setDepartmentId(e.target.value)}
+            onValueChange={(next) => setDepartmentId(next)}
             disabled={loading}
             required
           >
-            <option value="">请选择部门</option>
-            {departments.map((dept) => (
-              <option key={dept.id} value={dept.id}>
-                {dept.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="请选择部门" />
+            </SelectTrigger>
+            <SelectContent>
+              {departments.map((dept) => (
+                <SelectItem key={dept.id} value={dept.id}>
+                  {dept.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-1">
           <label className="text-sm font-medium text-ink">角色</label>
-          <select
-            className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+          <Select
             value={platformRole}
-            onChange={(e) => setPlatformRole(e.target.value as PlatformRole)}
+            onValueChange={(next) => setPlatformRole(next as PlatformRole)}
           >
-            {(["super_admin", "department_admin", "user"] as PlatformRole[]).map((role) => (
-              <option key={role} value={role}>
-                {ROLE_LABELS[role]}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="请选择角色" />
+            </SelectTrigger>
+            <SelectContent>
+              {(["super_admin", "department_admin", "user"] as PlatformRole[]).map((role) => (
+                <SelectItem key={role} value={role}>
+                  {ROLE_LABELS[role]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="mt-6 flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>

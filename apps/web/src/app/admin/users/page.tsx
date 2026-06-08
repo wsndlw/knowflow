@@ -19,9 +19,21 @@ import {
   TableHeaderCell,
   TableCell,
 } from "../../../components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
 import { UserDialog } from "./_components/user-dialog";
 import { ResetPasswordDialog } from "./_components/reset-password-dialog";
 import { RoleDialog } from "./_components/role-dialog";
+
+type PendingToggle = { kind: "disable" | "enable"; user: UserOption };
 
 const ROLE_LABELS: Record<PlatformRole, string> = {
   super_admin: "超级管理员",
@@ -61,6 +73,7 @@ function UsersPageContent() {
   
   const [resetPwdUser, setResetPwdUser] = useState<UserOption | null>(null);
   const [roleUser, setRoleUser] = useState<UserOption | null>(null);
+  const [pendingToggle, setPendingToggle] = useState<PendingToggle | null>(null);
 
   const [toast, setToast] = useState<{ message: string; tone: "success" | "danger" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -140,16 +153,14 @@ function UsersPageContent() {
     }
   };
 
-  const handleToggleStatus = async (user: UserOption) => {
-    const isDisabling = user.status === "active";
-    if (isDisabling) {
-      if (!confirm(`确认停用该用户？该用户将无法登录。`)) return;
-    } else {
-      if (!confirm(`确认启用该用户？`)) return;
-    }
+  const handleToggleStatus = (user: UserOption) => {
+    const kind = user.status === "active" ? "disable" : "enable";
+    setPendingToggle({ kind, user });
+  };
 
+  const doToggleStatus = async (kind: "disable" | "enable", user: UserOption) => {
     try {
-      const endpoint = isDisabling ? "disable" : "enable";
+      const endpoint = kind === "disable" ? "disable" : "enable";
       const updatedUser = await apiRequest(`/admin/users/${user.id}/${endpoint}`, userOptionSchema, {
         method: "POST",
       });
@@ -246,7 +257,7 @@ function UsersPageContent() {
                             size="sm"
                             variant="ghost"
                             className={item.status === "active" ? "text-danger hover:text-danger" : ""}
-                            onClick={() => void handleToggleStatus(item)}
+                            onClick={() => handleToggleStatus(item)}
                           >
                             {item.status === "active" ? "停用" : "启用"}
                           </Button>
@@ -282,6 +293,39 @@ function UsersPageContent() {
         user={roleUser}
         onSubmit={handleUpdateRole}
       />
+
+      <AlertDialog
+        open={pendingToggle !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingToggle(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingToggle?.kind === "disable" ? "确认停用用户" : "确认启用用户"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingToggle?.kind === "disable"
+                ? "确认停用该用户？该用户将无法登录。"
+                : "确认启用该用户？"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant={pendingToggle?.kind === "disable" ? "destructive" : "default"}
+              onClick={() => {
+                const p = pendingToggle;
+                setPendingToggle(null);
+                if (p) void doToggleStatus(p.kind, p.user);
+              }}
+            >
+              确认
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {toast ? (
         <div

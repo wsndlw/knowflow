@@ -10,6 +10,7 @@ import {
 
 import { Badge } from "../../../../components/ui/badge";
 import { Button } from "../../../../components/ui/button";
+import { Checkbox } from "../../../../components/ui/checkbox";
 import { Dialog } from "../../../../components/ui/dialog";
 import { EmptyState, Skeleton } from "../../../../components/ui/feedback";
 import { Input } from "../../../../components/ui/input";
@@ -26,8 +27,6 @@ const roleLabels: Record<string, string> = {
   department_admin: "部门管理员",
   user: "普通用户",
 };
-
-const CHECKBOX_CLS = "size-4 shrink-0 cursor-pointer accent-brand-600";
 
 export function TabMembers({ knowledgeBaseId, canManage }: TabMembersProps) {
   const [members, setMembers] = useState<KnowledgeBaseMember[]>([]);
@@ -247,11 +246,9 @@ export function TabMembers({ knowledgeBaseId, canManage }: TabMembersProps) {
             <TableRow>
               {canManage ? (
                 <TableHeaderCell className="w-10">
-                  <input
-                    type="checkbox"
-                    className={CHECKBOX_CLS}
+                  <Checkbox
                     checked={allSelected}
-                    onChange={toggleAll}
+                    onCheckedChange={() => toggleAll()}
                     aria-label="全选"
                   />
                 </TableHeaderCell>
@@ -269,11 +266,9 @@ export function TabMembers({ knowledgeBaseId, canManage }: TabMembersProps) {
               <TableRow key={member.id}>
                 {canManage ? (
                   <TableCell className="w-10">
-                    <input
-                      type="checkbox"
-                      className={CHECKBOX_CLS}
+                    <Checkbox
                       checked={selected.has(member.id)}
-                      onChange={() => toggleRow(member.id)}
+                      onCheckedChange={() => toggleRow(member.id)}
                       aria-label={`选择 ${member.name}`}
                     />
                   </TableCell>
@@ -335,11 +330,10 @@ export function TabMembers({ knowledgeBaseId, canManage }: TabMembersProps) {
                   key={u.id}
                   className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-neutral-50"
                 >
-                  <input
-                    type="checkbox"
-                    className={CHECKBOX_CLS}
+                  <Checkbox
                     checked={addSelected.has(u.id)}
-                    onChange={() => toggleAddSelected(u.id)}
+                    onCheckedChange={() => toggleAddSelected(u.id)}
+                    aria-label={`选择 ${u.name}`}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-ink">{u.name}</span>

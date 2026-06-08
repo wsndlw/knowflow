@@ -10,7 +10,14 @@ import {
 
 import { apiRequest } from "../../../lib/api";
 import { MODEL_USAGE_TYPE_LABELS } from "../../../lib/constants";
-import { Select } from "../../../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../components/ui/select";
+import { Checkbox } from "../../../components/ui/checkbox";
 import { Input } from "../../../components/ui/input";
 
 export function UsagePolicyPanel() {
@@ -90,33 +97,34 @@ export function UsagePolicyPanel() {
                   默认模型
                 </label>
                 <Select
-                  id={`default-${policy.usageType}`}
-                  value={policy.defaultModelId ?? ""}
-                  onChange={(e) =>
-                    void commit(
-                      policy.usageType,
-                      "defaultModelId",
-                      e.target.value === "" ? null : e.target.value,
-                    )
+                  value={policy.defaultModelId ?? undefined}
+                  onValueChange={(next) =>
+                    void commit(policy.usageType, "defaultModelId", next)
                   }
-                  className="text-sm"
                 >
-                  <option value="">请选择</option>
-                  {allModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.providerName} / {model.modelName}
-                    </option>
-                  ))}
+                  <SelectTrigger
+                    id={`default-${policy.usageType}`}
+                    className="w-full text-sm"
+                  >
+                    <SelectValue placeholder="请选择" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allModels.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.providerName} / {model.modelName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
 
               <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   id={`enabled-${policy.usageType}`}
                   checked={policy.enabled}
-                  onChange={(e) => void commit(policy.usageType, "enabled", e.target.checked)}
-                  className="size-4"
+                  onCheckedChange={(v) =>
+                    void commit(policy.usageType, "enabled", v === true)
+                  }
                 />
                 <label htmlFor={`enabled-${policy.usageType}`} className="text-xs text-ink">
                   启用

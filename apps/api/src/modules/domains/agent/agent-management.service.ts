@@ -7,11 +7,17 @@ import {
 } from "@nestjs/common";
 import {
   agentKnowledgeBases,
+  agentRuntimeTraces,
   agents,
+  analyticsEvents,
+  answerFeedback,
+  conversationMessages,
   conversations,
   db,
   documents,
+  knowledgeImprovementTasks,
   knowledgeBases,
+  messageCitations,
   parentChunks,
 } from "@knowflow/db";
 import type {
@@ -21,7 +27,7 @@ import type {
   ManagedAgentListResponse,
   UpdateManagedAgentRequest,
 } from "@knowflow/shared";
-import { and, asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull } from "drizzle-orm";
 
 import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -65,10 +71,7 @@ export class AgentManagementService {
       .from(agentKnowledgeBases)
       .innerJoin(agents, eq(agents.id, agentKnowledgeBases.agentId))
       .where(
-        and(
-          eq(agentKnowledgeBases.knowledgeBaseId, knowledgeBaseId),
-          eq(agents.type, "official"),
-        ),
+        and(eq(agentKnowledgeBases.knowledgeBaseId, knowledgeBaseId), eq(agents.type, "official")),
       )
       .orderBy(desc(agents.isDefault), desc(agents.updatedAt), asc(agents.name));
 
@@ -110,7 +113,7 @@ export class AgentManagementService {
         })
         .returning();
       if (agent === undefined) {
-        throw new BadRequestException("Failed to create agent");
+        throw new BadRequestException("创建 Agent 失败");
       }
 
       await tx.insert(agentKnowledgeBases).values({
@@ -231,7 +234,7 @@ export class AgentManagementService {
       .where(eq(agents.id, agent.id))
       .returning();
     if (updated === undefined) {
-      throw new BadRequestException("Failed to update agent");
+      throw new BadRequestException("更新 Agent 失败");
     }
 
     return this.toManagedAgent(updated);
@@ -252,7 +255,7 @@ export class AgentManagementService {
       .where(eq(agents.id, agent.id))
       .returning();
     if (updated === undefined) {
-      throw new BadRequestException("Failed to publish agent");
+      throw new BadRequestException("发布 Agent 失败");
     }
 
     return this.toManagedAgent(updated);
@@ -271,7 +274,7 @@ export class AgentManagementService {
       .where(eq(agents.id, agent.id))
       .returning();
     if (updated === undefined) {
-      throw new BadRequestException("Failed to disable agent");
+      throw new BadRequestException("停用 Agent 失败");
     }
 
     return this.toManagedAgent(updated);
@@ -279,23 +282,65 @@ export class AgentManagementService {
 
   async delete(agentId: string, user: AuthenticatedUser): Promise<void> {
     const agent = await this.findOfficialAgent(agentId);
-    await this.ensureCanManageAgent(agent.id, user);
+    await this.ensureCanManageAgent(agent.id, user, { includeDeletedKnowledgeBases: true });
     if (agent.isDefault) {
-      throw new BadRequestException("Cannot delete the default agent");
-    }
-
-    const [{ value: conversationCount } = { value: 0 }] = await db
-      .select({ value: count() })
-      .from(conversations)
-      .where(eq(conversations.agentId, agent.id));
-    if (conversationCount > 0) {
-      throw new BadRequestException("Cannot delete an agent that has conversations");
+      throw new BadRequestException("默认 Agent 不可删除");
     }
 
     await db.transaction(async (tx) => {
+      const conversationRows = await tx
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(eq(conversations.agentId, agent.id));
+      const conversationIds = conversationRows.map((row) => row.id);
+
+      const messageRows =
+        conversationIds.length === 0
+          ? []
+          : await tx
+              .select({ id: conversationMessages.id })
+              .from(conversationMessages)
+              .where(inArray(conversationMessages.conversationId, conversationIds));
+      const messageIds = messageRows.map((row) => row.id);
+
+      if (messageIds.length > 0) {
+        await tx
+          .update(knowledgeImprovementTasks)
+          .set({ sourceMessageId: null, updatedAt: new Date() })
+          .where(inArray(knowledgeImprovementTasks.sourceMessageId, messageIds));
+        await tx
+          .update(agentRuntimeTraces)
+          .set({ messageId: null })
+          .where(inArray(agentRuntimeTraces.messageId, messageIds));
+      }
+
+      if (conversationIds.length > 0) {
+        await tx
+          .update(agentRuntimeTraces)
+          .set({ conversationId: null })
+          .where(inArray(agentRuntimeTraces.conversationId, conversationIds));
+      }
+
       await tx
-        .delete(agentKnowledgeBases)
-        .where(eq(agentKnowledgeBases.agentId, agent.id));
+        .update(analyticsEvents)
+        .set({ agentId: null })
+        .where(eq(analyticsEvents.agentId, agent.id));
+      await tx
+        .update(agentRuntimeTraces)
+        .set({ agentId: null })
+        .where(eq(agentRuntimeTraces.agentId, agent.id));
+
+      if (messageIds.length > 0) {
+        await tx.delete(messageCitations).where(inArray(messageCitations.messageId, messageIds));
+        await tx.delete(answerFeedback).where(inArray(answerFeedback.messageId, messageIds));
+        await tx.delete(conversationMessages).where(inArray(conversationMessages.id, messageIds));
+      }
+
+      if (conversationIds.length > 0) {
+        await tx.delete(conversations).where(inArray(conversations.id, conversationIds));
+      }
+
+      await tx.delete(agentKnowledgeBases).where(eq(agentKnowledgeBases.agentId, agent.id));
       await tx.delete(agents).where(eq(agents.id, agent.id));
     });
   }
@@ -307,7 +352,7 @@ export class AgentManagementService {
       .where(and(eq(agents.id, agentId), eq(agents.type, "official")))
       .limit(1);
     if (agent === undefined) {
-      throw new NotFoundException("Agent not found");
+      throw new NotFoundException("未找到 Agent");
     }
     return agent;
   }
@@ -321,10 +366,10 @@ export class AgentManagementService {
         description: knowledgeBases.description,
       })
       .from(knowledgeBases)
-      .where(eq(knowledgeBases.id, knowledgeBaseId))
+      .where(and(eq(knowledgeBases.id, knowledgeBaseId), isNull(knowledgeBases.deletedAt)))
       .limit(1);
     if (knowledgeBase === undefined) {
-      throw new NotFoundException("Knowledge base not found");
+      throw new NotFoundException("未找到知识库");
     }
 
     const rows = await db
@@ -335,12 +380,10 @@ export class AgentManagementService {
       .from(documents)
       .leftJoin(
         parentChunks,
-        and(
-          eq(parentChunks.documentId, documents.id),
-          eq(parentChunks.enabled, true),
-        ),
+        and(eq(parentChunks.documentId, documents.id), eq(parentChunks.enabled, true)),
       )
-      .where(eq(documents.knowledgeBaseId, knowledgeBaseId))
+      .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
+      .where(and(eq(documents.knowledgeBaseId, knowledgeBaseId), isNull(knowledgeBases.deletedAt)))
       .orderBy(desc(documents.updatedAt), asc(parentChunks.createdAt))
       .limit(8);
 
@@ -390,7 +433,10 @@ export class AgentManagementService {
     ].join("\n\n");
   }
 
-  private parseGeneratedDraft(raw: string, context: KnowledgeBasePromptContext): GeneratedAgentDraft {
+  private parseGeneratedDraft(
+    raw: string,
+    context: KnowledgeBasePromptContext,
+  ): GeneratedAgentDraft {
     const parsed = this.parseJsonObject(raw);
     const fallback = this.defaultGeneratedDraft(context);
     return {
@@ -459,25 +505,29 @@ export class AgentManagementService {
   private async ensureCanManageKnowledgeBase(
     knowledgeBaseId: string,
     user: AuthenticatedUser,
+    options: { includeDeleted?: boolean } = {},
   ): Promise<void> {
-    if (await this.accessService.canManage(knowledgeBaseId, user)) {
+    if (await this.accessService.canManage(knowledgeBaseId, user, options)) {
       return;
     }
 
-    throw new ForbiddenException("Cannot manage agents for this knowledge base");
+    throw new ForbiddenException("无权管理该知识库的 Agent");
   }
 
   private async ensureCanManageAgent(
     agentId: string,
     user: AuthenticatedUser,
+    options: { includeDeletedKnowledgeBases?: boolean } = {},
   ): Promise<void> {
     const bindings = await this.findAgentKnowledgeBaseIds(agentId);
     if (bindings.length === 0) {
-      throw new NotFoundException("Agent knowledge base binding not found");
+      throw new NotFoundException("未找到 Agent 关联的知识库");
     }
 
     for (const knowledgeBaseId of bindings) {
-      await this.ensureCanManageKnowledgeBase(knowledgeBaseId, user);
+      await this.ensureCanManageKnowledgeBase(knowledgeBaseId, user, {
+        includeDeleted: options.includeDeletedKnowledgeBases === true,
+      });
     }
   }
 
@@ -503,6 +553,7 @@ export class AgentManagementService {
       openingMessage: agent.openingMessage,
       recommendedQuestions: this.normalizeRecommendedQuestions(agent.recommendedQuestions),
       knowledgeBaseIds: await this.findAgentKnowledgeBaseIds(agent.id),
+      conversationCount: await this.countConversations(agent.id),
       systemPrompt: agent.systemPrompt,
       answerStyle: agent.answerStyle,
       allowAttachments: agent.allowAttachments,
@@ -526,10 +577,16 @@ export class AgentManagementService {
       : [];
   }
 
+  private async countConversations(agentId: string): Promise<number> {
+    const [{ value } = { value: 0 }] = await db
+      .select({ value: count() })
+      .from(conversations)
+      .where(eq(conversations.agentId, agentId));
+    return value;
+  }
+
   protected defaultSystemPrompt(agentName: string): string {
-    return this.ensureCitationPrompt(
-      `你是${agentName}，必须基于授权知识库内容回答用户问题。`,
-    );
+    return this.ensureCitationPrompt(`你是${agentName}，必须基于授权知识库内容回答用户问题。`);
   }
 
   protected ensureCitationPrompt(prompt: string): string {

@@ -141,6 +141,7 @@ export const knowledgeBaseSchema = z.object({
   creatorName: z.string(),
   embeddingModel: z.string(),
   embeddingDimension: z.number().int().positive(),
+  deletedAt: z.iso.datetime().nullable(),
   canManage: z.boolean(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -165,6 +166,13 @@ export const knowledgeBaseListQuerySchema = z.object({
   status: knowledgeBaseStatusSchema.optional(),
   visibility: knowledgeBaseVisibilitySchema.optional(),
   keyword: z.string().trim().min(1).max(120).optional(),
+  deleted: z
+    .preprocess((value) => {
+      if (value === "true") return true;
+      if (value === "false") return false;
+      return value;
+    }, z.boolean())
+    .optional(),
 });
 
 export const knowledgeBaseListResponseSchema = z.object({
@@ -186,7 +194,7 @@ export const updateKnowledgeBaseRequestSchema = z
     status: knowledgeBaseStatusSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
-    message: "At least one field is required",
+    message: "至少需要提供一个字段",
   });
 
 export const knowledgeBaseMemberSchema = z.object({
@@ -250,7 +258,7 @@ export const createDepartmentRequestSchema = z.object({
 export const updateDepartmentRequestSchema = createDepartmentRequestSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, {
-    message: "At least one field is required",
+    message: "至少需要提供一个字段",
   });
 
 export const departmentMembersResponseSchema = z.object({
@@ -308,7 +316,7 @@ export const createTagRequestSchema = z.object({
 export const updateTagRequestSchema = createTagRequestSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, {
-    message: "At least one field is required",
+    message: "至少需要提供一个字段",
   });
 
 export const replaceTagsRequestSchema = z.object({
@@ -507,7 +515,7 @@ export const updateKnowledgeItemRequestSchema = createKnowledgeItemRequestSchema
     enabled: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
-    message: "At least one field is required",
+    message: "至少需要提供一个字段",
   });
 
 export const knowledgeItemFeedbackRequestSchema = z.object({
@@ -529,7 +537,7 @@ export const retrievalSettingsSchema = z.object({
 export const updateRetrievalSettingsRequestSchema = retrievalSettingsSchema.refine(
   (value) => value.rerankKeepN <= value.rerankTopN,
   {
-    message: "rerankKeepN must be less than or equal to rerankTopN",
+    message: "rerankKeepN 必须小于或等于 rerankTopN",
     path: ["rerankKeepN"],
   },
 );
@@ -557,7 +565,7 @@ export const retrievalTestRequestSchema = z.object({
         value.rerankTopN === undefined ||
         value.rerankKeepN <= value.rerankTopN,
       {
-        message: "rerankKeepN must be less than or equal to rerankTopN",
+        message: "rerankKeepN 必须小于或等于 rerankTopN",
         path: ["rerankKeepN"],
       },
     )
@@ -778,7 +786,7 @@ export const generateImprovementTasksRequestSchema = z
     documentId: z.uuid().optional(),
   })
   .refine((value) => value.messageId === undefined || value.documentId === undefined, {
-    message: "messageId and documentId are mutually exclusive",
+    message: "messageId 和 documentId 不能同时提供",
   });
 
 export const createImprovementTasksResponseSchema = z.object({
@@ -840,6 +848,7 @@ export const agentListQuerySchema = z.object({
 
 export const managedAgentSchema = agentSchema.extend({
   knowledgeBaseIds: z.array(z.uuid()),
+  conversationCount: z.number().int().nonnegative(),
   systemPrompt: z.string().nullable(),
   answerStyle: z.string().nullable(),
   allowAttachments: z.boolean(),
@@ -874,7 +883,7 @@ export const createManagedAgentRequestSchema = z.object({
 export const updateManagedAgentRequestSchema = createManagedAgentRequestSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, {
-    message: "At least one field is required",
+    message: "至少需要提供一个字段",
   });
 
 export const managedAgentListResponseSchema = z.object({
@@ -992,7 +1001,7 @@ export const answerFeedbackRequestSchema = z
     suggestedIngestion: z.boolean().optional(),
   })
   .refine((value) => value.rating !== "correction" || value.correctionContent !== undefined, {
-    message: "Correction content is required",
+    message: "需要提供修正内容",
   });
 
 export const analyticsRangeSchema = z.enum(["today", "7d", "30d", "custom"]);
@@ -1006,7 +1015,7 @@ export const analyticsRangeQuerySchema = z
   .refine(
     (value) => value.range !== "custom" || (value.from !== undefined && value.to !== undefined),
     {
-      message: "Custom range requires from and to dates",
+      message: "自定义时间范围需要提供开始和结束日期",
     },
   );
 
@@ -1179,7 +1188,7 @@ export const updateModelProviderRequestSchema = createModelProviderRequestSchema
   .partial()
   .extend({ apiKey: z.string().trim().min(1).max(4000).nullable().optional() })
   .refine((value) => Object.keys(value).length > 0, {
-    message: "At least one field is required",
+    message: "至少需要提供一个字段",
   });
 
 export const modelCatalogSchema = z.object({
@@ -1210,7 +1219,7 @@ export const createModelCatalogRequestSchema = z.object({
 export const updateModelCatalogRequestSchema = createModelCatalogRequestSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, {
-    message: "At least one field is required",
+    message: "至少需要提供一个字段",
   });
 
 export const modelUsagePolicySchema = z.object({
@@ -1246,7 +1255,7 @@ export const updateModelUsagePolicyRequestSchema = z
     quota: z.number().int().positive().nullable().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
-    message: "At least one field is required",
+    message: "至少需要提供一个字段",
   });
 
 export const testModelProviderRequestSchema = z.object({

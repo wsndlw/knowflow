@@ -19,16 +19,7 @@ const visibilityMeta: Record<string, { label: string; tone: Tone }> = {
 
 const statusMeta: Record<string, { label: string; tone: Tone }> = {
   active: { label: "启用", tone: "success" },
-  disabled: { label: "已禁用", tone: "neutral" },
   archived: { label: "已归档", tone: "neutral" },
-};
-
-const indexStatusMeta: Record<string, { label: string; tone: Tone }> = {
-  not_indexed: { label: "未索引", tone: "neutral" },
-  indexing: { label: "索引中", tone: "info" },
-  ready: { label: "已索引", tone: "success" },
-  partial_failed: { label: "部分失败", tone: "warning" },
-  failed: { label: "索引失败", tone: "danger" },
 };
 
 // 文档处理状态：与「文档」tab 保持一致的文案与色调
@@ -60,7 +51,6 @@ type TabOverviewProps = {
 export function TabOverview({ kb, overview }: TabOverviewProps) {
   const visibility = visibilityMeta[kb.visibility] ?? { label: kb.visibility, tone: "neutral" as const };
   const status = statusMeta[kb.status] ?? { label: kb.status, tone: "neutral" as const };
-  const indexStatus = indexStatusMeta[kb.indexStatus] ?? { label: kb.indexStatus, tone: "neutral" as const };
 
   return (
     <div className="flex flex-col gap-6">
@@ -72,7 +62,6 @@ export function TabOverview({ kb, overview }: TabOverviewProps) {
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Badge tone={visibility.tone}>{visibility.label}</Badge>
           <Badge tone={status.tone}>{status.label}</Badge>
-          <Badge tone={indexStatus.tone}>{indexStatus.label}</Badge>
         </div>
       </Card>
 

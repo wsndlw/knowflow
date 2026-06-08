@@ -55,7 +55,7 @@ function KnowledgeBaseDetailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const { kb, overview, canManage, loading, error, reload } = useKbDetail(knowledgeBaseId);
+  const { kb, overview, canManage, loading, error } = useKbDetail(knowledgeBaseId);
 
   // 仅管理员可进入管理模式;普通用户即使带 ?mode=manage 也不解锁管理 tab。
   // 这是视图收纳而非权限——后端校验始终兜底。
@@ -167,8 +167,6 @@ function KnowledgeBaseDetailContent() {
           <TabSettings
             knowledgeBaseId={knowledgeBaseId}
             kbName={kb.name}
-            kbStatus={kb.status}
-            onStatusChanged={reload}
           />
         ) : null}
         {activeTab === "improvement" ? (

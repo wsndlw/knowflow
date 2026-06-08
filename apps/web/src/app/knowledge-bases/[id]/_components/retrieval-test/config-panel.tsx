@@ -5,6 +5,7 @@ import { ChevronDownIcon } from "lucide-react";
 import type { RetrievalTestMode } from "@knowflow/shared";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -19,6 +20,8 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
+
+import { RETRIEVAL_HELP_TEXT } from "./help-text";
 
 import {
   type AdvancedConfig,
@@ -116,7 +119,7 @@ export function ConfigPanel({
       {/* 过滤条件 */}
       <section className="flex flex-col gap-3">
         <h3 className="text-sm font-semibold text-ink">过滤条件</h3>
-        <FilterField label="文档状态">
+        <FilterField label="文档状态" help={RETRIEVAL_HELP_TEXT.filters.documentStatus}>
           <Select
             value={filters.documentStatus}
             onValueChange={(next) => onFiltersChange({ ...filters, documentStatus: next })}
@@ -130,7 +133,7 @@ export function ConfigPanel({
             </SelectContent>
           </Select>
         </FilterField>
-        <FilterField label="条目状态">
+        <FilterField label="条目状态" help={RETRIEVAL_HELP_TEXT.filters.itemStatus}>
           <Select
             value={filters.itemStatus}
             onValueChange={(next) => onFiltersChange({ ...filters, itemStatus: next })}
@@ -144,7 +147,7 @@ export function ConfigPanel({
             </SelectContent>
           </Select>
         </FilterField>
-        <FilterField label="来源类型">
+        <FilterField label="来源类型" help={RETRIEVAL_HELP_TEXT.filters.sourceType}>
           <Select
             value={filters.sourceType}
             onValueChange={(next) => onFiltersChange({ ...filters, sourceType: next })}
@@ -179,7 +182,7 @@ export function ConfigPanel({
           ) : null}
 
           {/* topK */}
-          <ParamRow label="召回数量 topK" htmlFor="param-topk">
+          <ParamRow label="召回数量 topK" htmlFor="param-topk" help={RETRIEVAL_HELP_TEXT.topK}>
             <Input
               id="param-topk"
               type="number"
@@ -196,11 +199,14 @@ export function ConfigPanel({
 
           {/* 相似度阈值 */}
           <div className={cn("flex flex-col gap-2", disabled.has("threshold") && "opacity-50")}>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-1.5">
               <Label className="text-sm font-normal text-ink">相似度阈值</Label>
-              <span className="text-xs tabular-nums text-ink-muted">
-                {advanced.similarityThreshold.toFixed(2)}
-              </span>
+              <div className="flex items-center gap-1">
+                <HelpTooltip content={RETRIEVAL_HELP_TEXT.similarityThreshold} />
+                <span className="text-xs tabular-nums text-ink-muted">
+                  {advanced.similarityThreshold.toFixed(2)}
+                </span>
+              </div>
             </div>
             <Slider
               value={[advanced.similarityThreshold]}
@@ -217,10 +223,13 @@ export function ConfigPanel({
 
           {/* Rerank */}
           <div className={cn("flex flex-col gap-3", disabled.has("rerank") && "opacity-50")}>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="param-rerank" className="text-sm font-normal text-ink">
-                启用 Rerank
-              </Label>
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="param-rerank" className="text-sm font-normal text-ink">
+                  启用 Rerank
+                </Label>
+                <HelpTooltip content={RETRIEVAL_HELP_TEXT.rerank.enabled} />
+              </div>
               <Switch
                 id="param-rerank"
                 checked={advanced.rerankEnabled}
@@ -229,7 +238,7 @@ export function ConfigPanel({
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <ParamRow label="Rerank topN" htmlFor="param-rerank-topn" stacked>
+              <ParamRow label="Rerank topN" htmlFor="param-rerank-topn" stacked help={RETRIEVAL_HELP_TEXT.rerank.topN}>
                 <Input
                   id="param-rerank-topn"
                   type="number"
@@ -245,7 +254,7 @@ export function ConfigPanel({
                   className="h-8"
                 />
               </ParamRow>
-              <ParamRow label="Rerank keepN" htmlFor="param-rerank-keepn" stacked>
+              <ParamRow label="Rerank keepN" htmlFor="param-rerank-keepn" stacked help={RETRIEVAL_HELP_TEXT.rerank.keepN}>
                 <Input
                   id="param-rerank-keepn"
                   type="number"
@@ -269,14 +278,20 @@ export function ConfigPanel({
 
           {/* 权重 */}
           <div className={cn("flex flex-col gap-3", disabled.has("weights") && "opacity-50")}>
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-normal text-ink">通道权重</Label>
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <Label className="text-sm font-normal text-ink">通道权重</Label>
+                <HelpTooltip content={RETRIEVAL_HELP_TEXT.weights.total} />
+              </div>
               <span className="text-xs text-ink-subtle">总和恒为 1</span>
             </div>
             {weightRows.map((row) => (
               <div key={row.key} className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-ink-muted">{row.label}</span>
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-ink-muted">{row.label}</span>
+                    <HelpTooltip content={RETRIEVAL_HELP_TEXT.weights[row.key === "vectorWeight" ? "vector" : row.key === "ftsWeight" ? "fts" : "ki"]} />
+                  </div>
                   <span className="text-xs tabular-nums text-ink-muted">
                     {formatWeight(advanced[row.key])}
                   </span>
@@ -299,10 +314,13 @@ export function ConfigPanel({
   );
 }
 
-function FilterField({ label, children }: { label: string; children: ReactNode }) {
+function FilterField({ label, help, children }: { label: string; help?: string; children: ReactNode }) {
   return (
     <label className="flex items-center justify-between gap-3">
-      <span className="text-sm text-ink-muted">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm text-ink-muted">{label}</span>
+        {help ? <HelpTooltip content={help} /> : null}
+      </div>
       <div className="w-40">{children}</div>
     </label>
   );
@@ -312,18 +330,23 @@ function ParamRow({
   label,
   htmlFor,
   stacked = false,
+  help,
   children,
 }: {
   label: string;
   htmlFor: string;
   stacked?: boolean;
+  help?: string;
   children: ReactNode;
 }) {
   return (
     <div className={cn(stacked ? "flex flex-col gap-1.5" : "flex items-center justify-between gap-3")}>
-      <Label htmlFor={htmlFor} className="text-sm font-normal text-ink-muted">
-        {label}
-      </Label>
+      <div className="flex items-center gap-1.5">
+        <Label htmlFor={htmlFor} className="text-sm font-normal text-ink-muted">
+          {label}
+        </Label>
+        {help ? <HelpTooltip content={help} /> : null}
+      </div>
       {children}
     </div>
   );

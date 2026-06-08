@@ -95,6 +95,19 @@ function isDescendant(nodes: EditableNode[], nodeId: string, candidateParent: st
   return false;
 }
 
+/** 拼 PUT /mind-map 全量替换 body（save 与 publish 前置保存共用，避免两处漂移）。 */
+function buildSaveBody(nodes: EditableNode[]): { nodes: EditableNode[] } {
+  return {
+    nodes: nodes.map((n) => ({
+      id: n.id,
+      parentId: n.parentId,
+      type: n.type,
+      title: n.title,
+      referenceId: n.referenceId,
+    })),
+  };
+}
+
 export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMindMapReturn {
   const [mode, setMode] = useState<MindMapMode>(canManage ? "edit" : "view");
   const [nodes, setNodes] = useState<EditableNode[]>([]);
@@ -267,15 +280,7 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
     setActionError(null);
     try {
       // PUT = 全量替换：提交整棵树完整 nodes；数组顺序即 sortOrder（后端按索引重排）
-      const body = {
-        nodes: nodes.map((n) => ({
-          id: n.id,
-          parentId: n.parentId,
-          type: n.type,
-          title: n.title,
-          referenceId: n.referenceId,
-        })),
-      };
+      const body = buildSaveBody(nodes);
       const data = await apiRequest(
         `/knowledge-bases/${knowledgeBaseId}/mind-map`,
         mindMapResponseSchema,
@@ -296,23 +301,15 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
     setPublishing(true);
     setActionError(null);
     try {
-      // 发布前若有未保存改动，先保存，避免发布旧 draft
-      if (dirty) {
-        const body = {
-          nodes: nodes.map((n) => ({
-            id: n.id,
-            parentId: n.parentId,
-            type: n.type,
-            title: n.title,
-            referenceId: n.referenceId,
-          })),
-        };
-        await apiRequest(`/knowledge-bases/${knowledgeBaseId}/mind-map`, mindMapResponseSchema, {
-          method: "PUT",
-          body: JSON.stringify(body),
-        });
-        setDirty(false);
-      }
+      // 发布前无条件把当前画布先保存为 draft：后端 publish 是「消耗式提升」(删 published、提升 draft)，
+      // 而已发布过的 KB 进编辑态时屏幕是克隆基线、draft 表已为空。若跳过保存直接发布，会把空 draft
+      // 提升、published 被清空 → 线上思维导图丢失。无条件保存可杜绝「draft 与屏幕不一致」整类问题。
+      const body = buildSaveBody(nodes);
+      await apiRequest(`/knowledge-bases/${knowledgeBaseId}/mind-map`, mindMapResponseSchema, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      setDirty(false);
       const data = await apiRequest(
         `/knowledge-bases/${knowledgeBaseId}/mind-map/publish`,
         mindMapResponseSchema,
@@ -326,7 +323,7 @@ export function useMindMap(knowledgeBaseId: string, canManage: boolean): UseMind
     } finally {
       setPublishing(false);
     }
-  }, [knowledgeBaseId, nodes, dirty]);
+  }, [knowledgeBaseId, nodes]);
 
   return {
     mode,

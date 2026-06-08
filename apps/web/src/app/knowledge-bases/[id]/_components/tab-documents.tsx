@@ -378,7 +378,6 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
             onChange={(e) => {
               setArchivedMode(e.target.value === "archived");
               setPage(1);
-              setSelectedIds(new Set());
             }}
             className="w-32"
           >

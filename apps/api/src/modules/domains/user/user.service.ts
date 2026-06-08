@@ -44,7 +44,7 @@ export class UserService {
       })
       .returning({ id: users.id });
     if (created === undefined) {
-      throw new BadRequestException("Failed to create user");
+      throw new BadRequestException("创建用户失败");
     }
 
     return this.getUserOption(created.id);
@@ -57,7 +57,7 @@ export class UserService {
   ): Promise<UserOption> {
     this.ensureSuperAdmin(user);
     if (id === user.id) {
-      throw new BadRequestException("Cannot update your own role");
+      throw new BadRequestException("不能修改自己的角色");
     }
     await this.ensureUserExists(id);
 
@@ -87,7 +87,7 @@ export class UserService {
   async disableUser(id: string, user: AuthenticatedUser): Promise<UserOption> {
     this.ensureSuperAdmin(user);
     if (id === user.id) {
-      throw new BadRequestException("Cannot disable your own account");
+      throw new BadRequestException("不能停用自己的账号");
     }
     await this.ensureUserExists(id);
 
@@ -114,7 +114,7 @@ export class UserService {
 
   private ensureSuperAdmin(user: AuthenticatedUser): void {
     if (user.platformRole !== "super_admin") {
-      throw new ForbiddenException("Only super admins can manage users");
+      throw new ForbiddenException("仅超级管理员可管理用户");
     }
   }
 
@@ -124,7 +124,7 @@ export class UserService {
       columns: { id: true },
     });
     if (department === undefined) {
-      throw new NotFoundException("Department not found");
+      throw new NotFoundException("未找到部门");
     }
   }
 
@@ -134,20 +134,20 @@ export class UserService {
       columns: { id: true },
     });
     if (existing !== undefined) {
-      throw new BadRequestException("Username already exists");
+      throw new BadRequestException("用户名已存在");
     }
   }
 
   private async ensureUserExists(id: string): Promise<void> {
     if ((await this.findUserOption(id)) === undefined) {
-      throw new NotFoundException("User not found");
+      throw new NotFoundException("未找到用户");
     }
   }
 
   private async getUserOption(id: string): Promise<UserOption> {
     const row = await this.findUserOption(id);
     if (row === undefined) {
-      throw new NotFoundException("User not found");
+      throw new NotFoundException("未找到用户");
     }
     return this.toUserOption(row);
   }

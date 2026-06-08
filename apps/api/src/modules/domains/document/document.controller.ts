@@ -92,7 +92,7 @@ export class DocumentController {
         }
         callback(
           new BadRequestException(
-            "Only PDF, Markdown, TXT, DOCX, CSV, XLSX, XLS, and image files with matching MIME types are supported",
+            "仅支持 PDF、Markdown、TXT、DOCX、CSV、XLSX、XLS 以及 MIME 类型匹配的图片文件",
           ),
           false,
         );
@@ -252,7 +252,7 @@ export class DocumentController {
 
   private requireUser(request: AuthenticatedRequest) {
     if (request.user === undefined) {
-      throw new InternalServerErrorException("Authenticated request is missing user");
+      throw new InternalServerErrorException("已认证请求缺少用户信息");
     }
 
     return request.user;

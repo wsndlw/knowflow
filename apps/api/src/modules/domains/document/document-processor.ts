@@ -1,13 +1,6 @@
-import {
-  db,
-  documents,
-  files,
-  knowledgeBases,
-  parentChunks,
-  childChunks,
-} from "@knowflow/db";
+import { db, documents, files, knowledgeBases, parentChunks, childChunks } from "@knowflow/db";
 import type { DocumentSourceType } from "@knowflow/shared";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import mammoth from "mammoth";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -128,14 +121,12 @@ type ProcessJobKey = {
   processVersion: number | null;
 };
 
-export async function processDocument(
-  documentJobId: string,
-): Promise<DocumentProcessResult> {
+export async function processDocument(documentJobId: string): Promise<DocumentProcessResult> {
   const jobKey = decodeProcessJobDocumentId(documentJobId);
   try {
     const document = await findProcessableDocument(jobKey.documentId);
     if (document === undefined) {
-      throw new Error(`Document not found: ${jobKey.documentId}`);
+      throw new Error(`未找到文档: ${jobKey.documentId}`);
     }
     const currentProcessVersion = readProcessVersion(document.metadata);
     if (jobKey.processVersion !== null && currentProcessVersion !== jobKey.processVersion) {
@@ -177,7 +168,7 @@ export async function processDocument(
       jobKey.documentId,
       "failed",
       100,
-      error instanceof Error ? error.message : "Document processing failed",
+      error instanceof Error ? error.message : "文档处理失败",
     );
     return {
       documentId: jobKey.documentId,
@@ -193,10 +184,7 @@ async function enqueueDocumentExtractionAfterCompletion(
   try {
     await enqueueDocumentExtraction(documentId, parsedAt);
   } catch (error) {
-    console.warn(
-      `Document ${documentId} completed, but document extraction enqueue failed`,
-      error,
-    );
+    console.warn(`Document ${documentId} completed, but document extraction enqueue failed`, error);
   }
 }
 
@@ -250,7 +238,7 @@ async function findProcessableDocument(
     })
     .from(documents)
     .innerJoin(knowledgeBases, eq(knowledgeBases.id, documents.knowledgeBaseId))
-    .where(eq(documents.id, documentId))
+    .where(and(eq(documents.id, documentId), isNull(knowledgeBases.deletedAt)))
     .limit(1);
 
   return document;
@@ -356,7 +344,7 @@ async function markFailed(
       parseStatus: "failed",
       chunkStatus: "failed",
       embeddingStatus: "failed",
-      errorMessage: error instanceof Error ? error.message : "Document processing failed",
+      errorMessage: error instanceof Error ? error.message : "文档处理失败",
       updatedAt: new Date(),
     })
     .where(condition);
@@ -529,7 +517,10 @@ function splitHeadingSections(text: string): ParentChunkInput[] {
   let currentLines: PageAwareLine[] = [];
 
   function flush(): void {
-    const content = currentLines.map((line) => line.text).join("\n").trim();
+    const content = currentLines
+      .map((line) => line.text)
+      .join("\n")
+      .trim();
     if (content.length === 0) {
       return;
     }
@@ -588,7 +579,10 @@ function splitSemanticParentLines(lines: PageAwareLine[]): SemanticParentPiece[]
   let currentLines: PageAwareLine[] = [];
 
   function pushCurrent(): void {
-    const content = currentLines.map((line) => line.text).join("\n").trim();
+    const content = currentLines
+      .map((line) => line.text)
+      .join("\n")
+      .trim();
     if (content.length > 0) {
       const range = pageRange(currentLines);
       chunks.push({
@@ -611,8 +605,14 @@ function splitSemanticParentLines(lines: PageAwareLine[]): SemanticParentPiece[]
         currentLines = piece;
         continue;
       }
-      const currentContent = currentLines.map((line) => line.text).join("\n").trim();
-      const pieceContent = piece.map((line) => line.text).join("\n").trim();
+      const currentContent = currentLines
+        .map((line) => line.text)
+        .join("\n")
+        .trim();
+      const pieceContent = piece
+        .map((line) => line.text)
+        .join("\n")
+        .trim();
       const next = `${currentContent}\n\n${pieceContent}`;
       if (
         next.length <= PARENT_TARGET_CHARS ||
@@ -646,7 +646,10 @@ function splitTextBlocks(lines: PageAwareLine[]): TextBlock[] {
   let currentPage: number | null | undefined;
 
   function flush(): void {
-    const text = currentLines.map((line) => line.text).join("\n").trim();
+    const text = currentLines
+      .map((line) => line.text)
+      .join("\n")
+      .trim();
     if (text.length > 0) {
       blocks.push({
         content: text,
@@ -727,18 +730,19 @@ function detectHeadingLine(line: string): { title: string; level: number } | nul
 
   const numbered = /^(\d+(?:\.\d+){0,3})[.、]?\s+(.{2,80})$/.exec(trimmed);
   if (numbered !== null && !/[。！？.!?]$/.test(trimmed)) {
-    const level = Math.min((numbered[1]?.split(".").length ?? 1), 6);
+    const level = Math.min(numbered[1]?.split(".").length ?? 1, 6);
     return { level, title: trimmed };
   }
 
-  const chineseChapter = /^(第[一二三四五六七八九十百千万\d]+[章节篇部])\s*(.{0,80})$/.exec(trimmed);
+  const chineseChapter = /^(第[一二三四五六七八九十百千万\d]+[章节篇部])\s*(.{0,80})$/.exec(
+    trimmed,
+  );
   if (chineseChapter !== null) {
     return { level: 1, title: trimmed };
   }
 
-  const chineseNumbered = /^([一二三四五六七八九十]+[、.．]|（[一二三四五六七八九十]+）)\s*(.{2,80})$/.exec(
-    trimmed,
-  );
+  const chineseNumbered =
+    /^([一二三四五六七八九十]+[、.．]|（[一二三四五六七八九十]+）)\s*(.{2,80})$/.exec(trimmed);
   if (chineseNumbered !== null && !/[。！？.!?]$/.test(trimmed)) {
     return { level: trimmed.startsWith("（") ? 3 : 2, title: trimmed };
   }
@@ -769,9 +773,7 @@ function isMarkdownTableLine(line: string): boolean {
 }
 
 function isListLine(line: string): boolean {
-  return /^(\s*[-*+]\s+|\s*\d+[.)、]\s+|\s*[（(]?[一二三四五六七八九十]+[）).、]\s+)/.test(
-    line,
-  );
+  return /^(\s*[-*+]\s+|\s*\d+[.)、]\s+|\s*[（(]?[一二三四五六七八九十]+[）).、]\s+)/.test(line);
 }
 
 function toPageAwareLines(text: string): PageAwareLine[] {
@@ -789,9 +791,9 @@ function toPageAwareLines(text: string): PageAwareLine[] {
 }
 
 function pageMarkerNumber(line: string): number | null {
-  const match = new RegExp(
-    `^${escapeRegExp(PAGE_BREAK_MARKER_PREFIX)}(\\d+)\\]\\]$`,
-  ).exec(line.trim());
+  const match = new RegExp(`^${escapeRegExp(PAGE_BREAK_MARKER_PREFIX)}(\\d+)\\]\\]$`).exec(
+    line.trim(),
+  );
   if (match === null) {
     return null;
   }
@@ -807,9 +809,7 @@ function stripPageMarkers(text: string): string {
 }
 
 function pageRange(lines: PageAwareLine[]): { pageStart: number | null; pageEnd: number | null } {
-  const pages = lines
-    .map((line) => line.page)
-    .filter((page): page is number => page !== null);
+  const pages = lines.map((line) => line.page).filter((page): page is number => page !== null);
   if (pages.length === 0) {
     return { pageStart: null, pageEnd: null };
   }
@@ -823,11 +823,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function splitByLength(
-  text: string,
-  targetChars: number,
-  overlapChars: number,
-): string[] {
+function splitByLength(text: string, targetChars: number, overlapChars: number): string[] {
   const normalized = text.trim();
   if (normalized.length <= targetChars) {
     return normalized.length === 0 ? [] : [normalized];
@@ -1024,7 +1020,10 @@ export function cleanParsedText(text: string): {
   return { text: cleaned, warnings };
 }
 
-function prepareRawTextForCleaning(text: string, parser: ParsedDocument["metadata"]["parser"]): {
+function prepareRawTextForCleaning(
+  text: string,
+  parser: ParsedDocument["metadata"]["parser"],
+): {
   text: string;
   pageInfoUnavailable: boolean;
 } {

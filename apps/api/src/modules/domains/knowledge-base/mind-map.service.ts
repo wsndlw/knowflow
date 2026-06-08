@@ -11,8 +11,8 @@ import type {
   MindMapResponse,
   SaveMindMapRequest,
 } from "@knowflow/shared";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { createHash, randomUUID } from "node:crypto";
 
 import { AliyunLlmService } from "../../../shared/llm/aliyun-llm.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -62,6 +62,7 @@ export class MindMapService {
 
   async getDraft(knowledgeBaseId: string, user: AuthenticatedUser): Promise<MindMapResponse> {
     await this.ensureCanManage(knowledgeBaseId, user);
+    await this.ensureDraftForEditing(knowledgeBaseId);
     return { nodes: await this.listNodes(knowledgeBaseId, "draft") };
   }
 
@@ -75,6 +76,7 @@ export class MindMapService {
     await this.ensureReferencesBelongToKnowledgeBase(knowledgeBaseId, input.nodes);
 
     await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${knowledgeBaseId}))`);
       await tx
         .delete(knowledgeMapNodes)
         .where(
@@ -107,6 +109,17 @@ export class MindMapService {
     await this.ensureCanManage(knowledgeBaseId, user);
 
     await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${knowledgeBaseId}))`);
+      const draftRows = await tx
+        .select()
+        .from(knowledgeMapNodes)
+        .where(
+          and(
+            eq(knowledgeMapNodes.knowledgeBaseId, knowledgeBaseId),
+            eq(knowledgeMapNodes.status, "draft"),
+          ),
+        )
+        .orderBy(asc(knowledgeMapNodes.sortOrder), asc(knowledgeMapNodes.createdAt));
       await tx
         .delete(knowledgeMapNodes)
         .where(
@@ -115,18 +128,85 @@ export class MindMapService {
             eq(knowledgeMapNodes.status, "published"),
           ),
         );
-      await tx
-        .update(knowledgeMapNodes)
-        .set({ status: "published", updatedAt: new Date() })
+      if (draftRows.length === 0) {
+        return;
+      }
+
+      const publishedIdsByDraftId = new Map(
+        draftRows.map((row) => [row.id, this.publishedNodeId(row.id)]),
+      );
+      const now = new Date();
+      await tx.insert(knowledgeMapNodes).values(
+        draftRows.map((row) => ({
+          id: publishedIdsByDraftId.get(row.id) ?? this.publishedNodeId(row.id),
+          knowledgeBaseId,
+          parentId: row.parentId === null ? null : (publishedIdsByDraftId.get(row.parentId) ?? null),
+          type: row.type,
+          title: row.title,
+          referenceId: row.referenceId,
+          sortOrder: row.sortOrder,
+          status: "published" as const,
+          createdBy: row.createdBy,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
+    });
+
+    return { nodes: await this.listNodes(knowledgeBaseId, "published") };
+  }
+
+  private async ensureDraftForEditing(knowledgeBaseId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${knowledgeBaseId}))`);
+      const draftRows = await tx
+        .select({ id: knowledgeMapNodes.id })
+        .from(knowledgeMapNodes)
         .where(
           and(
             eq(knowledgeMapNodes.knowledgeBaseId, knowledgeBaseId),
             eq(knowledgeMapNodes.status, "draft"),
           ),
-        );
-    });
+        )
+        .limit(1);
+      if (draftRows.length > 0) {
+        return;
+      }
 
-    return { nodes: await this.listNodes(knowledgeBaseId, "published") };
+      const publishedRows = await tx
+        .select()
+        .from(knowledgeMapNodes)
+        .where(
+          and(
+            eq(knowledgeMapNodes.knowledgeBaseId, knowledgeBaseId),
+            eq(knowledgeMapNodes.status, "published"),
+          ),
+        )
+        .orderBy(asc(knowledgeMapNodes.sortOrder), asc(knowledgeMapNodes.createdAt));
+      if (publishedRows.length === 0) {
+        return;
+      }
+
+      const draftIdsByPublishedId = new Map(
+        publishedRows.map((row) => [row.id, this.draftNodeId(row.id)]),
+      );
+      const now = new Date();
+      await tx.insert(knowledgeMapNodes).values(
+        publishedRows.map((row) => ({
+          id: draftIdsByPublishedId.get(row.id) ?? this.draftNodeId(row.id),
+          knowledgeBaseId,
+          parentId: row.parentId === null ? null : (draftIdsByPublishedId.get(row.parentId) ?? null),
+          type: row.type,
+          title: row.title,
+          referenceId: row.referenceId,
+          sortOrder: row.sortOrder,
+          status: "draft" as const,
+          createdBy: row.createdBy,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
+    });
   }
 
   async generate(
@@ -511,5 +591,25 @@ export class MindMapService {
     return value !== null && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
+  }
+
+  private publishedNodeId(draftNodeId: string): string {
+    return this.derivedNodeId("knowflow:published-mind-map-node:", draftNodeId);
+  }
+
+  private draftNodeId(publishedNodeId: string): string {
+    return this.derivedNodeId("knowflow:draft-mind-map-node:", publishedNodeId);
+  }
+
+  private derivedNodeId(namespace: string, sourceNodeId: string): string {
+    const bytes = createHash("sha1")
+      .update(namespace)
+      .update(sourceNodeId)
+      .digest()
+      .subarray(0, 16);
+    bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50;
+    bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+    const hex = bytes.toString("hex");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   }
 }

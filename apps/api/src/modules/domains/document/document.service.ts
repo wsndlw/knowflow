@@ -526,7 +526,7 @@ export class DocumentService {
         try {
           subscriber.next(JSON.parse(payload) as DocumentProgressEvent);
         } catch {
-          subscriber.error(new Error("Invalid progress payload"));
+          subscriber.error(new Error("文档进度消息格式无效"));
         }
       });
       redis.on("error", (error) => subscriber.error(error));

@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { cleanParsedText, splitParentChunks } from "./document-processor.js";
+import {
+  buildPdfTextWithVisualDescriptions,
+  cleanParsedText,
+  htmlToMarkdownText,
+  isDecorativeImage,
+  isScannedPdfText,
+  readImageDimensions,
+  splitParentChunks,
+} from "./document-processor.js";
 
 const pageBreak = (page: number): string => `[[KNOWFLOW_PAGE_BREAK:${String(page)}]]`;
 
@@ -139,5 +147,59 @@ void describe("document chunking", () => {
       chunks.map((chunk) => [chunk.pageStart, chunk.pageEnd]),
       chunks.map(() => [1, 3]),
     );
+  });
+});
+
+void describe("document multimodal helpers", () => {
+  void it("detects scanned PDFs by sparse text per page", () => {
+    assert.equal(isScannedPdfText(`${pageBreak(1)}\n   \n${pageBreak(2)}\n短`, 2), true);
+    assert.equal(isScannedPdfText(`${pageBreak(1)}\n${"制度正文".repeat(30)}`, 1), false);
+  });
+
+  void it("filters likely decorative images by size and keeps unknown dimensions", () => {
+    assert.equal(isDecorativeImage(80, 80), true);
+    assert.equal(isDecorativeImage(300, 20), true);
+    assert.equal(isDecorativeImage(240, 180), false);
+    assert.equal(isDecorativeImage(null, null), false);
+  });
+
+  void it("keeps mammoth image placeholders in document order when converting HTML", () => {
+    const text = htmlToMarkdownText(
+      '<h1>标题</h1><p>第一段</p><p><img src="[[KNOWFLOW_DOCX_IMAGE:1]]" /></p><p>第二段</p>',
+    );
+
+    assert.match(text, /^# 标题/);
+    assert.match(text, /第一段\n\n\[\[KNOWFLOW_DOCX_IMAGE:1\]\]\n\n第二段/);
+  });
+
+  void it("inserts PDF visual descriptions after their source pages", () => {
+    const text = buildPdfTextWithVisualDescriptions(
+      [
+        { num: 1, text: "第一页正文" },
+        { num: 2, text: "第二页正文" },
+      ],
+      [
+        { pageNumber: 2, sourceLabel: "PDF 第 2 页图片 X", text: "第二页图片描述" },
+        { pageNumber: 1, sourceLabel: "PDF 第 1 页图片 Y", text: "第一页图片描述" },
+      ],
+    );
+
+    assert.match(
+      text,
+      /\[\[KNOWFLOW_PAGE_BREAK:1\]\]\n\n第一页正文\n\n## PDF 第 1 页图片 Y\n\n第一页图片描述/,
+    );
+    assert.match(
+      text,
+      /\[\[KNOWFLOW_PAGE_BREAK:2\]\]\n\n第二页正文\n\n## PDF 第 2 页图片 X\n\n第二页图片描述/,
+    );
+  });
+
+  void it("reads PNG dimensions for decorative filtering", () => {
+    const png = Buffer.from(
+      "89504e470d0a1a0a0000000d494844520000012c000000c80802000000",
+      "hex",
+    );
+
+    assert.deepEqual(readImageDimensions(png, "image/png"), { width: 300, height: 200 });
   });
 });

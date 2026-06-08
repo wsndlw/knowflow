@@ -23,6 +23,13 @@ const CHILD_TARGET_CHARS = 900;
 const CHILD_OVERLAP_CHARS = 120;
 const EMBEDDING_BATCH_SIZE = 10;
 const MAX_SPREADSHEET_ROWS = 10000;
+const MAX_VISION_IMAGES_PER_DOCUMENT = 20;
+const DECORATIVE_IMAGE_MIN_LONG_EDGE = 120;
+const DECORATIVE_IMAGE_MIN_AREA = 10000;
+const PDF_SCANNED_MIN_CHARS_PER_PAGE = 40;
+const PDF_SCREENSHOT_WIDTH = 1400;
+const VISION_IMAGE_PROMPT =
+  "图中若主要是文字/表格，转写为 markdown（表格务必保留为 markdown 表格）；若是照片/图表/示意图，用一段简洁中文描述其内容与关键信息。";
 const CLEANER_VERSION = "document-cleaner-v1";
 const CHUNKER_VERSION = "semantic-chunker-v1";
 const PAGE_BREAK_MARKER_PREFIX = "[[KNOWFLOW_PAGE_BREAK:";
@@ -62,6 +69,15 @@ type ParsedDocument = {
     cleanerVersion: string;
     cleaningWarnings: string[];
     pageInfoUnavailable?: true;
+    pdfPageCount?: number;
+    scannedPdfDetected?: true;
+    visionImageLimit?: number;
+    visionImageCount?: number;
+    visionImageInsertedCount?: number;
+    visionImageSkippedCount?: number;
+    visionImageFailedCount?: number;
+    visionImageTruncated?: true;
+    multimodalWarnings?: string[];
   };
 };
 
@@ -121,6 +137,39 @@ type ProcessJobKey = {
   processVersion: number | null;
 };
 
+type VisionImageInput = {
+  buffer: Buffer;
+  mimeType: string;
+  sourceLabel: string;
+  width: number | null;
+  height: number | null;
+  skipDecorative: boolean;
+};
+
+type CapturedDocxImage = VisionImageInput & {
+  placeholder: string;
+};
+
+type VisionBudget = {
+  limit: number;
+  used: number;
+};
+
+type VisionStats = {
+  attempted: number;
+  inserted: number;
+  skippedDecorative: number;
+  failed: number;
+  truncated: boolean;
+  warnings: string[];
+};
+
+export type VisionDescription = {
+  sourceLabel: string;
+  text: string;
+  pageNumber: number | null;
+};
+
 export async function processDocument(documentJobId: string): Promise<DocumentProcessResult> {
   const jobKey = decodeProcessJobDocumentId(documentJobId);
   try {
@@ -144,19 +193,19 @@ export async function processDocument(documentJobId: string): Promise<DocumentPr
       };
     }
 
-    await publishProgress(document.id, "pending", 5, "Document processing queued");
-    await publishProgress(document.id, "parsing", 15, "Parsing document text");
+    await publishProgress(document.id, "pending", 5, "文档处理已进入队列");
+    await publishProgress(document.id, "parsing", 15, "正在解析文档文本");
     const parsed = await parseDocument(document);
     await markParsed(document.id, parsed, processVersion);
     await markChunking(document.id, processVersion);
-    await publishProgress(document.id, "chunking", 35, "Splitting document into chunks");
+    await publishProgress(document.id, "chunking", 35, "正在切分文档内容");
     await replaceChunks(document, parsed, processVersion);
     await markChunked(document.id, processVersion);
-    await publishProgress(document.id, "embedding", 60, "Embedding child chunks");
+    await publishProgress(document.id, "embedding", 60, "正在向量化文档片段");
     await embedChildChunks(document, processVersion);
     await markCompleted(document.id, processVersion);
     await enqueueDocumentExtractionAfterCompletion(document.id, parsed.metadata.parsedAt);
-    await publishProgress(document.id, "completed", 100, "Document processing completed");
+    await publishProgress(document.id, "completed", 100, "文档处理已完成");
 
     return {
       documentId: document.id,
@@ -184,7 +233,7 @@ async function enqueueDocumentExtractionAfterCompletion(
   try {
     await enqueueDocumentExtraction(documentId, parsedAt);
   } catch (error) {
-    console.warn(`Document ${documentId} completed, but document extraction enqueue failed`, error);
+    console.warn(`文档 ${documentId} 已完成处理，但知识抽取任务入队失败`, error);
   }
 }
 
@@ -363,7 +412,7 @@ async function replaceChunks(
       .where(and(eq(documents.id, document.id), processVersionCondition(processVersion)))
       .limit(1);
     if (currentDocument === undefined) {
-      throw new Error("Document process version is stale");
+      throw new Error("文档处理版本已过期");
     }
 
     await tx.delete(childChunks).where(eq(childChunks.documentId, document.id));
@@ -389,12 +438,12 @@ async function replaceChunks(
         })
         .returning({ id: parentChunks.id });
       if (createdParent === undefined) {
-        throw new Error("Failed to create parent chunk");
+        throw new Error("创建文档父片段失败");
       }
 
       const children = splitChildChunks(parent.content);
       if (children.length === 0) {
-        throw new Error("Document chunking produced no child chunks");
+        throw new Error("文档切分未生成子片段");
       }
 
       await tx.insert(childChunks).values(
@@ -431,7 +480,7 @@ async function embedChildChunks(
     .where(and(eq(documents.id, document.id), processVersionCondition(processVersion)))
     .limit(1);
   if (currentDocument === undefined) {
-    throw new Error("Document process version is stale");
+    throw new Error("文档处理版本已过期");
   }
 
   const chunks = await db
@@ -443,7 +492,7 @@ async function embedChildChunks(
     .where(eq(childChunks.documentId, document.id))
     .orderBy(asc(childChunks.chunkIndex));
   if (chunks.length === 0) {
-    throw new Error("Document has no child chunks to embed");
+    throw new Error("文档没有可向量化的子片段");
   }
 
   const client = createAliyunLlmClient();
@@ -454,7 +503,7 @@ async function embedChildChunks(
       document.embeddingModel,
     );
     if (embeddings.length !== batch.length) {
-      throw new Error("Embedding response count does not match input count");
+      throw new Error("向量化返回数量与输入片段数量不一致");
     }
 
     await db.transaction(async (tx) => {
@@ -462,10 +511,10 @@ async function embedChildChunks(
         const chunk = batch[index];
         const embedding = embeddings[index];
         if (chunk === undefined || embedding === undefined) {
-          throw new Error("Embedding response is incomplete");
+          throw new Error("向量化返回内容不完整");
         }
         if (embedding.length !== EXPECTED_EMBEDDING_DIMENSION) {
-          throw new Error(`Embedding dimension mismatch: ${String(embedding.length)}`);
+          throw new Error(`向量维度不匹配：${String(embedding.length)}`);
         }
 
         await tx
@@ -891,7 +940,7 @@ function processVersionCondition(processVersion: number) {
 async function ensureUpdated(update: Promise<{ id: string }[]>): Promise<void> {
   const rows = await update;
   if (rows.length === 0) {
-    throw new Error("Document process version is stale");
+    throw new Error("文档处理版本已过期");
   }
 }
 
@@ -899,13 +948,7 @@ async function parseDocument(document: ProcessableDocument): Promise<ParsedDocum
   const absolutePath = await resolveDocumentPath(document);
   const buffer = await readFile(absolutePath);
   if (document.sourceType === "pdf") {
-    const parser = new PDFParse({ data: buffer });
-    try {
-      const result = await parser.getText();
-      return toParsedDocument(result.text, "pdf-parse");
-    } finally {
-      await parser.destroy();
-    }
+    return parsePdfDocument(buffer);
   }
   if (document.sourceType === "markdown" || document.sourceType === "txt") {
     return toParsedDocument(buffer.toString("utf8"), "plain-text");
@@ -920,15 +963,40 @@ async function parseDocument(document: ProcessableDocument): Promise<ParsedDocum
     return parseCsvExcelDocument(buffer, "excel");
   }
   if (document.sourceType === "image") {
-    return parseImageDocument(document, buffer);
+    return parseImageDocument(document, buffer, newVisionStats());
   }
 
-  throw new Error(`Unsupported document source type: ${document.sourceType}`);
+  throw new Error(`不支持的文档来源类型：${document.sourceType}`);
 }
 
 async function parseDocxDocument(buffer: Buffer): Promise<ParsedDocument> {
-  const result = await mammoth.extractRawText({ buffer });
-  return toParsedDocument(result.value, "mammoth", { originalFormat: "docx" });
+  const stats = newVisionStats();
+  const images: CapturedDocxImage[] = [];
+  let nextImageIndex = 0;
+  const result = await mammoth.convertToHtml(
+    { buffer },
+    {
+      convertImage: mammoth.images.imgElement(async (image) => {
+        nextImageIndex += 1;
+        const placeholder = `[[KNOWFLOW_DOCX_IMAGE:${String(nextImageIndex)}]]`;
+        const imageBuffer = await image.readAsBuffer();
+        images.push({
+          placeholder,
+          buffer: imageBuffer,
+          mimeType: image.contentType,
+          sourceLabel: `DOCX 图片 ${String(nextImageIndex)}`,
+          ...readImageDimensions(imageBuffer, image.contentType),
+          skipDecorative: true,
+        });
+        return { src: placeholder };
+      }),
+    },
+  );
+  const text = await replaceDocxImagePlaceholders(htmlToMarkdownText(result.value), images, stats);
+  return toParsedDocument(text, "mammoth", {
+    originalFormat: "docx",
+    ...visionStatsMetadata(stats),
+  });
 }
 
 async function parseCsvExcelDocument(
@@ -938,11 +1006,11 @@ async function parseCsvExcelDocument(
   const spreadsheet = await readSpreadsheet(buffer, kind);
   const sheetTexts: string[] = [];
   if (spreadsheet.rowCount > MAX_SPREADSHEET_ROWS) {
-    throw new Error("Spreadsheet exceeds 10000 rows");
+    throw new Error("表格文档不能超过 10000 行");
   }
 
   for (const sheet of spreadsheet.sheets) {
-    sheetTexts.push(`## Sheet: ${sheet.name}\n\n${rowsToMarkdownTable(sheet.rows)}`);
+    sheetTexts.push(`## 工作表：${sheet.name}\n\n${rowsToMarkdownTable(sheet.rows)}`);
   }
 
   return toParsedDocument(sheetTexts.join("\n\n"), spreadsheet.parser, {
@@ -954,31 +1022,424 @@ async function parseCsvExcelDocument(
 async function parseImageDocument(
   document: ProcessableDocument,
   buffer: Buffer,
+  stats: VisionStats,
 ): Promise<ParsedDocument> {
   const mimeType = document.fileType ?? "image/png";
-  const text = await callModelByUsage(
-    "ocr",
-    [
-      {
-        role: "user",
-        content: [
+  const text = await describeImageWithVision(
+    {
+      buffer,
+      mimeType,
+      sourceLabel: "图片文档",
+      width: null,
+      height: null,
+      skipDecorative: false,
+    },
+    newVisionBudget(),
+    stats,
+  );
+  if (text === null) {
+    throw new Error("图片文档视觉 OCR 失败，请检查 OCR 模型配置后重试");
+  }
+
+  return toParsedDocument(text, "vision-ocr", { mimeType, ...visionStatsMetadata(stats) });
+}
+
+async function parsePdfDocument(buffer: Buffer): Promise<ParsedDocument> {
+  const parser = new PDFParse({ data: buffer });
+  const stats = newVisionStats();
+  try {
+    const result = await parser.getText({ pageJoiner: "" });
+    const pageCount = Math.max(result.total, result.pages.length, 1);
+    const markedText = markPdfPages(result.pages);
+    const scannedPdfDetected = isScannedPdfText(markedText, pageCount);
+      const visualTexts = scannedPdfDetected
+        ? await describePdfPageScreenshots(parser, pageCount, stats)
+        : await describePdfEmbeddedImages(parser, stats);
+    if (scannedPdfDetected && visualTexts.length === 0) {
+      throw new Error("扫描件 PDF 视觉 OCR 失败，请检查 OCR 模型配置后重试");
+    }
+    const combinedText = buildPdfTextWithVisualDescriptions(result.pages, visualTexts);
+
+    if (combinedText.trim().length === 0) {
+      throw new Error(
+        scannedPdfDetected
+          ? "扫描件 PDF 无法完成图片渲染或视觉 OCR，请检查 OCR 模型配置后重试"
+          : "PDF 文档没有可提取的文本内容",
+      );
+    }
+
+    return toParsedDocument(combinedText, "pdf-parse", {
+      pdfPageCount: pageCount,
+      ...(scannedPdfDetected ? { scannedPdfDetected: true as const } : {}),
+      ...visionStatsMetadata(stats),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.length > 0) {
+      throw error;
+    }
+    throw new Error("PDF 文档解析失败，请确认文件未损坏且可读取");
+  } finally {
+    await parser.destroy();
+  }
+}
+
+async function describePdfPageScreenshots(
+  parser: PDFParse,
+  pageCount: number,
+  stats: VisionStats,
+): Promise<VisionDescription[]> {
+  const descriptions: VisionDescription[] = [];
+  const budget = newVisionBudget();
+  for (let page = 1; page <= pageCount; page += 1) {
+    if (budget.used >= budget.limit) {
+      markVisionTruncated(stats);
+      break;
+    }
+    try {
+      const result = await parser.getScreenshot({
+        partial: [page],
+        desiredWidth: PDF_SCREENSHOT_WIDTH,
+        imageDataUrl: false,
+        imageBuffer: true,
+      });
+      const screenshot = result.pages[0];
+      if (screenshot === undefined) {
+        stats.failed += 1;
+        pushUniqueWarning(stats, "pdf_screenshot_empty");
+        continue;
+      }
+      const text = await describeImageWithVision(
+        {
+          buffer: Buffer.from(screenshot.data),
+          mimeType: "image/png",
+          sourceLabel: `PDF 第 ${String(page)} 页`,
+          width: screenshot.width,
+          height: screenshot.height,
+          skipDecorative: false,
+        },
+        budget,
+        stats,
+      );
+      if (text !== null) {
+        descriptions.push({ sourceLabel: `PDF 第 ${String(page)} 页`, text, pageNumber: page });
+      }
+    } catch (error) {
+      stats.failed += 1;
+      pushUniqueWarning(stats, "pdf_screenshot_failed");
+      console.warn("PDF 页面渲染失败，已跳过该页视觉解析", {
+        page,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return descriptions;
+}
+
+async function describePdfEmbeddedImages(
+  parser: PDFParse,
+  stats: VisionStats,
+): Promise<VisionDescription[]> {
+  const descriptions: VisionDescription[] = [];
+  const budget = newVisionBudget();
+  try {
+    const result = await parser.getImage({
+      imageThreshold: 0,
+      imageDataUrl: true,
+      imageBuffer: true,
+    });
+    for (const page of result.pages) {
+      for (const image of page.images) {
+        const sourceLabel = `PDF 第 ${String(page.pageNumber)} 页图片 ${image.name}`;
+        const text = await describeImageWithVision(
           {
-            type: "text",
-            text: "Extract all text from this image. If it contains tables, output them as Markdown tables and preserve the original structure.",
+            buffer: Buffer.from(image.data),
+            mimeType: mimeTypeFromDataUrl(image.dataUrl),
+            sourceLabel,
+            width: image.width,
+            height: image.height,
+            skipDecorative: true,
           },
+          budget,
+          stats,
+        );
+        if (text !== null) {
+          descriptions.push({ sourceLabel, text, pageNumber: page.pageNumber });
+        }
+      }
+    }
+  } catch (error) {
+    pushUniqueWarning(stats, "pdf_embedded_image_extract_failed");
+    console.warn("PDF 内嵌图片提取失败，已继续处理文本层", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return descriptions;
+}
+
+async function replaceDocxImagePlaceholders(
+  text: string,
+  images: CapturedDocxImage[],
+  stats: VisionStats,
+): Promise<string> {
+  let output = text;
+  const budget = newVisionBudget();
+  for (const image of images) {
+    const description = await describeImageWithVision(image, budget, stats);
+    output = output.replace(
+      image.placeholder,
+      description === null
+        ? ""
+        : formatVisionDescriptions([
+            { sourceLabel: image.sourceLabel, text: description, pageNumber: null },
+          ]),
+    );
+  }
+  return output;
+}
+
+async function describeImageWithVision(
+  image: VisionImageInput,
+  budget: VisionBudget,
+  stats: VisionStats,
+): Promise<string | null> {
+  if (image.skipDecorative && isDecorativeImage(image.width, image.height)) {
+    stats.skippedDecorative += 1;
+    return null;
+  }
+  if (budget.used >= budget.limit) {
+    markVisionTruncated(stats);
+    return null;
+  }
+
+  budget.used += 1;
+  stats.attempted += 1;
+  try {
+    const text = (
+      await callModelByUsage(
+        "ocr",
+        [
           {
-            type: "image_url",
-            image_url: {
-              url: `data:${mimeType};base64,${buffer.toString("base64")}`,
-            },
+            role: "user",
+            content: [
+              { type: "text", text: VISION_IMAGE_PROMPT },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${image.mimeType};base64,${image.buffer.toString("base64")}`,
+                },
+              },
+            ],
           },
         ],
-      },
-    ],
-    { temperature: 0, maxOutputTokens: 4000 },
-  );
+        { temperature: 0, maxOutputTokens: 4000 },
+      )
+    ).trim();
+    if (text.length === 0) {
+      stats.failed += 1;
+      pushUniqueWarning(stats, "vision_empty_response");
+      return null;
+    }
+    stats.inserted += 1;
+    return text;
+  } catch (error) {
+    stats.failed += 1;
+    pushUniqueWarning(stats, "vision_call_failed");
+    console.warn("视觉 OCR 调用失败，已跳过该图片", {
+      sourceLabel: image.sourceLabel,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
 
-  return toParsedDocument(text, "vision-ocr", { mimeType });
+function newVisionBudget(): VisionBudget {
+  return { limit: MAX_VISION_IMAGES_PER_DOCUMENT, used: 0 };
+}
+
+function newVisionStats(): VisionStats {
+  return {
+    attempted: 0,
+    inserted: 0,
+    skippedDecorative: 0,
+    failed: 0,
+    truncated: false,
+    warnings: [],
+  };
+}
+
+function visionStatsMetadata(stats: VisionStats): ParsedDocumentExtraMetadata {
+  return {
+    visionImageLimit: MAX_VISION_IMAGES_PER_DOCUMENT,
+    visionImageCount: stats.attempted,
+    visionImageInsertedCount: stats.inserted,
+    visionImageSkippedCount: stats.skippedDecorative,
+    visionImageFailedCount: stats.failed,
+    ...(stats.truncated ? { visionImageTruncated: true as const } : {}),
+    ...(stats.warnings.length > 0 ? { multimodalWarnings: stats.warnings } : {}),
+  };
+}
+
+function markVisionTruncated(stats: VisionStats): void {
+  if (!stats.truncated) {
+    stats.truncated = true;
+    pushUniqueWarning(stats, "vision_image_limit_reached");
+    console.warn("文档图片数量超过视觉 OCR 调用上限，后续图片已截断", {
+      limit: MAX_VISION_IMAGES_PER_DOCUMENT,
+    });
+  }
+}
+
+function pushUniqueWarning(stats: VisionStats, warning: string): void {
+  if (!stats.warnings.includes(warning)) {
+    stats.warnings.push(warning);
+  }
+}
+
+function markPdfPages(pages: { num: number; text: string }[]): string {
+  return buildPdfTextWithVisualDescriptions(pages, []);
+}
+
+export function buildPdfTextWithVisualDescriptions(
+  pages: { num: number; text: string }[],
+  descriptions: VisionDescription[],
+): string {
+  const descriptionsByPage = new Map<number, VisionDescription[]>();
+  const unpagedDescriptions: VisionDescription[] = [];
+  for (const description of descriptions) {
+    if (description.pageNumber === null) {
+      unpagedDescriptions.push(description);
+      continue;
+    }
+    const current = descriptionsByPage.get(description.pageNumber) ?? [];
+    current.push(description);
+    descriptionsByPage.set(description.pageNumber, current);
+  }
+
+  const parts = [...pages]
+    .sort((left, right) => left.num - right.num)
+    .map((page) => {
+      const pageDescriptions = descriptionsByPage.get(page.num) ?? [];
+      return [
+        `${PAGE_BREAK_MARKER_PREFIX}${String(page.num)}]]`,
+        page.text,
+        formatVisionDescriptions(pageDescriptions),
+      ]
+        .filter((part) => part.trim().length > 0)
+        .join("\n\n");
+    });
+  if (unpagedDescriptions.length > 0) {
+    parts.push(formatVisionDescriptions(unpagedDescriptions));
+  }
+  return parts.filter((part) => part.trim().length > 0).join("\n\n");
+}
+
+export function isScannedPdfText(text: string, pageCount: number): boolean {
+  const contentChars = stripPageMarkers(text).replace(/\s/g, "").length;
+  return contentChars < pageCount * PDF_SCANNED_MIN_CHARS_PER_PAGE;
+}
+
+export function isDecorativeImage(width: number | null, height: number | null): boolean {
+  if (width === null || height === null) {
+    return false;
+  }
+  const longEdge = Math.max(width, height);
+  const area = width * height;
+  return longEdge < DECORATIVE_IMAGE_MIN_LONG_EDGE || area < DECORATIVE_IMAGE_MIN_AREA;
+}
+
+export function readImageDimensions(
+  buffer: Buffer,
+  mimeType: string,
+): { width: number | null; height: number | null } {
+  if (mimeType === "image/png") {
+    return readPngDimensions(buffer);
+  }
+  if (mimeType === "image/jpeg" || mimeType === "image/jpg") {
+    return readJpegDimensions(buffer);
+  }
+  return { width: null, height: null };
+}
+
+function readPngDimensions(buffer: Buffer): { width: number | null; height: number | null } {
+  const pngSignature = "89504e470d0a1a0a";
+  if (buffer.length < 24 || buffer.subarray(0, 8).toString("hex") !== pngSignature) {
+    return { width: null, height: null };
+  }
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  };
+}
+
+function readJpegDimensions(buffer: Buffer): { width: number | null; height: number | null } {
+  if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
+    return { width: null, height: null };
+  }
+
+  let offset = 2;
+  while (offset + 9 < buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = buffer[offset + 1];
+    const segmentLength = buffer.readUInt16BE(offset + 2);
+    if (segmentLength < 2 || offset + 2 + segmentLength > buffer.length) {
+      return { width: null, height: null };
+    }
+    if (marker !== undefined && isJpegStartOfFrame(marker)) {
+      return {
+        height: buffer.readUInt16BE(offset + 5),
+        width: buffer.readUInt16BE(offset + 7),
+      };
+    }
+    offset += 2 + segmentLength;
+  }
+
+  return { width: null, height: null };
+}
+
+function isJpegStartOfFrame(marker: number): boolean {
+  return (
+    (marker >= 0xc0 && marker <= 0xc3) ||
+    (marker >= 0xc5 && marker <= 0xc7) ||
+    (marker >= 0xc9 && marker <= 0xcb) ||
+    (marker >= 0xcd && marker <= 0xcf)
+  );
+}
+
+function formatVisionDescriptions(descriptions: VisionDescription[]): string {
+  return descriptions
+    .map((description) => `## ${description.sourceLabel}\n\n${description.text}`)
+    .join("\n\n");
+}
+
+export function htmlToMarkdownText(html: string): string {
+  return html
+    .replace(/<img\b[^>]*\bsrc="([^"]+)"[^>]*>/gi, "\n\n$1\n\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/h([1-6])>/gi, "\n\n")
+    .replace(/<h([1-6])[^>]*>/gi, (_match, level: string) => `${"#".repeat(Number(level))} `)
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/t[dh]>/gi, " | ")
+    .replace(/<t[dh][^>]*>/gi, "| ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function mimeTypeFromDataUrl(dataUrl: string): string {
+  const match = /^data:([^;,]+)[;,]/.exec(dataUrl);
+  return match?.[1] ?? "image/png";
 }
 
 function rowsToMarkdownTable(rows: string[][]): string {
@@ -1015,7 +1476,7 @@ export function cleanParsedText(text: string): {
   cleaned = mergeHardWrappedLines(cleaned);
   cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
   if (cleaned.length === 0) {
-    throw new Error("Document contains no extractable text");
+    throw new Error("文档没有可提取的文本内容");
   }
   return { text: cleaned, warnings };
 }
@@ -1028,6 +1489,9 @@ function prepareRawTextForCleaning(
   pageInfoUnavailable: boolean;
 } {
   if (parser !== "pdf-parse") {
+    return { text, pageInfoUnavailable: false };
+  }
+  if (text.includes(PAGE_BREAK_MARKER_PREFIX)) {
     return { text, pageInfoUnavailable: false };
   }
   if (!text.includes("\f")) {
@@ -1167,7 +1631,7 @@ function isStandalonePageNumber(line: string): boolean {
 
 async function resolveDocumentPath(document: ProcessableDocument): Promise<string> {
   if (document.fileId === null) {
-    throw new Error("Document file is missing");
+    throw new Error("文档文件缺失");
   }
 
   const [file] = await db
@@ -1176,14 +1640,14 @@ async function resolveDocumentPath(document: ProcessableDocument): Promise<strin
     .where(eq(files.id, document.fileId))
     .limit(1);
   if (file === undefined) {
-    throw new Error("Document file metadata is missing");
+    throw new Error("文档文件元数据缺失");
   }
 
   const storageRoot = resolveLocalStorageRoot();
   const absolutePath = path.resolve(storageRoot, file.storagePath);
   const relativePath = path.relative(storageRoot, absolutePath);
   if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-    throw new Error("Document storage path is invalid");
+    throw new Error("文档存储路径无效");
   }
 
   return absolutePath;

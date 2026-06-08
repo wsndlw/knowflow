@@ -320,7 +320,7 @@ export function TabKnowledgeItems({ knowledgeBaseId, canManage }: TabKnowledgeIt
             className="max-w-xs"
           />
           <Select value={status} onValueChange={(next) => { setStatus(next); setPage(1); }}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-40">
               <SelectValue placeholder="全部状态" />
             </SelectTrigger>
             <SelectContent>

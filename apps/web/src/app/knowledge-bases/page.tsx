@@ -153,6 +153,10 @@ export default function KnowledgeBasesPage() {
     setIsCreating(true);
     setCreateError(null);
     try {
+      if (selectedDepartmentId === "") {
+        setCreateError("请选择归属部门");
+        return;
+      }
       const formData = new FormData(form);
       const input: CreateKnowledgeBaseRequest = createKnowledgeBaseRequestSchema.parse({
         name: formData.get("name"),

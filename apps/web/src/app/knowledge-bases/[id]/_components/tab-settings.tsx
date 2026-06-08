@@ -172,7 +172,7 @@ export function TabSettings({
               setSettings({ ...settings, mode: next as (typeof RETRIEVAL_MODES)[number] })
             }
           >
-            <SelectTrigger className="max-w-xs">
+            <SelectTrigger className="w-full max-w-xs">
               <SelectValue placeholder="选择检索模式" />
             </SelectTrigger>
             <SelectContent>

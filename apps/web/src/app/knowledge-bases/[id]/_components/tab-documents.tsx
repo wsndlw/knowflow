@@ -375,7 +375,7 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
             value={status}
             onValueChange={(next) => { setStatus(next); setPage(1); }}
           >
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-40">
               <SelectValue placeholder="全部状态" />
             </SelectTrigger>
             <SelectContent>
@@ -391,8 +391,8 @@ export function TabDocuments({ knowledgeBaseId, canManage }: TabDocumentsProps) 
               setPage(1);
             }}
           >
-            <SelectTrigger className="w-32">
-              <SelectValue />
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="视图" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="in-use">在用</SelectItem>

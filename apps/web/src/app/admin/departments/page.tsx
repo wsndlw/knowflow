@@ -476,7 +476,7 @@ function DepartmentsPageContent() {
             <AlertDialogDescription>确认删除此部门？</AlertDialogDescription>
           </AlertDialogHeader>
           {deleteError !== "" ? (
-            <p className="text-sm text-danger" role="alert">
+            <p className="rounded-md bg-danger-bg px-3 py-2 text-sm text-danger" role="alert">
               {deleteError}
             </p>
           ) : null}

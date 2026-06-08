@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { apiRequest } from "../../lib/api";
+import { translateApiError } from "../../lib/api-error";
 import { cn } from "../../lib/cn";
 
 type Filters = {
@@ -53,8 +54,13 @@ const statusMeta: Record<string, { label: string; tone: Tone }> = {
   disabled: { label: "已禁用", tone: "neutral" },
 };
 
-function buildListPath(filters: Filters): string {
+function buildListPath(filters: Filters, deleted: boolean): string {
   const params = new URLSearchParams();
+  if (deleted) {
+    // 回收站只按删除态列出，不叠加常规筛选，避免残留筛选造成困惑
+    params.set("deleted", "true");
+    return `/knowledge-bases?${params.toString()}`;
+  }
   if (filters.visibility !== "all") {
     params.set("visibility", filters.visibility);
   }
@@ -72,6 +78,7 @@ export default function KnowledgeBasesPage() {
   const [filters, setFilters] = useState<Filters>({ visibility: "all", keyword: "" });
   const [searchKeyword, setSearchKeyword] = useState("");
   const [view, setView] = useState<ViewMode>("card");
+  const [trashMode, setTrashMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -97,7 +104,7 @@ export default function KnowledgeBasesPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiRequest(buildListPath(filters), knowledgeBaseListResponseSchema, {
+      const response = await apiRequest(buildListPath(filters, trashMode), knowledgeBaseListResponseSchema, {
         cache: "no-store",
       });
       if (reqId === loadRequestIdRef.current) setItems(response.items);
@@ -107,7 +114,7 @@ export default function KnowledgeBasesPage() {
     } finally {
       if (reqId === loadRequestIdRef.current) setIsLoading(false);
     }
-  }, [filters]);
+  }, [filters, trashMode]);
 
   useEffect(() => {
     void loadKnowledgeBases();
@@ -190,45 +197,57 @@ export default function KnowledgeBasesPage() {
           {canCreate ? <Button onClick={() => setDialogOpen(true)}>+ 新建知识库</Button> : null}
         </header>
 
-        {/* 工具栏:筛选 + 搜索 + 视图切换 */}
+        {/* 工具栏:筛选 + 搜索 + 视图切换 + 回收站（回收站模式下隐藏筛选/搜索/视图，避免残留筛选） */}
         <div className="mb-5 flex flex-wrap items-center gap-3">
-          <div className="w-36">
-            <Select
-              value={filters.visibility}
-              onValueChange={(next) =>
-                setFilters((current) => ({
-                  ...current,
-                  visibility: next as Filters["visibility"],
-                }))
-              }
-            >
-              <SelectTrigger className="w-full" aria-label="按可见范围筛选">
-                <SelectValue placeholder="全部可见范围" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部可见范围</SelectItem>
-                <SelectItem value="public">公开</SelectItem>
-                <SelectItem value="department">部门</SelectItem>
-                <SelectItem value="restricted">受限</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="min-w-48 flex-1 sm:max-w-xs">
-            <Input
-              aria-label="搜索知识库"
-              placeholder="搜索知识库名称…"
-              value={searchKeyword}
-              onChange={(event) => setSearchKeyword(event.target.value)}
-            />
-          </div>
-          <div className="ml-auto flex items-center gap-1 rounded-md border border-border bg-surface p-0.5">
-            <ViewToggle active={view === "card"} onClick={() => setView("card")} label="卡片">
-              <CardsIcon />
-            </ViewToggle>
-            <ViewToggle active={view === "table"} onClick={() => setView("table")} label="表格">
-              <TableIcon />
-            </ViewToggle>
-          </div>
+          {!trashMode ? (
+            <>
+              <div className="w-36">
+                <Select
+                  value={filters.visibility}
+                  onValueChange={(next) =>
+                    setFilters((current) => ({
+                      ...current,
+                      visibility: next as Filters["visibility"],
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-full" aria-label="按可见范围筛选">
+                    <SelectValue placeholder="全部可见范围" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部可见范围</SelectItem>
+                    <SelectItem value="public">公开</SelectItem>
+                    <SelectItem value="department">部门</SelectItem>
+                    <SelectItem value="restricted">受限</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-48 flex-1 sm:max-w-xs">
+                <Input
+                  aria-label="搜索知识库"
+                  placeholder="搜索知识库名称…"
+                  value={searchKeyword}
+                  onChange={(event) => setSearchKeyword(event.target.value)}
+                />
+              </div>
+              <div className="ml-auto flex items-center gap-1 rounded-md border border-border bg-surface p-0.5">
+                <ViewToggle active={view === "card"} onClick={() => setView("card")} label="卡片">
+                  <CardsIcon />
+                </ViewToggle>
+                <ViewToggle active={view === "table"} onClick={() => setView("table")} label="表格">
+                  <TableIcon />
+                </ViewToggle>
+              </div>
+            </>
+          ) : null}
+          <Button
+            variant={trashMode ? "primary" : "outline"}
+            size="sm"
+            className={cn(trashMode && "ml-auto")}
+            onClick={() => setTrashMode((value) => !value)}
+          >
+            {trashMode ? "返回列表" : "回收站"}
+          </Button>
         </div>
 
         {error !== null ? (
@@ -246,23 +265,32 @@ export default function KnowledgeBasesPage() {
         ) : null}
 
         {!isLoading && error === null && items.length === 0 ? (
-          <EmptyState
-            title="暂无知识库"
-            description={
-              canCreate
-                ? "还没有符合条件的知识库,点击右上角新建一个。"
-                : "你当前没有可访问的知识库,或没有匹配筛选条件的结果。"
-            }
-            action={
-              canCreate ? (
-                <Button onClick={() => setDialogOpen(true)}>+ 新建知识库</Button>
-              ) : undefined
-            }
-          />
+          trashMode ? (
+            <EmptyState
+              title="回收站为空"
+              description="没有已删除的知识库。删除知识库后会移到这里，可随时恢复。"
+            />
+          ) : (
+            <EmptyState
+              title="暂无知识库"
+              description={
+                canCreate
+                  ? "还没有符合条件的知识库,点击右上角新建一个。"
+                  : "你当前没有可访问的知识库,或没有匹配筛选条件的结果。"
+              }
+              action={
+                canCreate ? (
+                  <Button onClick={() => setDialogOpen(true)}>+ 新建知识库</Button>
+                ) : undefined
+              }
+            />
+          )
         ) : null}
 
         {!isLoading && error === null && items.length > 0 ? (
-          view === "card" ? (
+          trashMode ? (
+            <TrashView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
+          ) : view === "card" ? (
             <CardView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
           ) : (
             <TableView items={items} onRefresh={loadKnowledgeBases} showToast={showToast} />
@@ -365,6 +393,66 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-sm font-medium text-ink">{label}</span>
       {children}
     </label>
+  );
+}
+
+function TrashView({
+  items,
+  onRefresh,
+  showToast,
+}: {
+  items: KnowledgeBaseListItem[];
+  onRefresh: () => Promise<void>;
+  showToast: (msg: string, tone?: "success" | "danger") => void;
+}) {
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+
+  async function handleRestore(id: string) {
+    setRestoringId(id);
+    try {
+      await apiRequest(`/knowledge-bases/${id}/restore`, knowledgeBaseSchema, {
+        method: "POST",
+      });
+      showToast("知识库已恢复");
+      await onRefresh();
+    } catch (err) {
+      showToast(err instanceof Error ? translateApiError(err.message) : "恢复失败", "danger");
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => (
+        <Card key={item.id} className="flex h-full flex-col p-5 opacity-90">
+          <div className="mb-2 flex items-start justify-between gap-2">
+            <h3 className="truncate text-md font-semibold text-ink">{item.name}</h3>
+            <Badge tone={visibilityMeta[item.visibility].tone}>
+              {visibilityMeta[item.visibility].label}
+            </Badge>
+          </div>
+          <p className="line-clamp-2 min-h-10 text-sm text-ink-muted">
+            {item.description ?? "暂无描述"}
+          </p>
+          <div className="mt-auto flex items-center gap-x-5 border-t border-border pt-3">
+            <CountStat label="文档" value={item.documentCount} />
+            <CountStat label="条目" value={item.knowledgeItemCount} />
+            {item.canManage ? (
+              <Button
+                variant="outline"
+                size="xs"
+                className="ml-auto"
+                loading={restoringId === item.id}
+                onClick={() => void handleRestore(item.id)}
+              >
+                恢复
+              </Button>
+            ) : null}
+          </div>
+        </Card>
+      ))}
+    </div>
   );
 }
 

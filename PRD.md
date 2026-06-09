@@ -123,7 +123,7 @@
 **状态流转**
 
 ```
-草稿（draft）→ 待审核（pending_review）→ 已发布（published）→ 已下架（unpublished）/ 已归档（archived）
+草稿（draft）→ 待审核（pending_review）→ 已发布（published）→ 已下架（unpublished）/ 已过期（expired）/ 已归档（archived）
 ```
 
 **知识条目向量化**
@@ -200,6 +200,7 @@
 
 - **草稿（draft）**：编辑中，仅创建者可见
 - **已发布（published）**：对知识库成员可见
+- **已停用（disabled）**：暂停使用，不可对话
 
 ---
 
@@ -215,7 +216,11 @@
 **候选生成**
 
 - AI 根据来源（文档内容/问答记录/纠错）生成候选知识条目
-- 状态：`pending`（待生成）→ `processing`（生成中）→ `candidate_ready`（待审核）/ `failed`（生成失败）
+- 状态流转：
+  - `pending`（待生成）→ `processing`（生成中）→ `candidate_ready`（待审核）
+  - 审核通过：`approved`（已通过）→ `published`（已发布到知识库）
+  - 审核驳回：`rejected`（已驳回）
+  - 生成失败：`failed`（生成失败）
 - 生成的内容：标题、内容、标签、可能的问题
 
 **人工审核**

@@ -1,7 +1,7 @@
 # knowflow · 技术实现详解
 
 > 项目深度说明。把系统的 5 根技术支柱按「设计意图 → 实现要点 → 关键代码位置」展开，所有描述均对照源码核实。
-> 配套：项目概览见 [README.md](README.md)，术语与技术约定见 [CONTEXT.md](CONTEXT.md)，分模块设计文档见 [md/](md/)。
+> 配套：产品需求见 [PRD.md](PRD.md)，项目概览见 [README.md](README.md)，术语与技术约定见 [CONTEXT.md](CONTEXT.md)。
 
 ## 目录
 
